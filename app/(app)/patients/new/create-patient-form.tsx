@@ -1,0 +1,581 @@
+"use client";
+
+import * as React from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import { toast } from "sonner";
+import { useRouter } from "next/navigation";
+import { Save, Phone, Mail, Calendar, UserPlus, Cross, FileText, X, Clock, User } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { createPatientAction, updatePatientAssignmentAction } from "@/app/_actions/patients";
+import { createVisitDraftAction, updateVisitWaitingRoomAction } from "@/app/_actions/visits";
+import { cn } from "@/app/_lib/utils/cn";
+
+const createPatientSchema = z.object({
+  firstName: z.string().min(1, "First name is required"),
+  lastName: z.string().min(1, "Last name is required"),
+  preferredName: z.string().optional(),
+  dob: z.string().min(1, "Date of birth is required"),
+  sexAtBirth: z.string().min(1, "Sex at birth is required"),
+  genderIdentity: z.string().optional(),
+  phone: z.string().min(1, "Mobile phone is required"),
+  email: z
+    .string()
+    .optional()
+    .refine(
+      (val) => !val || val === "" || z.string().email().safeParse(val).success,
+      {
+        message: "Invalid email address",
+      }
+    ),
+  streetAddress: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  zip: z.string().optional(),
+  primaryLanguage: z.string().optional(),
+  smsNotifications: z.boolean(),
+  emailNotifications: z.boolean(),
+  emergencyContactName: z.string().optional(),
+  emergencyContactRelationship: z.string().optional(),
+  emergencyContactPhone: z.string().optional(),
+  primaryCareProvider: z.string().optional(),
+});
+
+type CreatePatientFormData = z.infer<typeof createPatientSchema>;
+
+export function CreatePatientForm() {
+  const router = useRouter();
+  const [isSaving, setIsSaving] = React.useState(false);
+  const [showPostCreateModal, setShowPostCreateModal] = React.useState(false);
+  const [createdPatientId, setCreatedPatientId] = React.useState<string | null>(null);
+  const [isHandlingAction, setIsHandlingAction] = React.useState(false);
+
+  const form = useForm<CreatePatientFormData>({
+    resolver: zodResolver(createPatientSchema),
+    defaultValues: {
+      firstName: "",
+      lastName: "",
+      preferredName: "",
+      dob: "",
+      sexAtBirth: undefined,
+      genderIdentity: undefined,
+      phone: "",
+      email: "",
+      streetAddress: "",
+      city: "",
+      state: "",
+      zip: "",
+      primaryLanguage: "English",
+      smsNotifications: false,
+      emailNotifications: true,
+      emergencyContactName: "",
+      emergencyContactRelationship: "",
+      emergencyContactPhone: "",
+      primaryCareProvider: undefined,
+    },
+  });
+
+  const onSubmit = async (data: CreatePatientFormData) => {
+    try {
+      setIsSaving(true);
+
+      // Determine preferred communication method
+      const commMethods: string[] = [];
+      if (data.smsNotifications) commMethods.push("SMS");
+      if (data.emailNotifications) commMethods.push("Email");
+      const preferredCommMethod = commMethods.length > 0 ? commMethods.join(", ") : null;
+
+      const result = await createPatientAction({
+        firstName: data.firstName,
+        lastName: data.lastName,
+        preferredName: data.preferredName || undefined,
+        dob: data.dob || undefined,
+        sexAtBirth: data.sexAtBirth || undefined,
+        genderIdentity: data.genderIdentity || undefined,
+        phone: data.phone,
+        email: data.email || undefined,
+        streetAddress: data.streetAddress || undefined,
+        city: data.city || undefined,
+        state: data.state || undefined,
+        zip: data.zip || undefined,
+        primaryLanguage: data.primaryLanguage || undefined,
+        preferredCommMethod: preferredCommMethod || undefined,
+        emergencyContactName: data.emergencyContactName || undefined,
+        emergencyContactRelationship: data.emergencyContactRelationship || undefined,
+        emergencyContactPhone: data.emergencyContactPhone || undefined,
+        primaryCareProvider: data.primaryCareProvider || undefined,
+      });
+
+      if (result.success) {
+        toast.success("Patient created successfully");
+        setCreatedPatientId(result.patientId);
+        setShowPostCreateModal(true);
+      }
+    } catch (error) {
+      console.error("Error creating patient:", error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to create patient"
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Left Column */}
+        <div className="space-y-6">
+          {/* Patient Identity Section */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                Patient Identity
+                <span className="text-xs font-normal text-muted-foreground bg-destructive/10 text-destructive px-2 py-1 rounded">
+                  REQUIRED
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="firstName">
+                    First Name <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="firstName"
+                    placeholder="e.g. Jane"
+                    {...form.register("firstName")}
+                    className={cn(
+                      form.formState.errors.firstName && "border-destructive"
+                    )}
+                  />
+                  {form.formState.errors.firstName && (
+                    <p className="text-sm text-destructive">
+                      {form.formState.errors.firstName.message}
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="lastName">
+                    Last Name <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="lastName"
+                    placeholder="e.g. Doe"
+                    {...form.register("lastName")}
+                    className={cn(
+                      form.formState.errors.lastName && "border-destructive"
+                    )}
+                  />
+                  {form.formState.errors.lastName && (
+                    <p className="text-sm text-destructive">
+                      {form.formState.errors.lastName.message}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="preferredName">Preferred Name</Label>
+                <Input
+                  id="preferredName"
+                  placeholder="e.g. Janie"
+                  {...form.register("preferredName")}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="dob">
+                    Date of Birth <span className="text-destructive">*</span>
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="dob"
+                      type="date"
+                      placeholder="mm/dd/yyyy"
+                      {...form.register("dob")}
+                      className={cn(
+                        "pr-10",
+                        form.formState.errors.dob && "border-destructive"
+                      )}
+                    />
+                    <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                  </div>
+                  {form.formState.errors.dob && (
+                    <p className="text-sm text-destructive">
+                      {form.formState.errors.dob.message}
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="sexAtBirth">
+                    Sex at Birth <span className="text-destructive">*</span>
+                  </Label>
+                  <Select
+                    value={form.watch("sexAtBirth") || ""}
+                    onValueChange={(value) => form.setValue("sexAtBirth", value)}
+                  >
+                    <SelectTrigger
+                      className={cn(
+                        form.formState.errors.sexAtBirth && "border-destructive"
+                      )}
+                    >
+                      <SelectValue placeholder="Select" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="male">Male</SelectItem>
+                      <SelectItem value="female">Female</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                      <SelectItem value="prefer_not_to_say">Prefer not to say</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {form.formState.errors.sexAtBirth && (
+                    <p className="text-sm text-destructive">
+                      {form.formState.errors.sexAtBirth.message}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="genderIdentity">Pronouns</Label>
+                <Select
+                  value={form.watch("genderIdentity") || ""}
+                  onValueChange={(value) => form.setValue("genderIdentity", value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="he/him">He/Him</SelectItem>
+                    <SelectItem value="she/her">She/Her</SelectItem>
+                    <SelectItem value="they/them">They/Them</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                    <SelectItem value="prefer_not_to_say">Prefer not to say</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Contact Information Section */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Contact Information</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="phone">
+                  Mobile Phone <span className="text-destructive">*</span>
+                </Label>
+                <div className="relative">
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="phone"
+                    type="tel"
+                    placeholder="(555) 000-0000"
+                    className={cn(
+                      "pl-10",
+                      form.formState.errors.phone && "border-destructive"
+                    )}
+                    {...form.register("phone")}
+                  />
+                </div>
+                {form.formState.errors.phone && (
+                  <p className="text-sm text-destructive">
+                    {form.formState.errors.phone.message}
+                  </p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="jane@example.com"
+                    className={cn(
+                      "pl-10",
+                      form.formState.errors.email && "border-destructive"
+                    )}
+                    {...form.register("email")}
+                  />
+                </div>
+                {form.formState.errors.email && (
+                  <p className="text-sm text-destructive">
+                    {form.formState.errors.email.message}
+                  </p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="streetAddress">Street Address</Label>
+                <Input
+                  id="streetAddress"
+                  placeholder="123 Main St"
+                  {...form.register("streetAddress")}
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="city">City</Label>
+                  <Input id="city" {...form.register("city")} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="state">State</Label>
+                  <Input id="state" {...form.register("state")} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="zip">ZIP</Label>
+                  <Input id="zip" {...form.register("zip")} />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="primaryLanguage">Language</Label>
+                <Select
+                  value={form.watch("primaryLanguage") || "English"}
+                  onValueChange={(value) => form.setValue("primaryLanguage", value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="English">English</SelectItem>
+                    <SelectItem value="Spanish">Spanish</SelectItem>
+                    <SelectItem value="French">French</SelectItem>
+                    <SelectItem value="German">German</SelectItem>
+                    <SelectItem value="Chinese">Chinese</SelectItem>
+                    <SelectItem value="Japanese">Japanese</SelectItem>
+                    <SelectItem value="Other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Notifications</Label>
+                <div className="flex items-center gap-6">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="smsNotifications"
+                      checked={form.watch("smsNotifications")}
+                      onCheckedChange={(checked) =>
+                        form.setValue("smsNotifications", checked === true)
+                      }
+                    />
+                    <Label
+                      htmlFor="smsNotifications"
+                      className="text-sm font-normal cursor-pointer"
+                    >
+                      SMS
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="emailNotifications"
+                      checked={form.watch("emailNotifications")}
+                      onCheckedChange={(checked) =>
+                        form.setValue("emailNotifications", checked === true)
+                      }
+                    />
+                    <Label
+                      htmlFor="emailNotifications"
+                      className="text-sm font-normal cursor-pointer"
+                    >
+                      Email
+                    </Label>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Right Column */}
+        <div className="space-y-6">
+          {/* Emergency Contact Section */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Cross className="h-4 w-4" />
+                Emergency Contact
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="emergencyContactName">Full Name</Label>
+                <Input
+                  id="emergencyContactName"
+                  {...form.register("emergencyContactName")}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="emergencyContactRelationship">Relationship</Label>
+                <Input
+                  id="emergencyContactRelationship"
+                  {...form.register("emergencyContactRelationship")}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="emergencyContactPhone">Phone</Label>
+                <Input
+                  id="emergencyContactPhone"
+                  type="tel"
+                  {...form.register("emergencyContactPhone")}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+
+        </div>
+      </div>
+
+      {/* Submit Button */}
+      <div className="flex justify-end gap-4">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => router.back()}
+          disabled={isSaving}
+        >
+          Cancel
+        </Button>
+        <Button type="submit" disabled={isSaving}>
+          <Save className="h-4 w-4 mr-2" />
+          {isSaving ? "Creating..." : "Create Patient"}
+        </Button>
+      </div>
+
+      {/* Post-Create Modal */}
+      <Dialog open={showPostCreateModal} onOpenChange={setShowPostCreateModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Patient Created Successfully</DialogTitle>
+            <DialogDescription>
+              What would you like to do next?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-4">
+            <Button
+              variant="outline"
+              className="w-full justify-start gap-3 h-auto py-4"
+              onClick={async () => {
+                if (!createdPatientId) return;
+                setIsHandlingAction(true);
+                try {
+                  await updatePatientAssignmentAction(createdPatientId, "start-visit");
+                  toast.success("Patient assigned to you");
+                  router.push(`/patients/${createdPatientId}/new-visit`);
+                } catch (error) {
+                  console.error("Error starting visit:", error);
+                  toast.error("Failed to start visit");
+                } finally {
+                  setIsHandlingAction(false);
+                }
+              }}
+              disabled={isHandlingAction}
+            >
+              <User className="h-5 w-5" />
+              <div className="flex flex-col items-start">
+                <span className="font-semibold">Start Visit</span>
+                <span className="text-xs text-muted-foreground">
+                  Assign patient to you and begin a new visit
+                </span>
+              </div>
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full justify-start gap-3 h-auto py-4"
+              onClick={async () => {
+                if (!createdPatientId) return;
+                setIsHandlingAction(true);
+                try {
+                  // First create a visit
+                  const visitResult = await createVisitDraftAction({
+                    patientId: createdPatientId,
+                  });
+
+                  // Set patient assignment to false and clinician_id to null
+                  await updatePatientAssignmentAction(createdPatientId, "send-to-waiting-room");
+
+                  // Update visit to "Waiting" status with default values (user can change on next page)
+                  await updateVisitWaitingRoomAction({
+                    visitId: visitResult.visitId,
+                    triageLevel: "mild",
+                    appointmentType: "in-person",
+                  });
+
+                  toast.success("Patient sent to waiting room");
+                  router.push(`/patients/${createdPatientId}/send-to-waiting-room?visitId=${visitResult.visitId}`);
+                } catch (error) {
+                  console.error("Error sending to waiting room:", error);
+                  toast.error("Failed to send to waiting room");
+                } finally {
+                  setIsHandlingAction(false);
+                }
+              }}
+              disabled={isHandlingAction}
+            >
+              <Clock className="h-5 w-5" />
+              <div className="flex flex-col items-start">
+                <span className="font-semibold">Send to Waiting Room</span>
+                <span className="text-xs text-muted-foreground">
+                  Add triage level and appointment type
+                </span>
+              </div>
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full justify-start gap-3 h-auto py-4"
+              onClick={async () => {
+                if (!createdPatientId) return;
+                setIsHandlingAction(true);
+                try {
+                  await updatePatientAssignmentAction(createdPatientId, "close");
+                  toast.success("Patient created");
+                  router.push(`/patients/${createdPatientId}`);
+                } catch (error) {
+                  console.error("Error closing:", error);
+                  toast.error("Failed to update patient");
+                } finally {
+                  setIsHandlingAction(false);
+                }
+              }}
+              disabled={isHandlingAction}
+            >
+              <X className="h-5 w-5" />
+              <div className="flex flex-col items-start">
+                <span className="font-semibold">Close</span>
+                <span className="text-xs text-muted-foreground">
+                  View patient details
+                </span>
+              </div>
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </form>
+  );
+}
+

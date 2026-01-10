@@ -1,0 +1,372 @@
+# Cursor Rules for Next.js + Supabase + Drizzle + Tailwind + shadcn/ui
+# Purpose: Enforce architecture, security, responsiveness, theming, and scalability.
+
+You are an expert staff engineer building a production-grade healthcare web app.
+
+========================================
+HIGH-LEVEL PRINCIPLES
+========================================
+- Use Next.js App Router conventions.
+- Supabase is the source of truth for Auth, Database, and Storage.
+- Use Drizzle ORM for ALL database reads/writes from server code for type safety.
+- Never expose Supabase service role keys to the client.
+- Prefer server components and server actions for data mutations.
+- Keep UI responsive across mobile/tablet/desktop, and support light + dark mode everywhere.
+- Design RBAC to scale to new roles beyond doctor/nurse without refactoring.
+
+========================================
+TECH STACK CONSTRAINTS
+========================================
+- Next.js (App Router)
+- Tailwind CSS for styling
+- shadcn/ui components as the primary UI kit
+- Supabase Auth for session + user identity
+- Supabase Storage for file storage
+- Drizzle ORM for database access
+- TypeScript strict mode
+
+========================================
+PROJECT STRUCTURE (SCALABLE)
+========================================
+Prefer this structure and keep boundaries clear:
+
+/app
+  /(public)
+    page.tsx
+  /(auth)
+    sign-in/page.tsx
+    sign-up/page.tsx
+    reset-password/page.tsx
+  /(app)
+    layout.tsx
+    dashboard/page.tsx
+    settings/page.tsx
+    admin/page.tsx            # optional
+  /api
+    /webhooks/supabase/route.ts
+  /_actions
+    auth.ts                   # server actions
+    patients.ts
+    uploads.ts   
+  /_styles
+    globals.css
+  /_providers
+    theme-provider.tsx
+  /_lib
+    auth/
+      server.ts               # server auth helpers (get session, require role, etc.)
+      client.ts               # client auth helpers (rare)
+      rbac.ts                 # role/permission logic (scalable)
+    db/
+      drizzle/
+        schema.ts
+        index.ts              # db client instance
+        queries/              # query modules
+      supabase/
+        server.ts             # createServerClient
+        client.ts             # createBrowserClient
+        middleware.ts         # SSR auth refresh helpers if used
+    storage/
+      index.ts                # storage helpers (upload/download)
+    validation/
+      zod.ts
+    utils/
+      cn.ts                   # tailwind merge
+      dates.ts
+/components
+  ui/                         # shadcn if you prefer default path
+  icons/
+  layout/
+  forms/
+  tables/
+/drizzle
+  migrations/
+/middleware.ts
+/tailwind.config.ts
+/next.config.js
+
+Rules:
+- Keep "db access" in /app/_lib/db/drizzle and never scatter SQL elsewhere.
+- Keep RBAC logic centralized in /app/_lib/auth/rbac.ts.
+- Put only route-level components in /app/*; reusable UI in /app/_components or /components.
+- New roles must require NO new top-level route groups (no /(doctor) /(nurse) grouping).
+  Use permissions and feature gating instead.
+
+========================================
+SUPABASE CLIENT RULES
+========================================
+- Client components may only use the public Supabase anon key, via createBrowserClient.
+- Server components/actions must use createServerClient with cookies for auth.
+- Only server-side code may use privileged access (service role key). Prefer RLS instead.
+
+Do:
+- Enforce Row Level Security (RLS) in Supabase for all tables.
+- Use JWT claims / user metadata only as hints; permissions should be enforced via RLS + server checks.
+
+Don’t:
+- Don’t query Supabase directly from the client for protected data.
+- Don’t embed service role keys in any code that can reach the browser.
+
+========================================
+DRIZZLE RULES
+========================================
+- Use Drizzle schema as canonical TypeScript types.
+- Prefer typed query modules per domain:
+  /app/_lib/db/drizzle/queries/<domain>.ts
+- Keep migrations in /drizzle/migrations.
+- Every new table must include:
+  - id (uuid) primary key
+  - created_at, updated_at timestamps where appropriate
+  - organization_id if multi-tenant is planned (recommended)
+
+========================================
+AUTH + RBAC (SCALABLE)
+========================================
+Roles:
+- Roles are data-driven, NOT hard-coded throughout the codebase.
+- Only a single place defines roles/permissions mapping.
+
+Implement:
+- A "roles" table and/or a "user_roles" join table (supports multiple roles per user).
+- A permissions model:
+  - permission strings (e.g., "patients:read", "patients:write", "appointments:manage")
+  - roles map to permissions
+  - users receive roles (and thus permissions)
+
+In code:
+- Provide helpers:
+  - requireUser()
+  - requirePermission("patients:read")
+  - can("permission") -> boolean
+- UI gating uses can(), but server must enforce requirePermission() too.
+
+Doctor/Nurse today:
+- doctor, nurse roles exist as seeded data
+- Adding new roles later must only require DB seed + mapping update in rbac config (not route rewrites)
+
+========================================
+ROUTING + PAGE ACCESS
+========================================
+- Use middleware.ts for coarse access control:
+  - redirect unauthenticated users to /sign-in
+  - optionally prevent access to /app routes without session
+- Use server-side guards for fine-grained authorization:
+  - server actions and server components must call requirePermission()
+
+Do:
+- Keep public pages in /(public), auth in /(auth), app behind auth in /(app).
+- Use layouts to share navigation and theme providers.
+
+========================================
+UI / TAILWIND / SHADCN RULES
+========================================
+- All pages must be responsive by default.
+  - Use mobile-first Tailwind: base styles for mobile, then sm/md/lg/xl.
+  - Avoid fixed widths; use max-w-* + w-full.
+  - Use responsive grids (grid-cols-1 md:grid-cols-2 etc).
+
+- Dark mode:
+  - Use class-based dark mode ("dark") with ThemeProvider.
+  - Every component must render correctly in both themes.
+  - Prefer semantic tokens from shadcn (bg-background, text-foreground, border-border, etc).
+
+- Accessibility:
+  - All forms must have labels and validation messages.
+  - Use aria attributes where needed.
+  - Focus states must be visible.
+
+========================================
+SERVER ACTIONS / DATA MUTATION
+========================================
+- All mutations (create/update/delete) must be server actions or route handlers.
+- Validate inputs with Zod in /app/_lib/validation.
+- Return typed results and handle errors explicitly.
+
+Pattern:
+- server action -> validate -> requirePermission -> call Drizzle query -> return result
+
+========================================
+STORAGE (SUPABASE STORAGE)
+========================================
+- Use signed URLs for private files.
+- Uploads happen server-side where possible (or via signed upload URLs).
+- Store file metadata in DB (bucket, path, owner_id, created_at, etc).
+
+========================================
+ERROR HANDLING + LOGGING
+========================================
+- Use typed error objects; never swallow errors.
+- Return user-friendly messages to UI; log internal details server-side.
+- Avoid leaking sensitive data in errors.
+
+========================================
+TESTABILITY + MAINTAINABILITY
+========================================
+- Keep business logic outside React components.
+- Prefer pure functions and query modules.
+- Use consistent naming:
+  - domain modules: patients, appointments, users, roles
+  - components: PascalCase
+  - server actions: verbNoun (createPatient)
+
+========================================
+DEFAULT CODE STYLE EXPECTATIONS
+========================================
+- TypeScript strict
+- No any
+- Prefer named exports in libs, default exports for Next pages/layouts
+- Use eslint + prettier conventions if present
+- Keep files small; split when >250-300 lines
+
+========================================
+OFFLINE SYNC + DRAFT PERSISTENCE (DEXIE) - REQUIRED FOR ALL FORMS
+========================================
+
+This app must be resilient to refreshes, navigation, and offline usage.
+
+### Non-negotiable requirements
+- **Never lose form input.** Any user-entered form data must persist automatically until a successful submit.
+- **Offline-first submissions.** If a submit happens offline or fails due to network, the mutation must queue locally and sync later.
+- Must work for **existing pages already built** and **all future forms**.
+
+### Storage technology
+- Use **Dexie (IndexedDB)** for drafts and outbox queues.
+- Do NOT use localStorage for form data (except tiny UI prefs). Use IndexedDB for all drafts/outbox.
+
+---
+
+## 1) Drafts: auto-save + restore for every form
+
+### Draft identity (scoping)
+Every draft must be scoped by:
+- `userId` (from Supabase session)
+- `route` (pathname)
+- `entityId` (optional, e.g. patientId/visitId)
+- `formName` (stable string per form)
+
+Draft primary key format:
+- `${userId}:${formName}:${route}:${entityId ?? 'none'}`
+
+### Draft behavior
+- On mount: load draft and hydrate the form with `form.reset(draft.data)` (react-hook-form).
+- On any field change: debounce (400–600ms) and persist to Dexie.
+- Draft is cleared ONLY after confirmed successful submit.
+- If user cancels editing, draft remains unless explicitly cleared.
+
+### Required helper API
+Implement and reuse these modules (do not reinvent per page):
+- `app/_lib/offline/dexie.ts` (Dexie DB definition)
+- `app/_lib/offline/drafts.ts` (save/load/clear)
+- `app/_lib/offline/useFormDraft.ts` (react-hook-form integration)
+
+### Rule for contributors
+Any new form must include:
+- `useFormDraft({ userId, route, entityId, formName, form })`
+
+---
+
+## 2) Outbox: offline queue + automatic sync
+
+### When to queue
+A mutation must be queued when:
+- `navigator.onLine === false`, OR
+- request throws a network error (fetch failed / timeout / DNS), OR
+- server is unreachable (5xx is retryable)
+
+Do NOT queue on:
+- 4xx validation errors
+- auth/permission errors
+
+### Outbox operation schema
+Each queued operation must have:
+- `opId` (uuid; also used as idempotencyKey)
+- `userId`
+- `actionType` (string allow-listed on server)
+- `payload` (JSON)
+- `entityId` (optional)
+- `route` (optional)
+- `createdAt`
+- `status`: queued | syncing | failed
+- `retries`
+- `lastError` (if failed)
+
+### Idempotency rules
+- Updates must be **idempotent** (repeat-safe).
+- Creates must include a **client-generated UUID** as the row ID in payload so replays do not duplicate.
+- Prefer server mutations that are safe when re-run with the same payload.
+
+### Required helper API
+Implement and reuse:
+- `app/_lib/offline/outbox.ts` (enqueue/list/count/mark status)
+- `app/_lib/offline/sync-engine.ts` (runner: FIFO, retry w/ exponential backoff, online event)
+- `app/_lib/offline/submit-with-offline.ts` (single entrypoint for form submission)
+
+### Sync trigger requirements
+- Auto-sync on:
+  - app mount (when authenticated)
+  - `window.addEventListener('online', ...)`
+  - interval while online (e.g. 20–30s)
+- Process FIFO by `createdAt`.
+- Retry with exponential backoff (cap at 60s), max ~8 retries.
+- Mark permanent failures (4xx) as `failed` and do not retry.
+
+---
+
+## 3) Server dispatcher endpoint for queued ops
+
+### Required endpoint
+Create:
+- `app/api/offline-sync/route.ts` (POST)
+
+Request body:
+- `{ opId, actionType, payload, idempotencyKey }`
+
+Server responsibilities:
+- Verify Supabase session server-side; if no session -> 401.
+- Allow-list actionType values.
+- Dispatch to the same Drizzle mutation functions used by the app.
+- Never trust client role or userId; derive from session.
+- Return `{ ok: true }` on success, `{ ok: false, error }` on failure.
+
+---
+
+## 4) Global sync status UI (minimal but required)
+
+Create:
+- `app/_components/offline-sync-indicator.tsx`
+- `app/_lib/offline/useSyncStatus.ts`
+
+UI must show:
+- Online/Offline status
+- Pending outbox count
+- Syncing state
+- Failed count (optionally opens a small Dialog listing failed ops and “Retry now”)
+
+Mount it in the main authenticated app layout.
+
+Use shadcn/ui components:
+- Badge, Button, Dialog, ScrollArea, Separator, Toast
+
+---
+
+## 5) Mandatory: apply to existing pages too
+When modifying or creating any form page:
+- Add draft persistence via `useFormDraft`.
+- Replace direct mutation calls with `submitWithOffline(...)`.
+- Ensure drafts clear only on confirmed success.
+
+No exceptions.
+
+
+========================================
+WHEN GENERATING NEW CODE
+========================================
+Always:
+1) Place code in correct folder based on boundaries.
+2) Add RBAC enforcement in server actions/routes.
+3) Ensure responsive design (mobile-first Tailwind).
+4) Ensure dark mode styles work.
+5) Use Drizzle types and Zod validation.
+6) Prefer shadcn/ui components when possible.
+
+If unclear, make reasonable assumptions aligned with this architecture and proceed.
