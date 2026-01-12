@@ -139,8 +139,7 @@ export function PatientsList({ patients, userRole }: PatientsListProps) {
 
   const getJoinUrl = (visit: VisitInfo | null) => {
     if (!visit?.patientJoinToken) return "";
-    // Use forwarded port URL for testing on phone
-    const baseUrl = "https://xw0pggn6-3000.use2.devtunnels.ms";
+    const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
     return `${baseUrl}/join/${visit.patientJoinToken}`;
   };
 

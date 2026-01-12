@@ -34,7 +34,7 @@ export function OpenNotesContent({ visits }: OpenNotesContentProps) {
       return { variant: "secondary" as const, className: "" };
     }
     const statusLower = status.toLowerCase();
-    
+
     if (
       status === "Signed & Complete" ||
       statusLower === "signed" ||
@@ -77,7 +77,11 @@ export function OpenNotesContent({ visits }: OpenNotesContentProps) {
     }
     const priorityLower = priority.toLowerCase();
     if (priorityLower === "critical" || priorityLower === "urgent") {
-      return { variant: "destructive" as const, label: priority };
+      return {
+        variant: "destructive" as const,
+        label: priority,
+        className: "bg-red-500 text-white border-red-600 dark:bg-red-600 dark:text-white"
+      };
     }
     if (priorityLower === "mild" || priorityLower === "low") {
       return { variant: "default" as const, label: priority, className: "bg-green-500/10 text-green-700 dark:text-green-400 border-green-500" };
@@ -123,12 +127,12 @@ export function OpenNotesContent({ visits }: OpenNotesContentProps) {
 
             const isVirtual = visit.appointmentType?.toLowerCase() === "virtual";
             const hasJoinToken = !!visit.patientJoinToken;
-            
+
             // Don't show virtual visit link for signed and complete visits
             const statusLower = visit.status?.toLowerCase() || "";
-            const isCompleted = statusLower === "signed & complete" || 
-                               statusLower === "signed_and_complete" || 
-                               statusLower === "completed";
+            const isCompleted = statusLower === "signed & complete" ||
+              statusLower === "signed_and_complete" ||
+              statusLower === "completed";
             const canShowVirtualLink = isVirtual && hasJoinToken && !isCompleted;
 
             return (
@@ -205,7 +209,7 @@ function VirtualAppointmentActions({
   const [showQR, setShowQR] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const joinUrl = typeof window !== "undefined" 
+  const joinUrl = typeof window !== "undefined"
     ? `${window.location.origin}/join/${patientJoinToken}`
     : "";
 

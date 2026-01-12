@@ -3,13 +3,15 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowLeft, Edit, FileText, AudioWaveform, File, Clock, User, CheckCircle2, AlertCircle, FileSignature } from "lucide-react";
+import { ArrowLeft, Edit, FileText, AudioWaveform, File, Clock, User, CheckCircle2, AlertCircle, FileSignature, Eye, Download, Image } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { markVisitInProgressAction, finalizeVisitAction } from "@/app/_actions/visits";
+import { getDocumentSignedUrlAction } from "@/app/_actions/documents";
 import { cn } from "@/app/_lib/utils/cn";
 import Link from "next/link";
 
@@ -54,6 +56,7 @@ interface VisitDetailsContentProps {
     mimeType: string;
     size: string;
     uploadedAt: Date;
+    storageUrl: string;
   }>;
   finalizedByName: string | null;
   auditLogs: Array<{
@@ -83,6 +86,10 @@ export function VisitDetailsContent({
   const [isMarkingInProgress, setIsMarkingInProgress] = React.useState(false);
   const [isSigning, setIsSigning] = React.useState(false);
   const [activeTab, setActiveTab] = React.useState("notes");
+  const [previewDocument, setPreviewDocument] = React.useState<typeof documents[0] | null>(null);
+  const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
+  const [isLoadingPreview, setIsLoadingPreview] = React.useState(false);
+  const [isDownloading, setIsDownloading] = React.useState<string | null>(null);
 
   const isSigned = visit.status === "Signed & Complete";
   const isInProgress = visit.status === "In Progress";
@@ -237,6 +244,102 @@ export function VisitDetailsContent({
   const noteData = notes[0]?.note as any;
   const noteContent = notes[0]?.content;
 
+  // Deduplicate documents - remove duplicates by ID, storageUrl, or filename+size combination
+  // Use a Map to track seen documents for better performance
+  const uniqueDocuments = React.useMemo(() => {
+    const seen = new Map<string, boolean>();
+    
+    return documents.filter((doc) => {
+      // Create unique keys for checking duplicates
+      const idKey = `id:${doc.id}`;
+      const storageKey = doc.storageUrl ? `storage:${doc.storageUrl}` : null;
+      const fileKey = `file:${doc.filename}:${doc.size}`;
+      
+      // Check if we've seen this document by any identifier
+      if (seen.has(idKey) || (storageKey && seen.has(storageKey)) || seen.has(fileKey)) {
+        return false;
+      }
+      
+      // Mark all identifiers as seen
+      seen.set(idKey, true);
+      if (storageKey) {
+        seen.set(storageKey, true);
+      }
+      seen.set(fileKey, true);
+      
+      return true;
+    });
+  }, [documents]);
+
+  const handlePreview = async (doc: typeof documents[0]) => {
+    setIsLoadingPreview(true);
+    setPreviewDocument(doc);
+    try {
+      const result = await getDocumentSignedUrlAction(doc.storageUrl);
+      if (!result.success || !result.signedUrl) {
+        throw new Error(result.error || "Failed to get preview URL");
+      }
+      setPreviewUrl(result.signedUrl);
+    } catch (error) {
+      console.error("Error loading preview:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to load preview"
+      );
+      setPreviewDocument(null);
+    } finally {
+      setIsLoadingPreview(false);
+    }
+  };
+
+  const handleDownload = async (doc: typeof documents[0]) => {
+    setIsDownloading(doc.id);
+    try {
+      const result = await getDocumentSignedUrlAction(doc.storageUrl);
+      if (!result.success || !result.signedUrl) {
+        throw new Error(result.error || "Failed to get download URL");
+      }
+      
+      // Open in new tab for viewing/downloading
+      window.open(result.signedUrl, "_blank");
+      toast.success("Opening document...");
+    } catch (error) {
+      console.error("Error downloading document:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to download document"
+      );
+    } finally {
+      setIsDownloading(null);
+    }
+  };
+
+  const handleClosePreview = () => {
+    setPreviewDocument(null);
+    setPreviewUrl(null);
+  };
+
+  const canPreview = (mimeType: string) => {
+    return mimeType.startsWith("image/") || mimeType === "application/pdf";
+  };
+
+  const getFileIcon = (mimeType: string) => {
+    if (mimeType.startsWith("image/")) {
+      return <Image className="h-5 w-5" />;
+    }
+    if (mimeType === "application/pdf") {
+      return <FileText className="h-5 w-5" />;
+    }
+    return <File className="h-5 w-5" />;
+  };
+
+  const formatFileSize = (size: string | number) => {
+    const bytes = typeof size === "string" ? parseInt(size, 10) : size;
+    if (isNaN(bytes)) return "Unknown size";
+    
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
       {/* Header */}
@@ -306,7 +409,7 @@ export function VisitDetailsContent({
           </TabsTrigger>
           <TabsTrigger value="documents">
             <File className="h-4 w-4 mr-2" />
-            Documents ({documents.length})
+            Documents ({uniqueDocuments.length})
           </TabsTrigger>
           <TabsTrigger value="audit">
             <Clock className="h-4 w-4 mr-2" />
@@ -692,27 +795,6 @@ export function VisitDetailsContent({
                           </Card>
                         )}
 
-                        {/* Documents */}
-                        {noteData.docs?.uploadedDocuments && Array.isArray(noteData.docs.uploadedDocuments) && noteData.docs.uploadedDocuments.length > 0 && (
-                          <Card>
-                            <CardHeader className="pb-2">
-                              <CardTitle className="text-base">Documents ({noteData.docs.uploadedDocuments.length})</CardTitle>
-                            </CardHeader>
-                            <CardContent className="pt-0 space-y-2">
-                              {noteData.docs.uploadedDocuments.map((doc: any, index: number) => (
-                                <div key={index} className="flex items-center justify-between p-2 border rounded text-sm">
-                                  <div>
-                                    <div className="font-medium">{doc.name}</div>
-                                    <div className="text-muted-foreground text-xs">
-                                      {doc.type} • {(doc.size / 1024).toFixed(2)} KB
-                                      {doc.uploadedAt && ` • ${doc.uploadedAt}`}
-                                    </div>
-                                  </div>
-                                </div>
-                              ))}
-                            </CardContent>
-                          </Card>
-                        )}
                       </div>
                     </div>
                   )}
@@ -763,24 +845,68 @@ export function VisitDetailsContent({
               <CardTitle>Documents</CardTitle>
             </CardHeader>
             <CardContent>
-              {documents.length > 0 ? (
+              {uniqueDocuments.length > 0 ? (
                 <div className="space-y-2">
-                  {documents.map((doc) => (
+                  {uniqueDocuments.map((doc) => (
                     <div
                       key={doc.id}
-                      className="flex items-center justify-between border rounded-lg p-4"
+                      className={cn(
+                        "flex items-center justify-between border rounded-lg p-4 transition-colors",
+                        canPreview(doc.mimeType) && "hover:bg-accent/50 cursor-pointer"
+                      )}
+                      onClick={() => canPreview(doc.mimeType) && handlePreview(doc)}
                     >
-                      <div className="flex items-center gap-3">
-                        <File className="h-5 w-5 text-muted-foreground" />
-                        <div>
-                          <div className="font-medium">{doc.filename}</div>
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className="text-muted-foreground">
+                          {getFileIcon(doc.mimeType)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium truncate">{doc.filename}</div>
                           <div className="text-sm text-muted-foreground">
-                            {doc.mimeType} • {(parseInt(doc.size) / 1024).toFixed(1)} KB
+                            {doc.mimeType} • {formatFileSize(doc.size)}
                           </div>
                         </div>
                       </div>
-                      <div className="text-xs text-muted-foreground">
-                        {formatDateTime(doc.uploadedAt)}
+                      <div className="flex items-center gap-2">
+                        <div className="text-xs text-muted-foreground">
+                          {formatDateTime(doc.uploadedAt)}
+                        </div>
+                        {canPreview(doc.mimeType) && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handlePreview(doc);
+                            }}
+                            disabled={isLoadingPreview && previewDocument?.id === doc.id}
+                            title="Preview"
+                          >
+                            {isLoadingPreview && previewDocument?.id === doc.id ? (
+                              <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                            ) : (
+                              <Eye className="h-4 w-4" />
+                            )}
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDownload(doc);
+                          }}
+                          disabled={isDownloading === doc.id}
+                          title="Download"
+                        >
+                          {isDownloading === doc.id ? (
+                            <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                          ) : (
+                            <Download className="h-4 w-4" />
+                          )}
+                        </Button>
                       </div>
                     </div>
                   ))}
@@ -855,6 +981,58 @@ export function VisitDetailsContent({
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Document Preview Dialog */}
+      {previewDocument && (
+        <Dialog open={!!previewDocument} onOpenChange={handleClosePreview}>
+          <DialogContent className="max-w-4xl max-h-[90vh]">
+            <DialogHeader>
+              <DialogTitle>{previewDocument.filename}</DialogTitle>
+            </DialogHeader>
+            <div className="flex-1 overflow-auto">
+              {previewUrl ? (
+                previewDocument.mimeType.startsWith("image/") ? (
+                  <div className="flex items-center justify-center w-full">
+                    <img
+                      src={previewUrl}
+                      alt={previewDocument.filename}
+                      className="max-w-full max-h-[70vh] object-contain rounded-lg"
+                    />
+                  </div>
+                ) : previewDocument.mimeType === "application/pdf" ? (
+                  <div className="w-full h-full min-h-[600px]">
+                    <iframe
+                      src={previewUrl}
+                      className="w-full h-full min-h-[600px] border-0 rounded-lg"
+                      title={previewDocument.filename}
+                    />
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-full min-h-[400px]">
+                    <div className="text-center">
+                      <File className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                      <p className="text-muted-foreground mb-4">
+                        Preview not available for this file type
+                      </p>
+                      <Button onClick={() => handleDownload(previewDocument)}>
+                        <Download className="h-4 w-4 mr-2" />
+                        Download to View
+                      </Button>
+                    </div>
+                  </div>
+                )
+              ) : (
+                <div className="flex items-center justify-center h-full min-h-[400px]">
+                  <div className="text-center">
+                    <div className="h-8 w-8 animate-spin rounded-full border-4 border-current border-t-transparent mx-auto mb-4" />
+                    <p className="text-muted-foreground">Loading preview...</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

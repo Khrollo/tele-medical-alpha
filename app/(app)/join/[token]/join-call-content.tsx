@@ -29,6 +29,24 @@ export function JoinCallContent({
   const [token, setToken] = React.useState<string | null>(null);
   const localVideoRef = React.useRef<HTMLVideoElement>(null);
   const remoteVideoRef = React.useRef<HTMLVideoElement>(null);
+  
+  // Refs to track current values for cleanup
+  const roomRef = React.useRef<any>(null);
+  const localTrackRef = React.useRef<any>(null);
+  const remoteTracksRef = React.useRef<any[]>([]);
+  
+  // Keep refs in sync with state
+  React.useEffect(() => {
+    roomRef.current = room;
+  }, [room]);
+  
+  React.useEffect(() => {
+    localTrackRef.current = localTrack;
+  }, [localTrack]);
+  
+  React.useEffect(() => {
+    remoteTracksRef.current = remoteTracks;
+  }, [remoteTracks]);
 
   // Get Twilio token
   React.useEffect(() => {
@@ -79,15 +97,79 @@ export function JoinCallContent({
 
     setupPreview();
 
+    // Cleanup preview tracks
     return () => {
-      if (localTrack?.video) {
-        localTrack.video.stop();
+      if (localTrackRef.current?.video) {
+        localTrackRef.current.video.detach();
+        localTrackRef.current.video.stop();
       }
-      if (localTrack?.audio) {
-        localTrack.audio.stop();
+      if (localTrackRef.current?.audio) {
+        localTrackRef.current.audio.detach();
+        localTrackRef.current.audio.stop();
+      }
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = null;
       }
     };
   }, [isPreJoin]);
+  
+  // Cleanup function for Twilio connection
+  const cleanupTwilioConnection = React.useCallback(() => {
+    // Disconnect from room
+    if (roomRef.current) {
+      try {
+        roomRef.current.disconnect();
+      } catch (error) {
+        console.error("Error disconnecting room:", error);
+      }
+      roomRef.current = null;
+    }
+    
+    // Detach and stop local tracks
+    if (localTrackRef.current) {
+      try {
+        if (localTrackRef.current.video) {
+          localTrackRef.current.video.detach();
+          localTrackRef.current.video.stop();
+        }
+        if (localTrackRef.current.audio) {
+          localTrackRef.current.audio.detach();
+          localTrackRef.current.audio.stop();
+        }
+      } catch (error) {
+        console.error("Error stopping local tracks:", error);
+      }
+      localTrackRef.current = null;
+    }
+    
+    // Detach and stop remote tracks
+    remoteTracksRef.current.forEach((track) => {
+      try {
+        track.detach();
+        if (track.stop) {
+          track.stop();
+        }
+      } catch (error) {
+        console.error("Error stopping remote track:", error);
+      }
+    });
+    remoteTracksRef.current = [];
+    
+    // Clear video element sources
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = null;
+    }
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = null;
+    }
+  }, []);
+  
+  // Cleanup on component unmount
+  React.useEffect(() => {
+    return () => {
+      cleanupTwilioConnection();
+    };
+  }, [cleanupTwilioConnection]);
 
   const handleJoin = async () => {
     if (!consentGiven) {
@@ -185,6 +267,11 @@ export function JoinCallContent({
 
       // Handle existing participants
       twilioRoom.participants.forEach(handleParticipant);
+      
+      // Cleanup on room disconnect
+      twilioRoom.on("disconnected", () => {
+        cleanupTwilioConnection();
+      });
     } catch (error) {
       console.error("Error joining room:", error);
       toast.error("Failed to join call");
@@ -233,15 +320,7 @@ export function JoinCallContent({
   };
 
   const handleEndCall = () => {
-    if (room) {
-      room.disconnect();
-    }
-    if (localTrack?.video) {
-      localTrack.video.stop();
-    }
-    if (localTrack?.audio) {
-      localTrack.audio.stop();
-    }
+    cleanupTwilioConnection();
     window.close();
   };
 

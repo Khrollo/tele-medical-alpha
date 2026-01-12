@@ -6,7 +6,7 @@ import { Video, VideoOff, Mic, MicOff, PhoneOff, ChevronRight, ChevronLeft, File
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { NewVisitForm } from "@/app/_components/visit/new-visit-form";
 import type { PatientBasics } from "@/app/_lib/db/drizzle/queries/patient";
@@ -20,6 +20,7 @@ interface CallPageContentProps {
   roomName: string;
   userId: string;
   userRole: string;
+  existingVisitData?: unknown;
 }
 
 export function CallPageContent({
@@ -29,6 +30,7 @@ export function CallPageContent({
   roomName,
   userId,
   userRole,
+  existingVisitData,
 }: CallPageContentProps) {
   const router = useRouter();
   const [isConnected, setIsConnected] = React.useState(false);
@@ -53,11 +55,42 @@ export function CallPageContent({
   const [showPatientInfo, setShowPatientInfo] = React.useState(true);
   const [isMobile, setIsMobile] = React.useState(false);
   const [room, setRoom] = React.useState<any>(null);
+  const [showEndCallDialog, setShowEndCallDialog] = React.useState(false);
+  const saveVisitRef = React.useRef<(() => Promise<void>) | null>(null);
+
+  // Detect mobile device
+  React.useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768); // md breakpoint
+    };
+
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
   const [localTrack, setLocalTrack] = React.useState<any>(null);
   const [remoteTracks, setRemoteTracks] = React.useState<any[]>([]);
   const localVideoRef = React.useRef<HTMLVideoElement>(null);
   const remoteVideoRef = React.useRef<HTMLVideoElement>(null);
   const [token, setToken] = React.useState<string | null>(null);
+
+  // Refs to track current values for cleanup
+  const roomRef = React.useRef<any>(null);
+  const localTrackRef = React.useRef<any>(null);
+  const remoteTracksRef = React.useRef<any[]>([]);
+
+  // Keep refs in sync with state
+  React.useEffect(() => {
+    roomRef.current = room;
+  }, [room]);
+
+  React.useEffect(() => {
+    localTrackRef.current = localTrack;
+  }, [localTrack]);
+
+  React.useEffect(() => {
+    remoteTracksRef.current = remoteTracks;
+  }, [remoteTracks]);
 
   // Get Twilio token
   React.useEffect(() => {
@@ -248,6 +281,11 @@ export function CallPageContent({
           setRemoteTracks([]);
         });
 
+        // Cleanup on room disconnect
+        twilioRoom.on("disconnected", () => {
+          cleanupTwilioConnection();
+        });
+
         // Handle existing participants (patient)
         twilioRoom.participants.forEach(handleParticipant);
       } catch (error) {
@@ -258,18 +296,69 @@ export function CallPageContent({
 
     connectToRoom();
 
+    // Cleanup function - will run when dependencies change or component unmounts
     return () => {
-      if (room) {
-        room.disconnect();
-      }
-      if (localTrack?.video) {
-        localTrack.video.stop();
-      }
-      if (localTrack?.audio) {
-        localTrack.audio.stop();
-      }
+      cleanupTwilioConnection();
     };
   }, [token, roomName]);
+
+  // Cleanup function for Twilio connection
+  const cleanupTwilioConnection = React.useCallback(() => {
+    // Disconnect from room
+    if (roomRef.current) {
+      try {
+        roomRef.current.disconnect();
+      } catch (error) {
+        console.error("Error disconnecting room:", error);
+      }
+      roomRef.current = null;
+    }
+
+    // Detach and stop local tracks
+    if (localTrackRef.current) {
+      try {
+        if (localTrackRef.current.video) {
+          localTrackRef.current.video.detach();
+          localTrackRef.current.video.stop();
+        }
+        if (localTrackRef.current.audio) {
+          localTrackRef.current.audio.detach();
+          localTrackRef.current.audio.stop();
+        }
+      } catch (error) {
+        console.error("Error stopping local tracks:", error);
+      }
+      localTrackRef.current = null;
+    }
+
+    // Detach and stop remote tracks
+    remoteTracksRef.current.forEach((track) => {
+      try {
+        track.detach();
+        if (track.stop) {
+          track.stop();
+        }
+      } catch (error) {
+        console.error("Error stopping remote track:", error);
+      }
+    });
+    remoteTracksRef.current = [];
+
+    // Clear video element sources
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = null;
+    }
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = null;
+    }
+  }, []);
+
+  // Cleanup on component unmount
+  React.useEffect(() => {
+    return () => {
+      cleanupTwilioConnection();
+    };
+  }, [cleanupTwilioConnection]);
 
   // Reattach local video when ref becomes available
   React.useEffect(() => {
@@ -414,6 +503,13 @@ export function CallPageContent({
   };
 
   const handleEndCall = async () => {
+    // Show confirmation dialog
+    setShowEndCallDialog(true);
+  };
+
+  const handleEndCallConfirm = async (saveVisit: boolean) => {
+    setShowEndCallDialog(false);
+
     // Stop recording if active
     if (isRecording || isUploading || isTranscribing || isParsing || isFinalizing) {
       try {
@@ -426,17 +522,29 @@ export function CallPageContent({
     }
 
     // Cleanup Twilio connection
-    if (room) {
-      room.disconnect();
-    }
-    if (localTrack?.video) {
-      localTrack.video.stop();
-    }
-    if (localTrack?.audio) {
-      localTrack.audio.stop();
-    }
+    cleanupTwilioConnection();
 
-    router.push(`/patients/${patientId}/new-visit?visitId=${visitId}`);
+    if (saveVisit) {
+      // Trigger save if the ref is available (form is loaded)
+      if (saveVisitRef.current) {
+        try {
+          await saveVisitRef.current();
+          // After save, navigate to form page with saved=true to trigger post-save modal
+          router.push(`/patients/${patientId}/new-visit?visitId=${visitId}&saved=true`);
+        } catch (error) {
+          console.error("Error saving visit:", error);
+          toast.error("Failed to save visit. Redirecting to form page...");
+          // Navigate anyway so user can save manually
+          router.push(`/patients/${patientId}/new-visit?visitId=${visitId}`);
+        }
+      } else {
+        // Form not loaded yet, navigate to form page
+        router.push(`/patients/${patientId}/new-visit?visitId=${visitId}`);
+      }
+    } else {
+      // Just end the call without saving - navigate back to patient or waiting room
+      router.push(`/patients/${patientId}`);
+    }
   };
 
   const handleStartRecording = async () => {
@@ -454,171 +562,210 @@ export function CallPageContent({
 
   return (
     <div className="relative h-screen w-full overflow-hidden">
-      {/* Main Video Area */}
-      <div className="flex flex-col h-full w-full">
-        {/* Video Grid */}
-        <div className="flex-1 relative bg-black">
-          {/* Remote Video (Patient) */}
-          <div className="absolute inset-0 flex items-center justify-center bg-black">
-            <video
-              ref={remoteVideoRef}
-              autoPlay
-              playsInline
-              className="w-full h-full object-contain"
-              style={{ display: remoteTracks.some(t => t.kind === "video") ? "block" : "none" }}
-            // Ensure audio plays (not muted)
-            />
-            {!remoteTracks.some(t => t.kind === "video") && (
-              <div className="text-white text-center absolute inset-0 flex items-center justify-center">
-                <p className="text-lg">Waiting for patient to join...</p>
+      {/* Main Video Area - Flex container for video and notes */}
+      <div className="flex flex-row h-full w-full">
+        {/* Video Section */}
+        <div className="flex flex-col h-full flex-1 min-w-0">
+          {/* Video Grid */}
+          <div className="flex-1 relative bg-black">
+            {/* Remote Video (Patient) */}
+            <div className="absolute inset-0 flex items-center justify-center bg-black">
+              <video
+                ref={remoteVideoRef}
+                autoPlay
+                playsInline
+                className="w-full h-full object-contain"
+                style={{ display: remoteTracks.some(t => t.kind === "video") ? "block" : "none" }}
+              // Ensure audio plays (not muted)
+              />
+              {!remoteTracks.some(t => t.kind === "video") && (
+                <div className="text-white text-center absolute inset-0 flex items-center justify-center">
+                  <p className="text-lg">Waiting for patient to join...</p>
+                </div>
+              )}
+            </div>
+
+            {/* Local Video (Self View) */}
+            <div className="absolute bottom-4 right-4 w-48 h-36 rounded-lg overflow-hidden border-2 border-white shadow-lg bg-black z-10">
+              <video
+                ref={localVideoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover"
+                style={{ display: localTrack?.video ? "block" : "none" }}
+              />
+            </div>
+
+            {/* Status Indicator */}
+            {(isRecording || isUploading || isTranscribing || isParsing || isFinalizing) && statusMessage && (
+              <div className={`absolute top-4 left-4 flex items-center gap-2 text-white px-3 py-1.5 rounded-full ${isRecording ? "bg-red-600" :
+                isUploading ? "bg-blue-600" :
+                  isTranscribing ? "bg-purple-600" :
+                    isParsing ? "bg-indigo-600" :
+                      isFinalizing ? "bg-orange-600" :
+                        "bg-gray-600"
+                }`}>
+                <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                <span className="text-sm font-medium">{statusMessage}</span>
               </div>
             )}
           </div>
 
-          {/* Local Video (Self View) */}
-          <div className="absolute bottom-4 right-4 w-48 h-36 rounded-lg overflow-hidden border-2 border-white shadow-lg bg-black z-10">
-            <video
-              ref={localVideoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-full h-full object-cover"
-              style={{ display: localTrack?.video ? "block" : "none" }}
-            />
-          </div>
-
-          {/* Status Indicator */}
-          {(isRecording || isUploading || isTranscribing || isParsing || isFinalizing) && statusMessage && (
-            <div className={`absolute top-4 left-4 flex items-center gap-2 text-white px-3 py-1.5 rounded-full ${isRecording ? "bg-red-600" :
-              isUploading ? "bg-blue-600" :
-                isTranscribing ? "bg-purple-600" :
-                  isParsing ? "bg-indigo-600" :
-                    isFinalizing ? "bg-orange-600" :
-                      "bg-gray-600"
-              }`}>
-              <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
-              <span className="text-sm font-medium">{statusMessage}</span>
-            </div>
-          )}
-        </div>
-
-        {/* Controls Bar */}
-        <div className="bg-background border-t p-4 flex items-center justify-center gap-4">
-          <Button
-            variant={isMuted ? "destructive" : "outline"}
-            size="icon"
-            onClick={toggleMute}
-          >
-            {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-          </Button>
-          <Button
-            variant={isVideoOff ? "destructive" : "outline"}
-            size="icon"
-            onClick={toggleVideo}
-          >
-            {isVideoOff ? <VideoOff className="h-5 w-5" /> : <Video className="h-5 w-5" />}
-          </Button>
-          {isRecording || isUploading || isTranscribing || isParsing || isFinalizing ? (
+          {/* Controls Bar */}
+          <div className="bg-background border-t p-4 flex items-center justify-center gap-4">
+            <Button
+              variant={isMuted ? "destructive" : "outline"}
+              size="icon"
+              onClick={toggleMute}
+            >
+              {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+            </Button>
+            <Button
+              variant={isVideoOff ? "destructive" : "outline"}
+              size="icon"
+              onClick={toggleVideo}
+            >
+              {isVideoOff ? <VideoOff className="h-5 w-5" /> : <Video className="h-5 w-5" />}
+            </Button>
+            {isRecording || isUploading || isTranscribing || isParsing || isFinalizing ? (
+              <Button
+                variant="destructive"
+                onClick={handleStopRecording}
+                className="gap-2"
+                disabled={isFinalizing || isTranscribing || isParsing}
+              >
+                <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                <span>
+                  {statusMessage ||
+                    (isFinalizing ? "Finalizing..." :
+                      isTranscribing ? "Transcribing..." :
+                        isParsing ? "Parsing..." :
+                          isUploading ? "Uploading..." :
+                            "Stop Recording")}
+                </span>
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                onClick={handleStartRecording}
+              >
+                Start Recording
+              </Button>
+            )}
+            <Button
+              variant={showPatientInfo ? "default" : "outline"}
+              size="icon"
+              onClick={() => setShowPatientInfo(!showPatientInfo)}
+              title={showPatientInfo ? "Hide Notes" : "Show Notes"}
+            >
+              <FileText className="h-5 w-5" />
+            </Button>
             <Button
               variant="destructive"
-              onClick={handleStopRecording}
-              className="gap-2"
-              disabled={isFinalizing || isTranscribing || isParsing}
+              size="icon"
+              onClick={handleEndCall}
             >
-              <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
-              <span>
-                {statusMessage ||
-                  (isFinalizing ? "Finalizing..." :
-                    isTranscribing ? "Transcribing..." :
-                      isParsing ? "Parsing..." :
-                        isUploading ? "Uploading..." :
-                          "Stop Recording")}
-              </span>
-            </Button>
-          ) : (
-            <Button
-              variant="outline"
-              onClick={handleStartRecording}
-            >
-              Start Recording
-            </Button>
-          )}
-          <Button
-            variant={showPatientInfo ? "default" : "outline"}
-            size="icon"
-            onClick={() => setShowPatientInfo(!showPatientInfo)}
-            title={showPatientInfo ? "Hide Notes" : "Show Notes"}
-          >
-            <FileText className="h-5 w-5" />
-          </Button>
-          <Button
-            variant="destructive"
-            size="icon"
-            onClick={handleEndCall}
-          >
-            <PhoneOff className="h-5 w-5" />
-          </Button>
-        </div>
-      </div>
-
-      {/* Patient Info Panel - Desktop: Floating Side Panel */}
-      {showPatientInfo && (
-        <div className="hidden md:block absolute top-0 right-0 h-full w-[50%] border-l bg-background shadow-2xl overflow-y-auto z-20">
-          <div className="p-6 border-b flex items-center justify-between sticky top-0 bg-background z-10">
-            <h2 className="font-semibold text-lg">Notes</h2>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowPatientInfo(false)}
-              className="gap-2"
-            >
-              <ChevronRight className="h-4 w-4" />
-              <span className="hidden lg:inline">Collapse</span>
+              <PhoneOff className="h-5 w-5" />
             </Button>
           </div>
-          <div className="p-6">
-            <NewVisitForm
-              patientId={patientId}
-              patientBasics={patientBasics}
-              userId={userId}
-              userRole={userRole}
-              existingVisitId={visitId}
-              isRecording={isRecording}
-              onStartRecording={handleStartRecording}
-              onStopRecording={handleStopRecording}
-              hideAICapture={true}
-              initialParsedData={parsedNoteData}
-            />
-          </div>
         </div>
-      )}
 
-      {/* Patient Info Panel - Mobile: Modal (only render on mobile) */}
-      {isMobile && (
-        <Dialog open={showPatientInfo} onOpenChange={setShowPatientInfo}>
-          <DialogContent className="max-w-[95vw] max-h-[95vh] overflow-y-auto p-0">
-            <DialogHeader className="px-6 pt-6 pb-4">
-              <DialogTitle>Notes</DialogTitle>
-            </DialogHeader>
-            <div className="px-6 pb-6 overflow-y-auto max-h-[calc(95vh-80px)]">
+        {/* Patient Info Panel - Desktop: Side Panel */}
+        {showPatientInfo && (
+          <div className="hidden md:flex flex-col h-full w-[50%] border-l bg-background shadow-2xl overflow-y-auto z-20">
+            <div className="p-6 border-b flex items-center justify-between sticky top-0 bg-background z-10">
+              <h2 className="font-semibold text-lg">Notes</h2>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowPatientInfo(false)}
+                className="gap-2"
+              >
+                <ChevronRight className="h-4 w-4" />
+                <span className="hidden lg:inline">Collapse</span>
+              </Button>
+            </div>
+            <div className="p-6">
               <NewVisitForm
                 patientId={patientId}
                 patientBasics={patientBasics}
                 userId={userId}
                 userRole={userRole}
                 existingVisitId={visitId}
+                existingVisitData={existingVisitData}
                 isRecording={isRecording}
                 onStartRecording={handleStartRecording}
                 onStopRecording={handleStopRecording}
                 hideAICapture={true}
                 initialParsedData={parsedNoteData}
-                onParseReadyRef={parseReadyCallbackRef}
+                onSaveReadyRef={saveVisitRef}
               />
             </div>
-          </DialogContent>
-        </Dialog>
-      )}
+          </div>
+        )}
+      </div>
 
+      {/* Patient Info Panel - Mobile: Modal */}
+      <Dialog
+        open={isMobile && showPatientInfo}
+        onOpenChange={(open) => {
+          if (isMobile) {
+            setShowPatientInfo(open);
+          }
+        }}
+      >
+        <DialogContent className="max-w-[95vw] max-h-[95vh] overflow-y-auto p-0">
+          <DialogHeader className="px-6 pt-6 pb-4">
+            <DialogTitle>Notes</DialogTitle>
+          </DialogHeader>
+          <div className="px-6 pb-6 overflow-y-auto max-h-[calc(95vh-80px)]">
+            <NewVisitForm
+              patientId={patientId}
+              patientBasics={patientBasics}
+              userId={userId}
+              userRole={userRole}
+              existingVisitId={visitId}
+              existingVisitData={existingVisitData}
+              isRecording={isRecording}
+              onStartRecording={handleStartRecording}
+              onStopRecording={handleStopRecording}
+              hideAICapture={true}
+              initialParsedData={parsedNoteData}
+              onParseReadyRef={parseReadyCallbackRef}
+              onSaveReadyRef={saveVisitRef}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* End Call Confirmation Dialog */}
+      <Dialog open={showEndCallDialog} onOpenChange={setShowEndCallDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>End Call</DialogTitle>
+            <DialogDescription>
+              Would you like to save the visit before ending the call?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button
+              variant="outline"
+              onClick={() => handleEndCallConfirm(false)}
+              className="w-full sm:w-auto"
+            >
+              End Without Saving
+            </Button>
+            <Button
+              variant="default"
+              onClick={() => handleEndCallConfirm(true)}
+              className="w-full sm:w-auto"
+            >
+              Save Visit
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

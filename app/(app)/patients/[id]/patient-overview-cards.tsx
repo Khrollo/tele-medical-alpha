@@ -38,6 +38,7 @@ interface PatientOverviewCardsProps {
     clinicianId: string | null;
     patientJoinToken: string | null;
     twilioRoomName: string | null;
+    chiefComplaint: string | null;
   } | null;
   userRole: string;
 }
@@ -75,24 +76,24 @@ export function PatientOverviewCards({
 
   const isVirtualVisitReady = () => {
     if (!latestVisit) return false;
-    
+
     // Don't show link for signed and complete visits
     const statusLower = latestVisit.status?.toLowerCase() || "";
-    if (statusLower === "signed & complete" || 
-        statusLower === "signed_and_complete" || 
-        statusLower === "completed") {
+    if (statusLower === "signed & complete" ||
+      statusLower === "signed_and_complete" ||
+      statusLower === "completed") {
       return false;
     }
-    
+
     return latestVisit.appointmentType?.toLowerCase() === "virtual" &&
-           latestVisit.clinicianId !== null &&
-           latestVisit.patientJoinToken !== null;
+      latestVisit.clinicianId !== null &&
+      latestVisit.patientJoinToken !== null;
   };
 
   const getJoinUrl = () => {
     if (!latestVisit?.patientJoinToken) return "";
     // Use forwarded port URL for testing on phone
-    const baseUrl = "https://xw0pggn6-3000.use2.devtunnels.ms";
+    const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
     return `${baseUrl}/join/${latestVisit.patientJoinToken}`;
   };
 
@@ -139,12 +140,12 @@ export function PatientOverviewCards({
 
   // Visit progress
   const visitProgress = latestVisit ? calculateVisitProgress(latestVisit.notesStatus) : 0;
-  const visitDate = latestVisit 
+  const visitDate = latestVisit
     ? new Date(latestVisit.createdAt).toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      })
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    })
     : null;
 
   return (
@@ -152,75 +153,77 @@ export function PatientOverviewCards({
       {/* Last Visit Card */}
       <Link href={`/patients/${patient.id}/visit-history`}>
         <Card className="cursor-pointer hover:shadow-md transition-shadow">
-        <CardHeader>
-          <CardTitle className="text-lg font-semibold flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-muted-foreground" />
-            Last Visit
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {latestVisit ? (
-            <>
-              <div>
-                <p className="text-sm font-medium text-foreground">{visitDate}</p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  No chief complaint recorded
-                </p>
-              </div>
-              <div>
-                <div className="flex items-center justify-between text-sm mb-2">
-                  <span className="text-muted-foreground">Visit note progress</span>
-                  <span className="font-medium">{visitProgress}%</span>
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-muted-foreground" />
+              Last Visit
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {latestVisit ? (
+              <>
+                <div>
+                  <p className="text-sm font-medium text-foreground">{visitDate}</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {latestVisit.chiefComplaint && latestVisit.chiefComplaint.trim()
+                      ? latestVisit.chiefComplaint
+                      : "No chief complaint recorded"}
+                  </p>
                 </div>
-                <Progress value={visitProgress} />
-              </div>
-              
-              {/* Visit Status - Show for nurses */}
-              {userRole === "nurse" && (
-                <div className="space-y-2 pt-2 border-t">
-                  <div className="flex flex-wrap gap-2">
-                    {latestVisit.status && (
-                      <Badge variant={latestVisit.status === "In Progress" ? "default" : "outline"}>
-                        {latestVisit.status}
-                      </Badge>
-                    )}
-                    {latestVisit.appointmentType && (
-                      <Badge 
-                        variant="default" 
-                        className={
-                          latestVisit.appointmentType.toLowerCase() === "virtual"
-                            ? "bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500"
-                            : "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500"
-                        }
+                <div>
+                  <div className="flex items-center justify-between text-sm mb-2">
+                    <span className="text-muted-foreground">Visit note progress</span>
+                    <span className="font-medium">{visitProgress}%</span>
+                  </div>
+                  <Progress value={visitProgress} />
+                </div>
+
+                {/* Visit Status - Show for nurses */}
+                {userRole === "nurse" && (
+                  <div className="space-y-2 pt-2 border-t">
+                    <div className="flex flex-wrap gap-2">
+                      {latestVisit.status && (
+                        <Badge variant={latestVisit.status === "In Progress" ? "default" : "outline"}>
+                          {latestVisit.status}
+                        </Badge>
+                      )}
+                      {latestVisit.appointmentType && (
+                        <Badge
+                          variant="default"
+                          className={
+                            latestVisit.appointmentType.toLowerCase() === "virtual"
+                              ? "bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500"
+                              : "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500"
+                          }
+                        >
+                          {latestVisit.appointmentType}
+                        </Badge>
+                      )}
+                    </div>
+
+                    {/* Virtual Visit Join Button for Nurses */}
+                    {isVirtualVisitReady() && (
+                      <Button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setShowVirtualModal(true);
+                        }}
+                        variant="outline"
+                        className="w-full"
+                        size="sm"
                       >
-                        {latestVisit.appointmentType}
-                      </Badge>
+                        <Video className="h-4 w-4 mr-2" />
+                        View Virtual Visit
+                      </Button>
                     )}
                   </div>
-                  
-                  {/* Virtual Visit Join Button for Nurses */}
-                  {isVirtualVisitReady() && (
-                    <Button
-                      onClick={(e) => {
-                        e.preventDefault();
-                        setShowVirtualModal(true);
-                      }}
-                      variant="outline"
-                      className="w-full"
-                      size="sm"
-                    >
-                      <Video className="h-4 w-4 mr-2" />
-                      View Virtual Visit
-                    </Button>
-                  )}
-                </div>
-              )}
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground">No visits recorded</p>
-          )}
-        </CardContent>
-      </Card>
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">No visits recorded</p>
+            )}
+          </CardContent>
+        </Card>
       </Link>
 
       {/* Vitals Summary Card */}
@@ -306,7 +309,7 @@ export function PatientOverviewCards({
                 } else if (med.medication) {
                   medName = med.medication; // Legacy field
                 }
-                
+
                 return (
                   <li key={med.id || index} className="text-sm text-foreground">
                     {medName}

@@ -51,17 +51,17 @@ export function WaitingRoomList({ patients }: WaitingRoomListProps) {
   const handleAssignToMe = async (patientId: string, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     setLoadingPatientId(patientId);
-    
+
     try {
       // Check if patient has an open visit
       const result = await getPatientOpenVisitAction(patientId);
-      
+
       if (result.visit) {
         // Assign the visit to the current user
         const assignResult = await assignVisitToMeAction(result.visit.id);
-        
+
         // If virtual appointment, store join URL and don't navigate
         if (assignResult.isVirtual && assignResult.joinUrl) {
           setVirtualVisitData(prev => ({
@@ -118,7 +118,11 @@ export function WaitingRoomList({ patients }: WaitingRoomListProps) {
     }
     const priorityLower = priority.toLowerCase();
     if (priorityLower === "critical" || priorityLower === "urgent") {
-      return { variant: "destructive" as const, label: priority };
+      return {
+        variant: "destructive" as const,
+        label: priority,
+        className: "bg-red-500 text-white border-red-600 dark:bg-red-600 dark:text-white"
+      };
     }
     if (priorityLower === "mild" || priorityLower === "low") {
       return { variant: "default" as const, label: priority };
@@ -237,7 +241,7 @@ export function WaitingRoomList({ patients }: WaitingRoomListProps) {
       </div>
 
       {/* Patient Cards */}
-    <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
         {filteredAndSortedPatients.map((patient) => {
           const waitTime = getWaitTime(patient.visit);
           const priorityBadge = getPriorityBadge(patient.visit?.priority ?? null);
@@ -245,62 +249,68 @@ export function WaitingRoomList({ patients }: WaitingRoomListProps) {
 
           return (
             <Card key={patient.id} className="w-full hover:shadow-md transition-shadow">
-            <CardHeader>
-              <CardTitle className="text-lg font-semibold">
-                {patient.fullName}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
+              <CardHeader>
+                <CardTitle className="text-lg font-semibold">
+                  {patient.fullName}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
                 {/* Wait Time */}
                 <div className="flex items-center gap-2 text-sm">
                   <Clock className="h-4 w-4 text-muted-foreground" />
                   <span className="text-muted-foreground">Waiting:</span>
                   <span className="font-medium">
                     {waitTime > 0 ? formatWaitTime(waitTime) : "Just arrived"}
-                </span>
-              </div>
+                  </span>
+                </div>
 
                 {/* Priority and Appointment Type */}
                 <div className="flex flex-wrap gap-2">
-                  <Badge variant={priorityBadge.variant} className={priorityBadge.variant === "default" && priorityBadge.label === "mild" ? "bg-green-500/10 text-green-700 dark:text-green-400 border-green-500" : ""}>
+                  <Badge
+                    variant={priorityBadge.variant}
+                    className={
+                      priorityBadge.className ||
+                      (priorityBadge.variant === "default" && priorityBadge.label === "mild" ? "bg-green-500/10 text-green-700 dark:text-green-400 border-green-500" : "")
+                    }
+                  >
                     {priorityBadge.label}
                   </Badge>
-                  <Badge 
-                    variant={appointmentBadge.variant} 
+                  <Badge
+                    variant={appointmentBadge.variant}
                     className={appointmentBadge.className || ""}
                   >
                     {appointmentBadge.label}
                   </Badge>
                 </div>
 
-              {/* Show virtual appointment actions if:
+                {/* Show virtual appointment actions if:
                   1. We have virtual visit data for this patient, OR
                   2. The visit is virtual and has a clinician assigned (already assigned) */}
-              {(virtualVisitData[patient.id] || 
-                (patient.visit?.appointmentType?.toLowerCase() === "virtual" && 
-                 patient.visit?.status === "In Progress" && 
-                 patient.visit?.patientJoinToken)) ? (
-                <VirtualAppointmentActions
-                  patientId={patient.id}
-                  visitId={virtualVisitData[patient.id]?.visitId || patient.visit?.id || ""}
-                  joinUrl={virtualVisitData[patient.id]?.joinUrl || 
-                    (patient.visit?.patientJoinToken 
-                      ? `${typeof window !== 'undefined' ? window.location.origin : ''}/join/${patient.visit.patientJoinToken}`
-                      : "")}
-                  onJoin={() => router.push(`/visit/${virtualVisitData[patient.id]?.visitId || patient.visit?.id}/call`)}
-                />
-              ) : (
-                <Button
-                  onClick={(e) => handleAssignToMe(patient.id, e)}
-                  className="w-full"
-                  variant="default"
-                  disabled={loadingPatientId === patient.id}
-                >
-                  {loadingPatientId === patient.id ? "Loading..." : "Assign To Me"}
-                </Button>
-              )}
-            </CardContent>
-          </Card>
+                {(virtualVisitData[patient.id] ||
+                  (patient.visit?.appointmentType?.toLowerCase() === "virtual" &&
+                    patient.visit?.status === "In Progress" &&
+                    patient.visit?.patientJoinToken)) ? (
+                  <VirtualAppointmentActions
+                    patientId={patient.id}
+                    visitId={virtualVisitData[patient.id]?.visitId || patient.visit?.id || ""}
+                    joinUrl={virtualVisitData[patient.id]?.joinUrl ||
+                      (patient.visit?.patientJoinToken
+                        ? `${typeof window !== 'undefined' ? window.location.origin : ''}/join/${patient.visit.patientJoinToken}`
+                        : "")}
+                    onJoin={() => router.push(`/visit/${virtualVisitData[patient.id]?.visitId || patient.visit?.id}/call`)}
+                  />
+                ) : (
+                  <Button
+                    onClick={(e) => handleAssignToMe(patient.id, e)}
+                    className="w-full"
+                    variant="default"
+                    disabled={loadingPatientId === patient.id}
+                  >
+                    {loadingPatientId === patient.id ? "Loading..." : "Assign To Me"}
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
           );
         })}
       </div>

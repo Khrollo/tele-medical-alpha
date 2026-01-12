@@ -1,6 +1,6 @@
 import { redirect, notFound } from "next/navigation";
 import { getServerSession } from "@/app/_lib/supabase/server";
-import { getVisitById } from "@/app/_lib/db/drizzle/queries/visit";
+import { getVisitById, getVisitDetails } from "@/app/_lib/db/drizzle/queries/visit";
 import { getPatientBasics } from "@/app/_lib/db/drizzle/queries/patient";
 import { CallPageContent } from "./call-page-content";
 
@@ -53,6 +53,13 @@ export default async function CallPage({
     notFound();
   }
 
+  // Get visit details for existing visit data
+  let existingVisitData = null;
+  const visitDetails = await getVisitDetails(visitId);
+  if (visitDetails && visitDetails.notes[0]) {
+    existingVisitData = visitDetails.notes[0].note;
+  }
+
   return (
     <CallPageContent
       visitId={visitId}
@@ -61,6 +68,7 @@ export default async function CallPage({
       roomName={visit.twilioRoomName || ""}
       userId={session.id}
       userRole={session.role}
+      existingVisitData={existingVisitData || undefined}
     />
   );
 }

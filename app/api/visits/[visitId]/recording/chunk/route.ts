@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "@/app/_lib/supabase/server";
 import { getVisitById } from "@/app/_lib/db/drizzle/queries/visit";
-import { writeFile, mkdir } from "fs/promises";
-import { join } from "path";
-import { existsSync } from "fs";
+import { uploadFile } from "@/app/_lib/storage";
+
+export const runtime = "nodejs";
+
+const CHUNKS_BUCKET = "telehealth_audio";
 
 export async function POST(
   request: NextRequest,
@@ -25,7 +27,10 @@ export async function POST(
 
     if (!chunk || chunkIndex === undefined || !recordingSessionId) {
       return NextResponse.json(
-        { error: "Missing required fields: chunk, chunkIndex, recordingSessionId" },
+        {
+          error:
+            "Missing required fields: chunk, chunkIndex, recordingSessionId",
+        },
         { status: 400 }
       );
     }
@@ -39,17 +44,19 @@ export async function POST(
       );
     }
 
-    // Store chunk temporarily
-    // In dev: use local disk, in prod: use object storage
-    const chunksDir = join(process.cwd(), ".tmp", "recording-chunks", visitId, recordingSessionId);
-    
-    if (!existsSync(chunksDir)) {
-      await mkdir(chunksDir, { recursive: true });
-    }
+    // Store chunk in Supabase Storage
+    // Path structure: chunks/{visitId}/{recordingSessionId}/chunk-000000
+    const chunkFileName = `chunk-${chunkIndex.toString().padStart(6, "0")}`;
+    const storagePath = `chunks/${visitId}/${recordingSessionId}/${chunkFileName}`;
 
-    const chunkPath = join(chunksDir, `chunk-${chunkIndex.toString().padStart(6, "0")}`);
     const arrayBuffer = await chunk.arrayBuffer();
-    await writeFile(chunkPath, Buffer.from(arrayBuffer));
+    const buffer = Buffer.from(arrayBuffer);
+
+    // Upload chunk to Supabase Storage
+    await uploadFile(CHUNKS_BUCKET, storagePath, buffer, {
+      contentType: mimeType || "application/octet-stream",
+      upsert: false, // Don't overwrite existing chunks
+    });
 
     return NextResponse.json({
       success: true,
@@ -60,10 +67,10 @@ export async function POST(
     console.error("Error uploading chunk:", error);
     return NextResponse.json(
       {
-        error: error instanceof Error ? error.message : "Failed to upload chunk",
+        error:
+          error instanceof Error ? error.message : "Failed to upload chunk",
       },
       { status: 500 }
     );
   }
 }
-

@@ -54,6 +54,7 @@ interface NewVisitFormProps {
   hideAICapture?: boolean;
   initialParsedData?: any;
   onParseReadyRef?: React.MutableRefObject<((parsed: any) => void) | null>;
+  onSaveReadyRef?: React.MutableRefObject<(() => Promise<void>) | null>;
 }
 
 
@@ -70,6 +71,7 @@ export function NewVisitForm({
   hideAICapture = false,
   initialParsedData,
   onParseReadyRef,
+  onSaveReadyRef,
 }: NewVisitFormProps) {
   const router = useRouter();
   const [currentSection, setCurrentSection] = React.useState(visitSections[0].id);
@@ -105,6 +107,16 @@ export function NewVisitForm({
       // Clear the param from URL without reload
       const url = new URL(window.location.href);
       url.searchParams.delete('medicalSection');
+      window.history.replaceState({}, '', url);
+    }
+
+    // Check if visit was just saved (from call page)
+    const saved = searchParams.get('saved');
+    if (saved === 'true') {
+      setShowPostSaveModal(true);
+      // Clear the param from URL without reload
+      const url = new URL(window.location.href);
+      url.searchParams.delete('saved');
       window.history.replaceState({}, '', url);
     }
   }, []);
@@ -407,6 +419,18 @@ export function NewVisitForm({
       setIsSaving(false);
     }
   };
+
+  // Expose save function via ref
+  React.useEffect(() => {
+    if (onSaveReadyRef) {
+      onSaveReadyRef.current = handleFinalize;
+    }
+    return () => {
+      if (onSaveReadyRef) {
+        onSaveReadyRef.current = null;
+      }
+    };
+  }, [onSaveReadyRef, handleFinalize]);
 
   const handlePostSaveAction = async (action: "view" | "waiting" | "sign") => {
     if (!visitIdRemote) return;

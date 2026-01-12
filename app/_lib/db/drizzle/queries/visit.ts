@@ -543,6 +543,7 @@ export async function getVisitDetails(visitId: string) {
       mimeType: doc.mimeType,
       size: doc.size.toString(),
       uploadedAt: doc.uploadedAt,
+      storageUrl: doc.storageUrl,
     })),
     finalizedByName,
     auditLogs,

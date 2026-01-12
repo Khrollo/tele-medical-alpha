@@ -1,6 +1,6 @@
 import { eq, desc, or, isNull, and, inArray } from "drizzle-orm";
 import { db } from "../index";
-import { patients, visits, users } from "../schema";
+import { patients, visits, users, notes } from "../schema";
 
 /**
  * Get all unassigned patients with their waiting visit information
@@ -225,7 +225,7 @@ export async function getPatientOverview(patientId: string) {
   }
 
   // Get latest visit for this patient
-  const latestVisit = await db
+  const latestVisitResult = await db
     .select({
       id: visits.id,
       createdAt: visits.createdAt,
@@ -241,8 +241,39 @@ export async function getPatientOverview(patientId: string) {
     .orderBy(desc(visits.createdAt))
     .limit(1);
 
+  const latestVisit = latestVisitResult[0] || null;
+
+  // Get latest note for the latest visit to extract chief complaint
+  let chiefComplaint: string | null = null;
+  if (latestVisit) {
+    const latestNote = await db
+      .select({
+        note: notes.note,
+      })
+      .from(notes)
+      .where(eq(notes.visitId, latestVisit.id))
+      .orderBy(desc(notes.createdAt))
+      .limit(1);
+
+    if (latestNote[0]?.note) {
+      const noteData = latestNote[0].note as {
+        subjective?: { chiefComplaint?: string };
+      };
+      chiefComplaint = noteData?.subjective?.chiefComplaint || null;
+      // Only use if it's not empty
+      if (chiefComplaint && chiefComplaint.trim() === "") {
+        chiefComplaint = null;
+      }
+    }
+  }
+
   return {
     patient: patient[0],
-    latestVisit: latestVisit[0] || null,
+    latestVisit: latestVisit
+      ? {
+          ...latestVisit,
+          chiefComplaint,
+        }
+      : null,
   };
 }
