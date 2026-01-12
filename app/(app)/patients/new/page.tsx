@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getServerSession } from "@/app/_lib/supabase/server";
 import { CreatePatientForm } from "./create-patient-form";
-import { SideNav } from "@/components/side-nav";
+import { CreatePatientShell } from "./create-patient-shell";
 
 export default async function NewPatientPage() {
     const session = await getServerSession();
@@ -15,8 +15,11 @@ export default async function NewPatientPage() {
         redirect("/");
     }
 
+    const userRole = session.role;
+    const userName = session.name;
+
     return (
-        < div className="flex-1 overflow-y-auto pl-14 md:pl-0" >
+        <CreatePatientShell userRole={userRole} userName={userName}>
             <div className="container mx-auto py-8 px-4 max-w-7xl">
                 <div className="mb-6">
                     <h1 className="text-3xl font-bold text-foreground">Create New Patient</h1>
@@ -26,7 +29,7 @@ export default async function NewPatientPage() {
                 </div>
                 <CreatePatientForm />
             </div>
-        </div >
+        </CreatePatientShell>
     );
 }
 

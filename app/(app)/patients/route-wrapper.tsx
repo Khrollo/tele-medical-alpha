@@ -20,9 +20,13 @@ export function RouteWrapper({ children, userRole, userName }: RouteWrapperProps
     return /^\/patients\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(pathname);
   }, [pathname]);
 
-  // If we're on a dynamic patient route, don't wrap with SideNav
-  // The PatientChartShell handles its own navigation
-  if (isDynamicPatientRoute) {
+  // Check if we're on the create patient page or patients list page
+  const isCreatePatientPage = pathname === "/patients/new";
+  const isPatientsListPage = pathname === "/patients";
+
+  // If we're on a dynamic patient route, create patient page, or patients list page, don't wrap with SideNav
+  // The PatientChartShell, CreatePatientShell, and PatientsShell handle their own navigation
+  if (isDynamicPatientRoute || isCreatePatientPage || isPatientsListPage) {
     return <>{children}</>;
   }
 

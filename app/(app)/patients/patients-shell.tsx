@@ -1,42 +1,27 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
+import { SideNav } from "@/components/side-nav";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { SideNav } from "@/components/side-nav";
-import { cn } from "@/app/_lib/utils/cn";
 import { Menu } from "lucide-react";
 
-interface PatientChartShellProps {
+interface PatientsShellProps {
     children: React.ReactNode;
-    patientId: string;
-    patientName: string;
-    userRole: string;
+    userRole?: string;
     userName?: string | null;
 }
 
-export function PatientChartShell({
-    children,
-    patientId,
-    patientName,
-    userRole,
-    userName,
-}: PatientChartShellProps) {
+export function PatientsShell({ children, userRole, userName }: PatientsShellProps) {
     const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
     const openSidebarRef = React.useRef<(() => void) | null>(null);
-    const getNewVisitPath = () => {
-        return `/patients/${patientId}/new-visit`;
-    };
 
     return (
         <div className="flex h-screen w-full overflow-hidden bg-background">
-            {/* SideNav with patient info */}
+            {/* SideNav */}
             <SideNav
                 userRole={userRole}
                 userName={userName}
-                patientId={patientId}
-                patientName={patientName}
                 onMobileStateChange={setIsSidebarOpen}
                 openMenuRef={openSidebarRef}
             />
@@ -59,21 +44,10 @@ export function PatientChartShell({
                     </Button>
                     <div className="flex-1 min-w-0">
                         <Input
-                            placeholder="Search patients, MRN, or DOB"
+                            placeholder="Search by name, phone, email, or physician..."
                             className="max-w-md w-full"
+                            id="patients-search"
                         />
-                    </div>
-                    <div className="flex items-center gap-2">
-                        {/* {userRole === "nurse" && (
-                            <Button variant="outline" size="default">
-                                Begin Intake
-                            </Button>
-                        )} */}
-                        <Link href={getNewVisitPath()}>
-                            <Button size="default">
-                                Log New Visit
-                            </Button>
-                        </Link>
                     </div>
                 </div>
 

@@ -14,6 +14,8 @@ interface SideNavProps {
     userName?: string | null;
     patientId?: string;
     patientName?: string;
+    onMobileStateChange?: (isOpen: boolean) => void;
+    openMenuRef?: React.MutableRefObject<(() => void) | null>;
 }
 
 const medicalSections = [
@@ -33,13 +35,32 @@ const medicalSections = [
     { id: "log", label: "Log History", href: "/log-history", icon: <FileText className="h-4 w-4" /> },
 ];
 
-export function SideNav({ userRole, userName, patientId, patientName }: SideNavProps) {
+export function SideNav({ userRole, userName, patientId, patientName, onMobileStateChange, openMenuRef }: SideNavProps) {
     const [isOpen, setIsOpen] = React.useState(false);
     const [isMobile, setIsMobile] = React.useState(false);
     const [isSigningOut, setIsSigningOut] = React.useState(false);
     const [isCollapsed, setIsCollapsed] = React.useState(false);
     const pathname = usePathname();
     const router = useRouter();
+
+    // Expose open function to parent via ref
+    React.useEffect(() => {
+        if (openMenuRef) {
+            openMenuRef.current = () => setIsOpen(true);
+        }
+        return () => {
+            if (openMenuRef) {
+                openMenuRef.current = null;
+            }
+        };
+    }, [openMenuRef]);
+
+    // Notify parent of mobile state changes
+    React.useEffect(() => {
+        if (onMobileStateChange && isMobile) {
+            onMobileStateChange(isOpen);
+        }
+    }, [isOpen, isMobile, onMobileStateChange]);
 
     React.useEffect(() => {
         const checkMobile = () => {
@@ -140,22 +161,31 @@ export function SideNav({ userRole, userName, patientId, patientName }: SideNavP
     );
 
     // Sidebar content
+    // On mobile, always show full width when open (ignore collapsed state)
+    // On desktop, respect collapsed state
+    const sidebarWidth = isMobile ? "w-64" : (isCollapsed ? "w-16" : "w-64");
+    // On mobile: show labels when sidebar is open
+    // On desktop: show labels when not collapsed
+    const showLabels = isMobile ? isOpen : !isCollapsed;
+    // For layout/centering: on mobile when closed, center; on desktop when collapsed, center
+    const shouldCenter = isMobile ? !isOpen : isCollapsed;
+
     const sidebarContent = (
         <div
             className={cn(
                 "flex h-full flex-col border-r border-border bg-background",
                 "fixed left-0 top-0 z-50 md:relative md:z-auto",
                 "transition-[width,transform] duration-300 ease-in-out",
-                isCollapsed ? "w-16" : "w-64",
+                sidebarWidth,
                 isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
             )}
         >
             {/* Header */}
             <div className={cn(
                 "flex h-16 items-center border-b border-border transition-[padding,justify-content] duration-300 ease-in-out",
-                isCollapsed ? "justify-center px-2" : "justify-between px-4"
+                shouldCenter ? "justify-center px-2" : "justify-between px-4"
             )}>
-                {!isCollapsed && (
+                {showLabels && (
                     <div className="flex-1 min-w-0 animate-in fade-in duration-300">
                         {userName ? (
                             <h2 className="text-sm font-semibold text-foreground truncate">
@@ -191,11 +221,11 @@ export function SideNav({ userRole, userName, patientId, patientName }: SideNavP
             {/* Navigation */}
             <nav className={cn(
                 "flex-1 space-y-1 overflow-y-auto transition-[padding] duration-300 ease-in-out thin-scrollbar",
-                isCollapsed ? "p-2" : "p-4"
+                shouldCenter ? "p-2" : "p-4"
             )}>
                 {/* NAVIGATION Section */}
-                <div className={cn("mb-4", isCollapsed && "mb-2")}>
-                    {!isCollapsed && (
+                <div className={cn("mb-4", shouldCenter && "mb-2")}>
+                    {showLabels && (
                         <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground animate-in fade-in duration-300">
                             NAVIGATION
                         </p>
@@ -208,16 +238,16 @@ export function SideNav({ userRole, userName, patientId, patientName }: SideNavP
                                 onClick={() => setIsOpen(false)}
                                 className={cn(
                                     "flex items-center rounded-md text-sm transition-colors",
-                                    isCollapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-2",
+                                    shouldCenter ? "justify-center px-2 py-2" : "gap-3 px-3 py-2",
                                     "hover:bg-accent hover:text-accent-foreground",
                                     isActive(item.href)
                                         ? "bg-accent text-accent-foreground"
                                         : "text-muted-foreground"
                                 )}
-                                title={isCollapsed ? item.label : undefined}
+                                title={shouldCenter ? item.label : undefined}
                             >
                                 {item.icon}
-                                {!isCollapsed && (
+                                {showLabels && (
                                     <span className="animate-in fade-in duration-300">{item.label}</span>
                                 )}
                             </Link>
@@ -228,9 +258,9 @@ export function SideNav({ userRole, userName, patientId, patientName }: SideNavP
                 {/* MEDICAL SECTIONS - Only show when on patient route */}
                 {isOnPatientRoute && patientId && (
                     <>
-                        <div className={cn("border-t border-border", isCollapsed ? "my-2" : "my-4")} />
-                        <div className={cn("mt-2", isCollapsed && "mt-1")}>
-                            {patientName && !isCollapsed && (() => {
+                        <div className={cn("border-t border-border", shouldCenter ? "my-2" : "my-4")} />
+                        <div className={cn("mt-2", shouldCenter && "mt-1")}>
+                            {patientName && showLabels && (() => {
                                 // Use last word if name would be too long
                                 const nameParts = patientName.trim().split(/\s+/);
                                 const displayName = nameParts.length > 1 && patientName.length > 20
@@ -244,7 +274,7 @@ export function SideNav({ userRole, userName, patientId, patientName }: SideNavP
                                     </div>
                                 );
                             })()}
-                            {!isCollapsed && (
+                            {showLabels && (
                                 <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground animate-in fade-in duration-300">
                                     MEDICAL SECTIONS
                                 </p>
@@ -289,15 +319,15 @@ export function SideNav({ userRole, userName, patientId, patientName }: SideNavP
                                                 }}
                                                 className={cn(
                                                     "flex w-full items-center rounded-md text-sm transition-colors text-left",
-                                                    isCollapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-2",
+                                                    shouldCenter ? "justify-center px-2 py-2" : "gap-3 px-3 py-2",
                                                     active
                                                         ? "bg-accent text-accent-foreground font-medium"
                                                         : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
                                                 )}
-                                                title={isCollapsed ? section.label : undefined}
+                                                title={shouldCenter ? section.label : undefined}
                                             >
                                                 {section.icon}
-                                                {!isCollapsed && (
+                                                {showLabels && (
                                                     <span className="animate-in fade-in duration-300">{section.label}</span>
                                                 )}
                                             </button>
@@ -312,15 +342,15 @@ export function SideNav({ userRole, userName, patientId, patientName }: SideNavP
                                             onClick={() => setIsOpen(false)}
                                             className={cn(
                                                 "flex items-center rounded-md text-sm transition-colors",
-                                                isCollapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-2",
+                                                shouldCenter ? "justify-center px-2 py-2" : "gap-3 px-3 py-2",
                                                 active
                                                     ? "bg-accent text-accent-foreground font-medium"
                                                     : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
                                             )}
-                                            title={isCollapsed ? section.label : undefined}
+                                            title={shouldCenter ? section.label : undefined}
                                         >
                                             {section.icon}
-                                            {!isCollapsed && (
+                                            {showLabels && (
                                                 <span className="animate-in fade-in duration-300">{section.label}</span>
                                             )}
                                         </Link>
@@ -335,10 +365,10 @@ export function SideNav({ userRole, userName, patientId, patientName }: SideNavP
             {/* Footer */}
             <div className={cn(
                 "border-t border-border transition-[padding] duration-300 ease-in-out",
-                isCollapsed ? "p-2 space-y-2" : "p-4 space-y-2"
+                shouldCenter ? "p-2 space-y-2" : "p-4 space-y-2"
             )}>
                 <div className={cn(
-                    isCollapsed ? "flex justify-center" : ""
+                    shouldCenter ? "flex justify-center" : ""
                 )}>
                     <ThemeToggle />
                 </div>
@@ -346,14 +376,14 @@ export function SideNav({ userRole, userName, patientId, patientName }: SideNavP
                     variant="ghost"
                     className={cn(
                         "w-full gap-2",
-                        isCollapsed ? "justify-center px-2" : "justify-start"
+                        shouldCenter ? "justify-center px-2" : "justify-start"
                     )}
                     onClick={handleSignOut}
                     disabled={isSigningOut}
-                    title={isCollapsed ? (isSigningOut ? "Signing out..." : "Log out") : undefined}
+                    title={shouldCenter ? (isSigningOut ? "Signing out..." : "Log out") : undefined}
                 >
                     <LogOut className="h-4 w-4" />
-                    {!isCollapsed && (
+                    {showLabels && (
                         <span className="animate-in fade-in duration-300">
                             {isSigningOut ? "Signing out..." : "Log out"}
                         </span>
@@ -365,17 +395,6 @@ export function SideNav({ userRole, userName, patientId, patientName }: SideNavP
 
     return (
         <>
-            {/* Mobile menu button */}
-            <Button
-                variant="ghost"
-                size="icon"
-                className="fixed left-4 top-4 z-[100] md:hidden bg-background/95 backdrop-blur-sm shadow-md"
-                onClick={() => setIsOpen(true)}
-            >
-                <Menu className="h-5 w-5" />
-                <span className="sr-only">Open menu</span>
-            </Button>
-
             {mobileOverlay}
             {sidebarContent}
         </>

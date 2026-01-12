@@ -1,8 +1,9 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,41 @@ interface OpenNotesContentProps {
 }
 
 export function OpenNotesContent({ visits }: OpenNotesContentProps) {
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Sync search with top bar search input
+  React.useEffect(() => {
+    const topBarSearch = document.getElementById("open-notes-search") as HTMLInputElement;
+    if (topBarSearch) {
+      const handleInput = (e: Event) => {
+        const target = e.target as HTMLInputElement;
+        setSearchQuery(target.value);
+      };
+      topBarSearch.addEventListener("input", handleInput);
+      // Sync initial value
+      if (topBarSearch.value !== searchQuery) {
+        topBarSearch.value = searchQuery;
+      }
+      return () => {
+        topBarSearch.removeEventListener("input", handleInput);
+      };
+    }
+  }, [searchQuery]);
+
+  // Filter visits based on search query
+  const filteredVisits = useMemo(() => {
+    if (!searchQuery) return visits;
+    const query = searchQuery.toLowerCase();
+    return visits.filter(visit => {
+      return (
+        visit.patientName.toLowerCase().includes(query) ||
+        (visit.status?.toLowerCase().includes(query) ?? false) ||
+        (visit.priority?.toLowerCase().includes(query) ?? false) ||
+        (visit.appointmentType?.toLowerCase().includes(query) ?? false)
+      );
+    });
+  }, [visits, searchQuery]);
+
   const getStatusBadge = (status: string | null) => {
     if (!status) {
       return { variant: "secondary" as const, className: "" };
@@ -112,7 +148,13 @@ export function OpenNotesContent({ visits }: OpenNotesContentProps) {
         </p>
       </div>
 
-      {visits.length === 0 ? (
+      {filteredVisits.length === 0 && visits.length > 0 ? (
+        <Card>
+          <CardContent className="flex items-center justify-center py-12">
+            <p className="text-muted-foreground">No visits found matching your search</p>
+          </CardContent>
+        </Card>
+      ) : visits.length === 0 ? (
         <Card>
           <CardContent className="flex items-center justify-center py-12">
             <p className="text-muted-foreground">No open notes</p>
@@ -120,7 +162,7 @@ export function OpenNotesContent({ visits }: OpenNotesContentProps) {
         </Card>
       ) : (
         <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-          {visits.map((visit) => {
+          {filteredVisits.map((visit) => {
             const statusBadge = getStatusBadge(visit.status);
             const priorityBadge = getPriorityBadge(visit.priority);
             const appointmentBadge = getAppointmentTypeBadge(visit.appointmentType);

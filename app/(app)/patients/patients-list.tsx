@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useMemo } from "react";
@@ -9,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { QRCodeSVG } from "qrcode.react";
 import { Input } from "@/components/ui/input";
-import { Video, QrCode, Copy, Check, Phone, Mail, Calendar, User, Pill, AlertCircle, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { Video, QrCode, Copy, Check, Phone, Mail, Calendar, User, Pill, AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 
 interface VisitInfo {
@@ -190,10 +191,6 @@ export function PatientsList({ patients, userRole }: PatientsListProps) {
     setCurrentPage(1);
   }, [searchQuery]);
 
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value);
-  };
-
   const handlePageChange = (newPage: number) => {
     setCurrentPage(newPage);
     // Scroll to top when page changes
@@ -202,18 +199,6 @@ export function PatientsList({ patients, userRole }: PatientsListProps) {
 
   return (
     <>
-      {/* Search Bar */}
-      <div className="relative mb-6">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          type="text"
-          placeholder="Search by name, phone, email, or physician..."
-          value={searchQuery}
-          onChange={handleSearchChange}
-          className="pl-9"
-        />
-      </div>
-
       {/* Results Count */}
       {filteredPatients.length > 0 && (
         <div className="text-sm text-muted-foreground mb-4">

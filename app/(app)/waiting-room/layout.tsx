@@ -1,4 +1,4 @@
-import { SideNav } from "@/components/side-nav";
+import { WaitingRoomShell } from "./waiting-room-shell";
 import { getServerSession } from "@/app/_lib/supabase/server";
 
 export default async function WaitingRoomLayout({
@@ -11,12 +11,9 @@ export default async function WaitingRoomLayout({
     const userName = session?.name;
 
     return (
-        <div className="flex min-h-screen w-full">
-            <SideNav userRole={userRole} userName={userName} />
-            <main className="flex flex-1 flex-col overflow-hidden pl-14 md:pl-0">
-                {children}
-            </main>
-        </div>
+        <WaitingRoomShell userRole={userRole} userName={userName}>
+            {children}
+        </WaitingRoomShell>
     );
 }
 

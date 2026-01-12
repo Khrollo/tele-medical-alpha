@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { useRouter } from "next/navigation";
 import { useState, useMemo } from "react";
 import Link from "next/link";
@@ -204,19 +205,37 @@ export function WaitingRoomList({ patients }: WaitingRoomListProps) {
     }
   };
 
+  // Sync search with top bar search input
+  React.useEffect(() => {
+    const topBarSearch = document.getElementById("waiting-room-search") as HTMLInputElement;
+    if (topBarSearch) {
+      const handleInput = (e: Event) => {
+        const target = e.target as HTMLInputElement;
+        setSearchQuery(target.value);
+      };
+      topBarSearch.addEventListener("input", handleInput);
+      // Sync initial value
+      if (topBarSearch.value !== searchQuery) {
+        topBarSearch.value = searchQuery;
+      }
+      return () => {
+        topBarSearch.removeEventListener("input", handleInput);
+      };
+    }
+  }, [searchQuery]);
+
+  // Update top bar search when searchQuery changes (for external updates)
+  React.useEffect(() => {
+    const topBarSearch = document.getElementById("waiting-room-search") as HTMLInputElement;
+    if (topBarSearch && topBarSearch.value !== searchQuery) {
+      topBarSearch.value = searchQuery;
+    }
+  }, [searchQuery]);
+
   return (
-    <div className="space-y-4">
-      {/* Search and Sort Controls */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search by name, priority, or appointment type..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
-          />
-        </div>
+    <div className="space-y-4 p-4 md:p-6">
+      {/* Sort Controls */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-end">
         <div className="flex items-center gap-2">
           <Select value={sortField} onValueChange={(value) => handleSortChange(value as SortField)}>
             <SelectTrigger className="w-[180px]">
