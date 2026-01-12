@@ -122,20 +122,41 @@ export function PatientOverviewCards({
     frequency?: string;
     status?: string;
   }>;
-  const vitals = patient.vitals as Record<string, unknown> | null;
+  // Vitals is an array of VitalEntry objects, get the most recent one
+  const vitalsArray = normalizeJsonb(patient.vitals) as Array<{
+    id?: string;
+    date?: string;
+    bp?: string;
+    hr?: string;
+    temp?: string;
+    weight?: string;
+    height?: string;
+    bmi?: string;
+    spo2?: string;
+    rr?: string;
+  }>;
   const familyHistory = normalizeJsonb(patient.familyHistory);
   const socialHistory = normalizeJsonb(patient.socialHistory);
   const pastMedicalHistory = normalizeJsonb(patient.pastMedicalHistory);
 
-  // Extract vitals
-  const bp = vitals?.bp as string | undefined;
-  const hr = vitals?.hr as number | undefined;
-  const temp = vitals?.temp as number | undefined;
-  const weight = vitals?.weight as number | undefined;
+  // Get the most recent vital entry (sorted by date, most recent first)
+  const latestVital = vitalsArray.length > 0
+    ? vitalsArray.sort((a, b) => {
+      const dateA = a.date ? new Date(a.date).getTime() : 0;
+      const dateB = b.date ? new Date(b.date).getTime() : 0;
+      return dateB - dateA;
+    })[0]
+    : null;
+
+  // Extract vitals from the most recent entry
+  const bp = latestVital?.bp;
+  const hr = latestVital?.hr;
+  const temp = latestVital?.temp;
+  const weight = latestVital?.weight;
 
   // Calculate risk flags
   const hasHighBP = bp && (bp.includes("/") ? parseInt(bp.split("/")[0]) > 140 : false);
-  const hasFever = temp && temp > 100.4;
+  const hasFever = temp && parseFloat(temp) > 100.4;
   const hasRiskFlags = hasHighBP || hasFever;
 
   // Visit progress

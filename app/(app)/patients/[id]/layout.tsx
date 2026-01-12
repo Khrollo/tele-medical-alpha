@@ -1,7 +1,7 @@
 import { redirect, notFound } from "next/navigation";
 import { getServerSession } from "@/app/_lib/supabase/server";
 import { getPatientOverview } from "@/app/_lib/db/drizzle/queries/patients";
-import { PatientChartShell } from "@/components/patient-chart/patient-chart-shell";
+import { PatientChartShell } from "@/app/_components/patient-chart/patient-chart-shell";
 
 export default async function PatientChartLayout({
     children,
@@ -32,14 +32,16 @@ export default async function PatientChartLayout({
     }
 
     return (
-        <PatientChartShell
-            patientId={id}
-            patientName={overview.patient.fullName}
-            userRole={session.role}
-            userName={session.name}
-        >
-            {children}
-        </PatientChartShell>
+        <div className="flex min-h-screen w-full">
+            <PatientChartShell
+                patientId={id}
+                patientName={overview.patient.fullName}
+                userRole={session.role}
+                userName={session.name}
+            >
+                {children}
+            </PatientChartShell>
+        </div>
     );
 }
 

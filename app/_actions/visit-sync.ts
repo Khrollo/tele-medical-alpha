@@ -36,6 +36,11 @@ import {
   updatePatientSocialHistory,
   type SocialHistory,
 } from "@/app/_lib/db/drizzle/queries/social-history";
+import {
+  getPatientVitals,
+  updatePatientVitals,
+  type VitalEntry,
+} from "@/app/_lib/db/drizzle/queries/vitals";
 
 /**
  * Sync all visit note sections to patient record
@@ -93,6 +98,16 @@ export async function syncVisitNoteToPatientAction(
       housingStatus?: string;
       occupation?: string;
     };
+    objective?: {
+      bp?: string;
+      hr?: string;
+      temp?: string;
+      weight?: string;
+      height?: string;
+      bmi?: string;
+      spo2?: string;
+      rr?: string;
+    };
   }
 ) {
   const session = await getServerSession();
@@ -103,7 +118,9 @@ export async function syncVisitNoteToPatientAction(
 
   // Allow doctors and nurses only
   if (session.role !== "doctor" && session.role !== "nurse") {
-    throw new Error("Unauthorized: Only doctors and nurses can sync visit notes");
+    throw new Error(
+      "Unauthorized: Only doctors and nurses can sync visit notes"
+    );
   }
 
   try {
@@ -114,11 +131,15 @@ export async function syncVisitNoteToPatientAction(
       surgicalHistory: { added: 0, updated: 0 },
       pastMedicalHistory: { added: 0, updated: 0 },
       socialHistory: { updated: false },
+      vitals: { added: false },
     };
 
     // Sync Medications
     if (visitNote.medications && visitNote.medications.length > 0) {
-      const medicationsResult = await syncMedications(patientId, visitNote.medications);
+      const medicationsResult = await syncMedications(
+        patientId,
+        visitNote.medications
+      );
       results.medications = medicationsResult;
     }
 
@@ -130,26 +151,47 @@ export async function syncVisitNoteToPatientAction(
 
     // Sync Family History
     if (visitNote.familyHistory && visitNote.familyHistory.length > 0) {
-      const familyHistoryResult = await syncFamilyHistory(patientId, visitNote.familyHistory);
+      const familyHistoryResult = await syncFamilyHistory(
+        patientId,
+        visitNote.familyHistory
+      );
       results.familyHistory = familyHistoryResult;
     }
 
     // Sync Surgical History
     if (visitNote.surgicalHistory && visitNote.surgicalHistory.length > 0) {
-      const surgicalHistoryResult = await syncSurgicalHistory(patientId, visitNote.surgicalHistory);
+      const surgicalHistoryResult = await syncSurgicalHistory(
+        patientId,
+        visitNote.surgicalHistory
+      );
       results.surgicalHistory = surgicalHistoryResult;
     }
 
     // Sync Past Medical History
-    if (visitNote.pastMedicalHistory && visitNote.pastMedicalHistory.length > 0) {
-      const pmhResult = await syncPastMedicalHistory(patientId, visitNote.pastMedicalHistory);
+    if (
+      visitNote.pastMedicalHistory &&
+      visitNote.pastMedicalHistory.length > 0
+    ) {
+      const pmhResult = await syncPastMedicalHistory(
+        patientId,
+        visitNote.pastMedicalHistory
+      );
       results.pastMedicalHistory = pmhResult;
     }
 
     // Sync Risk Flags (Social History)
     if (visitNote.riskFlags) {
-      const socialHistoryResult = await syncSocialHistory(patientId, visitNote.riskFlags);
+      const socialHistoryResult = await syncSocialHistory(
+        patientId,
+        visitNote.riskFlags
+      );
       results.socialHistory = { updated: socialHistoryResult };
+    }
+
+    // Sync Vitals from objective section
+    if (visitNote.objective) {
+      const vitalsResult = await syncVitals(patientId, visitNote.objective);
+      results.vitals = { added: vitalsResult };
     }
 
     // Revalidate patient pages
@@ -157,12 +199,15 @@ export async function syncVisitNoteToPatientAction(
     revalidatePath(`/patients/${patientId}/medications`);
     revalidatePath(`/patients/${patientId}/vaccines`);
     revalidatePath(`/patients/${patientId}/past-medical-history`);
+    revalidatePath(`/patients/${patientId}/vitals`);
 
     return { success: true, results };
   } catch (error) {
     console.error("Error syncing visit note to patient:", error);
     throw new Error(
-      error instanceof Error ? error.message : "Failed to sync visit note to patient"
+      error instanceof Error
+        ? error.message
+        : "Failed to sync visit note to patient"
     );
   }
 }
@@ -196,22 +241,36 @@ async function syncMedications(
       strength?: string;
     }
   ): boolean => {
-    const name1 = (med1.brandName || med1.genericName || "").toLowerCase().trim();
-    const name2 = ((med2.brandName || med2.genericName) || "").toLowerCase().trim();
-    
+    const name1 = (med1.brandName || med1.genericName || "")
+      .toLowerCase()
+      .trim();
+    const name2 = (med2.brandName || med2.genericName || "")
+      .toLowerCase()
+      .trim();
+
     if (!name1 || !name2) return false;
-    
-    const namesMatch = name1 === name2 || 
-      (med1.brandName && med2.brandName && med1.brandName.toLowerCase().trim() === med2.brandName.toLowerCase().trim()) ||
-      (med1.genericName && med2.genericName && med1.genericName.toLowerCase().trim() === med2.genericName.toLowerCase().trim());
-    
+
+    const namesMatch =
+      name1 === name2 ||
+      (med1.brandName &&
+        med2.brandName &&
+        med1.brandName.toLowerCase().trim() ===
+          med2.brandName.toLowerCase().trim()) ||
+      (med1.genericName &&
+        med2.genericName &&
+        med1.genericName.toLowerCase().trim() ===
+          med2.genericName.toLowerCase().trim());
+
     if (!namesMatch) return false;
-    
-    if (med1.strength && med2.strength && 
-        med1.strength.toLowerCase().trim() !== med2.strength.toLowerCase().trim()) {
+
+    if (
+      med1.strength &&
+      med2.strength &&
+      med1.strength.toLowerCase().trim() !== med2.strength.toLowerCase().trim()
+    ) {
       return false;
     }
-    
+
     return true;
   };
 
@@ -230,12 +289,16 @@ async function syncMedications(
     if (existingIndex >= 0) {
       updatedMedications[existingIndex] = {
         ...updatedMedications[existingIndex],
-        brandName: visitMed.brandName || updatedMedications[existingIndex].brandName,
-        genericName: visitMed.genericName || updatedMedications[existingIndex].genericName,
-        strength: visitMed.strength || updatedMedications[existingIndex].strength,
+        brandName:
+          visitMed.brandName || updatedMedications[existingIndex].brandName,
+        genericName:
+          visitMed.genericName || updatedMedications[existingIndex].genericName,
+        strength:
+          visitMed.strength || updatedMedications[existingIndex].strength,
         form: visitMed.form || updatedMedications[existingIndex].form,
         dosage: visitMed.dosage || updatedMedications[existingIndex].dosage,
-        frequency: visitMed.frequency || updatedMedications[existingIndex].frequency,
+        frequency:
+          visitMed.frequency || updatedMedications[existingIndex].frequency,
         status: visitMed.status || updatedMedications[existingIndex].status,
         notes: visitMed.notes || updatedMedications[existingIndex].notes,
       };
@@ -280,18 +343,21 @@ async function syncVaccines(
   const existingVaccines = await getPatientVaccines(patientId);
   const updatedHistory = [...existingVaccines.history];
 
-  const vaccinesMatch = (v1: VaccineHistory, v2: { name?: string; date?: string }): boolean => {
+  const vaccinesMatch = (
+    v1: VaccineHistory,
+    v2: { name?: string; date?: string }
+  ): boolean => {
     const name1 = (v1.vaccineName || "").toLowerCase().trim();
     const name2 = (v2.name || "").toLowerCase().trim();
-    
+
     if (!name1 || !name2) return false;
     if (name1 !== name2) return false;
-    
+
     // If dates are provided, they should match
     if (v1.dateAdministered && v2.date && v1.dateAdministered !== v2.date) {
       return false;
     }
-    
+
     return true;
   };
 
@@ -310,13 +376,20 @@ async function syncVaccines(
     if (existingIndex >= 0) {
       updatedHistory[existingIndex] = {
         ...updatedHistory[existingIndex],
-        vaccineName: visitVaccine.name || updatedHistory[existingIndex].vaccineName,
-        dateAdministered: visitVaccine.date || updatedHistory[existingIndex].dateAdministered,
-        doseNumber: visitVaccine.dose || updatedHistory[existingIndex].doseNumber,
-        administrationSite: visitVaccine.site || updatedHistory[existingIndex].administrationSite,
+        vaccineName:
+          visitVaccine.name || updatedHistory[existingIndex].vaccineName,
+        dateAdministered:
+          visitVaccine.date || updatedHistory[existingIndex].dateAdministered,
+        doseNumber:
+          visitVaccine.dose || updatedHistory[existingIndex].doseNumber,
+        administrationSite:
+          visitVaccine.site || updatedHistory[existingIndex].administrationSite,
         route: visitVaccine.route || updatedHistory[existingIndex].route,
-        lotNumber: visitVaccine.lotNumber || updatedHistory[existingIndex].lotNumber,
-        manufacturer: visitVaccine.manufacturer || updatedHistory[existingIndex].manufacturer,
+        lotNumber:
+          visitVaccine.lotNumber || updatedHistory[existingIndex].lotNumber,
+        manufacturer:
+          visitVaccine.manufacturer ||
+          updatedHistory[existingIndex].manufacturer,
       };
       updated++;
     } else {
@@ -363,18 +436,22 @@ async function syncFamilyHistory(
   ): boolean => {
     const rel1 = (f1.relationship || "").toLowerCase().trim();
     const rel2 = (f2.relationship || "").toLowerCase().trim();
-    
+
     if (!rel1 || !rel2) return false;
     if (rel1 !== rel2) return false;
-    
+
     // Check if conditions overlap
-    const conditions1 = (Array.isArray(f1.conditions) ? f1.conditions : [f1.conditions]).join(" ").toLowerCase();
+    const conditions1 = (
+      Array.isArray(f1.conditions) ? f1.conditions : [f1.conditions]
+    )
+      .join(" ")
+      .toLowerCase();
     const conditions2 = (f2.conditions || "").toLowerCase();
-    
+
     if (conditions2 && conditions1.includes(conditions2)) {
       return true;
     }
-    
+
     return false;
   };
 
@@ -391,21 +468,32 @@ async function syncFamilyHistory(
     );
 
     const conditionsArray = visitEntry.conditions
-      ? visitEntry.conditions.split(",").map((c) => c.trim()).filter(Boolean)
+      ? visitEntry.conditions
+          .split(",")
+          .map((c) => c.trim())
+          .filter(Boolean)
       : [];
 
     if (existingIndex >= 0) {
       // Merge conditions
-      const existingConditions = Array.isArray(updatedFamilyHistory[existingIndex].conditions)
+      const existingConditions = Array.isArray(
+        updatedFamilyHistory[existingIndex].conditions
+      )
         ? updatedFamilyHistory[existingIndex].conditions
         : [updatedFamilyHistory[existingIndex].conditions].filter(Boolean);
-      
-      const mergedConditions = Array.from(new Set([...existingConditions, ...conditionsArray]));
-      
+
+      const mergedConditions = Array.from(
+        new Set([...existingConditions, ...conditionsArray])
+      );
+
       updatedFamilyHistory[existingIndex] = {
         ...updatedFamilyHistory[existingIndex],
-        relationship: visitEntry.relationship || updatedFamilyHistory[existingIndex].relationship,
-        status: (visitEntry.status as "Living" | "Deceased") || updatedFamilyHistory[existingIndex].status,
+        relationship:
+          visitEntry.relationship ||
+          updatedFamilyHistory[existingIndex].relationship,
+        status:
+          (visitEntry.status as "Living" | "Deceased") ||
+          updatedFamilyHistory[existingIndex].status,
         conditions: mergedConditions,
       };
       updated++;
@@ -449,15 +537,15 @@ async function syncSurgicalHistory(
   ): boolean => {
     const proc1 = (s1.procedure || "").toLowerCase().trim();
     const proc2 = (s2.procedure || "").toLowerCase().trim();
-    
+
     if (!proc1 || !proc2) return false;
     if (proc1 !== proc2) return false;
-    
+
     // If dates are provided, they should match
     if (s1.date && s2.date && s1.date !== s2.date) {
       return false;
     }
-    
+
     return true;
   };
 
@@ -476,12 +564,20 @@ async function syncSurgicalHistory(
     if (existingIndex >= 0) {
       updatedSurgicalHistory[existingIndex] = {
         ...updatedSurgicalHistory[existingIndex],
-        procedure: visitEntry.procedure || updatedSurgicalHistory[existingIndex].procedure,
+        procedure:
+          visitEntry.procedure ||
+          updatedSurgicalHistory[existingIndex].procedure,
         date: visitEntry.date || updatedSurgicalHistory[existingIndex].date,
         site: visitEntry.site || updatedSurgicalHistory[existingIndex].site,
-        surgeon: visitEntry.surgeon || updatedSurgicalHistory[existingIndex].surgeon,
-        outcome: visitEntry.outcome || updatedSurgicalHistory[existingIndex].outcome,
-        source: (visitEntry.source as "Patient Reported" | "Medical Records" | "Other") || updatedSurgicalHistory[existingIndex].source,
+        surgeon:
+          visitEntry.surgeon || updatedSurgicalHistory[existingIndex].surgeon,
+        outcome:
+          visitEntry.outcome || updatedSurgicalHistory[existingIndex].outcome,
+        source:
+          (visitEntry.source as
+            | "Patient Reported"
+            | "Medical Records"
+            | "Other") || updatedSurgicalHistory[existingIndex].source,
       };
       updated++;
     } else {
@@ -492,7 +588,11 @@ async function syncSurgicalHistory(
         site: visitEntry.site,
         surgeon: visitEntry.surgeon,
         outcome: visitEntry.outcome,
-        source: (visitEntry.source as "Patient Reported" | "Medical Records" | "Other") || "Patient Reported",
+        source:
+          (visitEntry.source as
+            | "Patient Reported"
+            | "Medical Records"
+            | "Other") || "Patient Reported",
         createdAt: new Date().toISOString(),
       };
       updatedSurgicalHistory.push(newEntry);
@@ -527,15 +627,19 @@ async function syncPastMedicalHistory(
   ): boolean => {
     const cond1 = (p1.condition || "").toLowerCase().trim();
     const cond2 = (p2.condition || "").toLowerCase().trim();
-    
+
     if (!cond1 || !cond2) return false;
     if (cond1 === cond2) return true;
-    
+
     // Also check by ICD-10 code if available
-    if (p1.icd10 && p2.icd10 && p1.icd10.toLowerCase().trim() === p2.icd10.toLowerCase().trim()) {
+    if (
+      p1.icd10 &&
+      p2.icd10 &&
+      p1.icd10.toLowerCase().trim() === p2.icd10.toLowerCase().trim()
+    ) {
       return true;
     }
-    
+
     return false;
   };
 
@@ -554,9 +658,12 @@ async function syncPastMedicalHistory(
     if (existingIndex >= 0) {
       updatedEntries[existingIndex] = {
         ...updatedEntries[existingIndex],
-        condition: visitEntry.condition || updatedEntries[existingIndex].condition,
+        condition:
+          visitEntry.condition || updatedEntries[existingIndex].condition,
         status: visitEntry.status || updatedEntries[existingIndex].status,
-        diagnosedDate: visitEntry.diagnosedDate || updatedEntries[existingIndex].diagnosedDate,
+        diagnosedDate:
+          visitEntry.diagnosedDate ||
+          updatedEntries[existingIndex].diagnosedDate,
         impact: visitEntry.impact || updatedEntries[existingIndex].impact,
         icd10: visitEntry.icd10 || updatedEntries[existingIndex].icd10,
         source: visitEntry.source || updatedEntries[existingIndex].source,
@@ -609,14 +716,20 @@ async function syncSocialHistory(
 
   // Update tobacco use
   if (riskFlags.tobaccoUse) {
-    const tobaccoStatus = riskFlags.tobaccoUse as "Never" | "Former" | "Current";
+    const tobaccoStatus = riskFlags.tobaccoUse as
+      | "Never"
+      | "Former"
+      | "Current";
     if (!updated.tobacco || updated.tobacco.status !== tobaccoStatus) {
       updated.tobacco = {
         status: tobaccoStatus,
         amount: riskFlags.tobaccoAmount || updated.tobacco?.amount,
       };
       hasChanges = true;
-    } else if (riskFlags.tobaccoAmount && updated.tobacco.amount !== riskFlags.tobaccoAmount) {
+    } else if (
+      riskFlags.tobaccoAmount &&
+      updated.tobacco.amount !== riskFlags.tobaccoAmount
+    ) {
       updated.tobacco.amount = riskFlags.tobaccoAmount;
       hasChanges = true;
     }
@@ -624,14 +737,21 @@ async function syncSocialHistory(
 
   // Update alcohol use
   if (riskFlags.alcoholUse) {
-    const alcoholStatus = riskFlags.alcoholUse as "Never" | "Occasional" | "Regular" | "Former";
+    const alcoholStatus = riskFlags.alcoholUse as
+      | "Never"
+      | "Occasional"
+      | "Regular"
+      | "Former";
     if (!updated.alcohol || updated.alcohol.status !== alcoholStatus) {
       updated.alcohol = {
         status: alcoholStatus,
         frequency: riskFlags.alcoholFrequency || updated.alcohol?.frequency,
       };
       hasChanges = true;
-    } else if (riskFlags.alcoholFrequency && updated.alcohol.frequency !== riskFlags.alcoholFrequency) {
+    } else if (
+      riskFlags.alcoholFrequency &&
+      updated.alcohol.frequency !== riskFlags.alcoholFrequency
+    ) {
       updated.alcohol.frequency = riskFlags.alcoholFrequency;
       hasChanges = true;
     }
@@ -639,8 +759,15 @@ async function syncSocialHistory(
 
   // Update housing status
   if (riskFlags.housingStatus) {
-    const housingStatus = riskFlags.housingStatus as "Stable" | "Unstable" | "Homeless" | "Other";
-    if (!updated.livingSituation || updated.livingSituation.status !== housingStatus) {
+    const housingStatus = riskFlags.housingStatus as
+      | "Stable"
+      | "Unstable"
+      | "Homeless"
+      | "Other";
+    if (
+      !updated.livingSituation ||
+      updated.livingSituation.status !== housingStatus
+    ) {
       updated.livingSituation = {
         status: housingStatus,
         description: updated.livingSituation?.description,
@@ -651,7 +778,10 @@ async function syncSocialHistory(
 
   // Update occupation
   if (riskFlags.occupation) {
-    if (!updated.occupation || updated.occupation.title !== riskFlags.occupation) {
+    if (
+      !updated.occupation ||
+      updated.occupation.title !== riskFlags.occupation
+    ) {
       updated.occupation = {
         title: riskFlags.occupation,
         description: updated.occupation?.description,
@@ -668,3 +798,72 @@ async function syncSocialHistory(
   return hasChanges;
 }
 
+/**
+ * Sync vitals from objective section to patient vitals
+ */
+async function syncVitals(
+  patientId: string,
+  objective: {
+    bp?: string;
+    hr?: string;
+    temp?: string;
+    weight?: string;
+    height?: string;
+    bmi?: string;
+    spo2?: string;
+    rr?: string;
+  }
+): Promise<boolean> {
+  // Only create a vital entry if at least one vital measurement is present
+  const hasVitalData =
+    objective.bp?.trim() ||
+    objective.hr?.trim() ||
+    objective.temp?.trim() ||
+    objective.weight?.trim() ||
+    objective.height?.trim() ||
+    objective.bmi?.trim() ||
+    objective.spo2?.trim() ||
+    objective.rr?.trim();
+
+  if (!hasVitalData) {
+    return false;
+  }
+
+  const existingVitals = await getPatientVitals(patientId);
+
+  // Create new vital entry with current date
+  const newVital: VitalEntry = {
+    id: uuidv4(),
+    date: new Date().toISOString().split("T")[0], // ISO date string (YYYY-MM-DD)
+    bp: objective.bp?.trim() || undefined,
+    hr: objective.hr?.trim() || undefined,
+    temp: objective.temp?.trim() || undefined,
+    weight: objective.weight?.trim() || undefined,
+    height: objective.height?.trim() || undefined,
+    bmi: objective.bmi?.trim() || undefined,
+    spo2: objective.spo2?.trim() || undefined,
+    rr: objective.rr?.trim() || undefined,
+  };
+
+  // Calculate BMI if weight and height are provided but BMI is not
+  if (newVital.weight && newVital.height && !newVital.bmi) {
+    const weightNum = parseFloat(newVital.weight);
+    const heightNum = parseFloat(newVital.height);
+    if (weightNum > 0 && heightNum > 0) {
+      const weightKg = weightNum * 0.453592; // Convert lbs to kg
+      const heightM = heightNum / 100; // Convert cm to m
+      if (heightM > 0) {
+        const bmi = (weightKg / (heightM * heightM)).toFixed(1);
+        newVital.bmi = bmi;
+      }
+    }
+  }
+
+  // Add new vital entry and sort by date (most recent first)
+  const updatedVitals = [...existingVitals, newVital].sort(
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+  );
+
+  await updatePatientVitals(patientId, updatedVitals);
+  return true;
+}

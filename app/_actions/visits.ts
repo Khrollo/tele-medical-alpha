@@ -145,6 +145,7 @@ export async function finalizeVisitAction(
             surgicalHistory: noteData.surgicalHistory,
             pastMedicalHistory: noteData.pastMedicalHistory,
             riskFlags: noteData.riskFlags,
+            objective: noteData.objective,
           });
           
           if (syncResult.success) {

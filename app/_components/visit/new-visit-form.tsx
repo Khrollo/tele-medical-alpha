@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -148,6 +148,35 @@ export function NewVisitForm({
     resolver: zodResolver(visitNoteSchema),
     defaultValues: createEmptyVisitNote(),
   });
+
+  // Watch weight and height for BMI calculation
+  const weight = useWatch({ control: form.control, name: "objective.weight" });
+  const height = useWatch({ control: form.control, name: "objective.height" });
+
+  // Calculate BMI when weight or height changes
+  React.useEffect(() => {
+    const calculateBMI = () => {
+      const weightNum = parseFloat(weight || "");
+      const heightNum = parseFloat(height || "");
+
+      if (weightNum > 0 && heightNum > 0) {
+        // Convert weight from lbs to kg: lbs * 0.453592
+        const weightKg = weightNum * 0.453592;
+        // Convert height from cm to m: cm / 100
+        const heightM = heightNum / 100;
+        // Calculate BMI: kg / (m^2)
+        const bmi = weightKg / (heightM * heightM);
+        // Round to 1 decimal place
+        const bmiRounded = bmi.toFixed(1);
+        form.setValue("objective.bmi", bmiRounded);
+      } else {
+        // Clear BMI if weight or height is invalid
+        form.setValue("objective.bmi", "");
+      }
+    };
+
+    calculateBMI();
+  }, [weight, height, form]);
 
   // Load draft on mount
   React.useEffect(() => {
@@ -542,6 +571,15 @@ export function NewVisitForm({
               <Input
                 {...form.register("objective.height")}
                 placeholder="e.g., 177.8"
+              />
+            </div>
+            <div className="space-y-3">
+              <Label className="text-base">BMI</Label>
+              <Input
+                {...form.register("objective.bmi")}
+                placeholder="Auto-calculated"
+                readOnly
+                className="bg-muted cursor-not-allowed"
               />
             </div>
             <div className="md:col-span-2 space-y-3">
