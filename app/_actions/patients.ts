@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getServerSession } from "@/app/_lib/supabase/server";
 import { createPatient } from "@/app/_lib/db/drizzle/queries/patient-personal-details";
+import { findExistingPatients } from "@/app/_lib/db/drizzle/queries/patients";
 import { db } from "@/app/_lib/db/drizzle/index";
 import { patients } from "@/app/_lib/db/drizzle/schema";
 import { eq } from "drizzle-orm";
@@ -45,6 +46,24 @@ export async function createPatientAction(payload: CreatePatientPayload) {
   }
 
   try {
+    // Check for existing patients with the same phone or email
+    const existingPatients = await findExistingPatients(payload.phone, payload.email);
+    
+    if (existingPatients.length > 0) {
+      return {
+        success: false,
+        error: "DUPLICATE",
+        existingPatients: existingPatients.map(p => ({
+          id: p.id,
+          fullName: p.fullName,
+          phone: p.phone,
+          email: p.email,
+          dob: p.dob,
+          createdAt: p.createdAt,
+        })),
+      };
+    }
+
     // Combine first and last name
     const fullName = `${payload.firstName} ${payload.lastName}`.trim();
 

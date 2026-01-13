@@ -312,10 +312,11 @@ export function WaitingRoomList({ patients }: WaitingRoomListProps) {
                   <VirtualAppointmentActions
                     patientId={patient.id}
                     visitId={virtualVisitData[patient.id]?.visitId || patient.visit?.id || ""}
-                    joinUrl={virtualVisitData[patient.id]?.joinUrl ||
-                      (patient.visit?.patientJoinToken
+                    joinUrl={
+                      patient.visit?.patientJoinToken
                         ? `${typeof window !== 'undefined' ? window.location.origin : ''}/join/${patient.visit.patientJoinToken}`
-                        : "")}
+                        : virtualVisitData[patient.id]?.joinUrl || ""
+                    }
                     onJoin={() => router.push(`/visit/${virtualVisitData[patient.id]?.visitId || patient.visit?.id}/call`)}
                   />
                 ) : (

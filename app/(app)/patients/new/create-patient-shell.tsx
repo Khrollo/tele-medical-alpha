@@ -16,8 +16,20 @@ export function CreatePatientShell({ children, userRole, userName }: CreatePatie
     const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
     const openSidebarRef = React.useRef<(() => void) | null>(null);
 
+    // Prevent body scrolling when this component is mounted
+    React.useEffect(() => {
+        const originalStyle = window.getComputedStyle(document.body).overflow;
+        document.body.style.overflow = "hidden";
+        document.documentElement.style.overflow = "hidden";
+        
+        return () => {
+            document.body.style.overflow = originalStyle;
+            document.documentElement.style.overflow = originalStyle;
+        };
+    }, []);
+
     return (
-        <div className="flex h-screen w-full overflow-hidden bg-background">
+        <div className="fixed inset-0 flex overflow-hidden bg-background">
             {/* SideNav */}
             <SideNav
                 userRole={userRole}
@@ -27,9 +39,9 @@ export function CreatePatientShell({ children, userRole, userName }: CreatePatie
             />
 
             {/* Main Content Area */}
-            <div className="flex flex-1 flex-col overflow-hidden transition-all duration-300 ease-in-out">
+            <div className="flex flex-1 flex-col min-w-0 overflow-hidden transition-all duration-300 ease-in-out">
                 {/* Top Bar */}
-                <div className="flex h-16 items-center gap-4 border-b border-border bg-background px-6">
+                <div className="flex h-16 shrink-0 items-center gap-4 border-b border-border bg-background px-6">
                     {/* Mobile hamburger button - inline with search */}
                     <Button
                         variant="ghost"
@@ -52,7 +64,7 @@ export function CreatePatientShell({ children, userRole, userName }: CreatePatie
                 </div>
 
                 {/* Page Content */}
-                <div className="flex-1 overflow-y-auto bg-background">
+                <div className="flex-1 min-h-0 overflow-y-auto bg-background overscroll-contain">
                     {children}
                 </div>
             </div>

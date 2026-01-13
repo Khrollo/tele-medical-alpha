@@ -3,6 +3,45 @@ import { db } from "../index";
 import { patients, visits, users, notes } from "../schema";
 
 /**
+ * Find existing patients by phone or email
+ * @param phone - Phone number to search for
+ * @param email - Email to search for
+ * @returns Array of existing patients matching phone or email
+ */
+export async function findExistingPatients(phone?: string | null, email?: string | null) {
+  if (!phone && !email) {
+    return [];
+  }
+
+  const conditions = [];
+  if (phone) {
+    conditions.push(eq(patients.phone, phone));
+  }
+  if (email) {
+    conditions.push(eq(patients.email, email));
+  }
+
+  if (conditions.length === 0) {
+    return [];
+  }
+
+  const existingPatients = await db
+    .select({
+      id: patients.id,
+      fullName: patients.fullName,
+      phone: patients.phone,
+      email: patients.email,
+      dob: patients.dob,
+      createdAt: patients.createdAt,
+    })
+    .from(patients)
+    .where(or(...conditions))
+    .orderBy(desc(patients.createdAt));
+
+  return existingPatients;
+}
+
+/**
  * Get all unassigned patients with their waiting visit information
  * Only shows patients where is_assigned is explicitly false (not null or true)
  * @returns Array of unassigned patients with visit details (priority, appointmentType, waitTime)

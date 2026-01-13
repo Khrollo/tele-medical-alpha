@@ -6,7 +6,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import { Save, Phone, Mail, Calendar, UserPlus, Cross, FileText, X, Clock, User } from "lucide-react";
+import Link from "next/link";
+import { Save, Phone, Mail, Calendar, UserPlus, Cross, FileText, X, Clock, User, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -64,12 +65,23 @@ const createPatientSchema = z.object({
 
 type CreatePatientFormData = z.infer<typeof createPatientSchema>;
 
+interface ExistingPatient {
+  id: string;
+  fullName: string;
+  phone: string | null;
+  email: string | null;
+  dob: string | Date | null;
+  createdAt: Date | string;
+}
+
 export function CreatePatientForm() {
   const router = useRouter();
   const [isSaving, setIsSaving] = React.useState(false);
   const [showPostCreateModal, setShowPostCreateModal] = React.useState(false);
   const [createdPatientId, setCreatedPatientId] = React.useState<string | null>(null);
   const [isHandlingAction, setIsHandlingAction] = React.useState(false);
+  const [showDuplicateModal, setShowDuplicateModal] = React.useState(false);
+  const [existingPatients, setExistingPatients] = React.useState<ExistingPatient[]>([]);
 
   const form = useForm<CreatePatientFormData>({
     resolver: zodResolver(createPatientSchema),
@@ -129,8 +141,12 @@ export function CreatePatientForm() {
 
       if (result.success) {
         toast.success("Patient created successfully");
-        setCreatedPatientId(result.patientId);
+        setCreatedPatientId(result.patientId || null);
         setShowPostCreateModal(true);
+      } else if (result.error === "DUPLICATE" && result.existingPatients) {
+        setExistingPatients(result.existingPatients);
+        setShowDuplicateModal(true);
+        toast.error("A patient with this phone number or email already exists");
       }
     } catch (error) {
       console.error("Error creating patient:", error);
@@ -573,6 +589,68 @@ export function CreatePatientForm() {
               </div>
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Duplicate Patients Modal */}
+      <Dialog open={showDuplicateModal} onOpenChange={setShowDuplicateModal}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-destructive" />
+              Patient Already Exists
+            </DialogTitle>
+            <DialogDescription>
+              A patient with this phone number or email already exists in the system. Please review the existing patient(s) below.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {existingPatients.map((patient) => (
+              <Card key={patient.id} className="hover:shadow-md transition-shadow">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 space-y-2">
+                      <h3 className="font-semibold text-lg">{patient.fullName}</h3>
+                      <div className="space-y-1 text-sm text-muted-foreground">
+                        {patient.phone && (
+                          <div className="flex items-center gap-2">
+                            <Phone className="h-4 w-4" />
+                            <span>{patient.phone}</span>
+                          </div>
+                        )}
+                        {patient.email && (
+                          <div className="flex items-center gap-2">
+                            <Mail className="h-4 w-4" />
+                            <span>{patient.email}</span>
+                          </div>
+                        )}
+                        {patient.dob && (
+                          <div className="flex items-center gap-2">
+                            <Calendar className="h-4 w-4" />
+                            <span>
+                              {patient.dob instanceof Date 
+                                ? patient.dob.toLocaleDateString()
+                                : new Date(patient.dob).toLocaleDateString()}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <Link href={`/patients/${patient.id}`}>
+                      <Button variant="outline" size="sm">
+                        View Patient
+                      </Button>
+                    </Link>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setShowDuplicateModal(false)} variant="outline">
+              Close
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </form>
