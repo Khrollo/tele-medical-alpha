@@ -3,12 +3,18 @@ import type { VisitNote } from "@/app/_lib/visit-note/schema";
 
 /**
  * Dexie database for offline-first functionality
- * Stores drafts, outbox operations, and files
+ * Stores drafts, outbox operations, files, and entity caches
  */
 export class OfflineDB extends Dexie {
   draftVisits!: Table<DraftVisit>;
   outbox!: Table<OutboxOperation>;
   files!: Table<StoredFile>;
+  patients!: Table<CachedPatient>;
+  visits!: Table<CachedVisit>;
+  documents!: Table<CachedDocument>;
+  notes!: Table<CachedNote>;
+  transcripts!: Table<CachedTranscript>;
+  drafts!: Table<FormDraft>;
 
   constructor() {
     super("TeleMedicalOfflineDB");
@@ -34,6 +40,20 @@ export class OfflineDB extends Dexie {
           if (!draft.pendingParsing) draft.pendingParsing = undefined;
           if (!draft.recordingSessionId) draft.recordingSessionId = undefined;
         });
+      });
+
+    // Version 3: Add entity cache tables
+    this.version(3)
+      .stores({
+        draftVisits: "draftId, patientId, userId, [userId+patientId], updatedAt",
+        outbox: "id, createdAt, status, [status+createdAt], dependsOn",
+        files: "id, createdAt",
+        patients: "id, updatedAt, [id+updatedAt]",
+        visits: "id, patientId, createdAt, [patientId+createdAt]",
+        documents: "id, patientId, visitId, uploadedAt",
+        notes: "id, visitId, createdAt",
+        transcripts: "id, visitId, createdAt",
+        drafts: "draftKey, userId, formName, route, entityId, updatedAt, [userId+formName+route+entityId]",
       });
   }
 }
@@ -80,6 +100,62 @@ export interface StoredFile {
   name: string;
   size: number;
   createdAt: number;
+}
+
+/**
+ * Cached entity interfaces
+ */
+export interface CachedPatient {
+  id: string;
+  data: unknown; // JSON-serialized patient data
+  updatedAt: number;
+  cachedAt: number;
+}
+
+export interface CachedVisit {
+  id: string;
+  patientId: string;
+  data: unknown; // JSON-serialized visit data
+  createdAt: number;
+  cachedAt: number;
+}
+
+export interface CachedDocument {
+  id: string;
+  patientId: string;
+  visitId?: string | null;
+  data: unknown; // JSON-serialized document data
+  uploadedAt: number;
+  cachedAt: number;
+}
+
+export interface CachedNote {
+  id: string;
+  visitId: string;
+  data: unknown; // JSON-serialized note data
+  createdAt: number;
+  cachedAt: number;
+}
+
+export interface CachedTranscript {
+  id: string;
+  visitId: string;
+  data: unknown; // JSON-serialized transcript data
+  createdAt: number;
+  cachedAt: number;
+}
+
+/**
+ * General form draft (for any form, not just visits)
+ */
+export interface FormDraft {
+  draftKey: string; // `${userId}:${formName}:${route}:${entityId ?? 'none'}`
+  userId: string;
+  formName: string; // e.g., "personal-details", "medications", "allergies"
+  route: string; // current pathname
+  entityId?: string; // patientId, visitId, etc.
+  data: string; // JSON string of form data
+  updatedAt: number;
 }
 
 // Singleton instance

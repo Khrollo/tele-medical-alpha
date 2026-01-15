@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidateTag } from "next/cache";
 import { requireUser } from "@/app/_lib/auth/get-current-user";
 import {
   createVisitDraft,
@@ -47,6 +48,12 @@ export async function createVisitDraftAction(params: {
     appointmentType: params.appointmentType,
   });
 
+  // Invalidate cache tags
+  revalidateTag(`patient:${params.patientId}`, "max");
+  revalidateTag(`visits:${params.patientId}`, "max");
+  revalidateTag("waiting-room", "max");
+  revalidateTag("patients", "max");
+
   return { success: true, visitId: visit.id };
 }
 
@@ -84,6 +91,13 @@ export async function updateVisitDraftAction(
     ...params,
     clinicianId: user.id, // Set clinician_id when updating visit
   });
+
+  // Invalidate cache tags
+  if (visit) {
+    revalidateTag(`visit:${visitId}`, "max");
+    revalidateTag(`visits:${visit.patientId}`, "max");
+    revalidateTag(`patient:${visit.patientId}`, "max");
+  }
 
   return { success: true };
 }
@@ -166,6 +180,12 @@ export async function finalizeVisitAction(
       // Don't fail the finalization if sync fails - data is already saved in the visit note
     }
   }
+
+  // Invalidate cache tags
+  revalidateTag(`visit:${visitId}`, "max");
+  revalidateTag(`visits:${visit.patientId}`, "max");
+  revalidateTag(`patient:${visit.patientId}`, "max");
+  revalidateTag("waiting-room", "max");
 
   return { success: true };
 }

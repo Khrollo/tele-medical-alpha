@@ -1,4 +1,5 @@
 import { eq, desc, or, isNull, and, inArray } from "drizzle-orm";
+import { unstable_cache } from "next/cache";
 import { db } from "../index";
 import { patients, visits, users, notes } from "../schema";
 
@@ -47,6 +48,8 @@ export async function findExistingPatients(phone?: string | null, email?: string
  * @returns Array of unassigned patients with visit details (priority, appointmentType, waitTime)
  */
 export async function getUnassignedPatientsWithVisits() {
+  return unstable_cache(
+    async () => {
   // Get unassigned patients - only where is_assigned is explicitly false
   const unassignedPatients = await db
     .select({
@@ -119,6 +122,13 @@ export async function getUnassignedPatientsWithVisits() {
         : null,
     };
   });
+    },
+    ["unassigned-patients-with-visits"],
+    {
+      tags: ["waiting-room", "patients"],
+      revalidate: 30, // 30 seconds
+    }
+  )();
 }
 
 /**
@@ -126,7 +136,9 @@ export async function getUnassignedPatientsWithVisits() {
  * @returns Array of unassigned patients with id, fullName, and createdAt
  */
 export async function getUnassignedPatients() {
-  const result = await db
+  return unstable_cache(
+    async () => {
+      const result = await db
     .select({
       id: patients.id,
       fullName: patients.fullName,
@@ -136,7 +148,14 @@ export async function getUnassignedPatients() {
     .where(or(eq(patients.isAssigned, false), isNull(patients.isAssigned)))
     .orderBy(patients.createdAt);
 
-  return result;
+      return result;
+    },
+    ["unassigned-patients"],
+    {
+      tags: ["waiting-room", "patients"],
+      revalidate: 30,
+    }
+  )();
 }
 
 /**
@@ -144,7 +163,9 @@ export async function getUnassignedPatients() {
  * @returns Array of all patients with id, fullName, dob, phone, email, clinician info, and visit data
  */
 export async function getAllPatients() {
-  const result = await db
+  return unstable_cache(
+    async () => {
+      const result = await db
     .select({
       id: patients.id,
       fullName: patients.fullName,
@@ -233,6 +254,13 @@ export async function getAllPatients() {
       visit: visitMap.get(patient.id) || null,
     };
   });
+    },
+    ["all-patients"],
+    {
+      tags: ["patients"],
+      revalidate: 60, // 60 seconds
+    }
+  )();
 }
 
 /**
@@ -241,8 +269,10 @@ export async function getAllPatients() {
  * @returns Patient data with latest visit information
  */
 export async function getPatientOverview(patientId: string) {
-  // Get patient data
-  const patient = await db
+  return unstable_cache(
+    async () => {
+      // Get patient data
+      const patient = await db
     .select({
       id: patients.id,
       fullName: patients.fullName,
@@ -306,13 +336,20 @@ export async function getPatientOverview(patientId: string) {
     }
   }
 
-  return {
-    patient: patient[0],
-    latestVisit: latestVisit
-      ? {
-          ...latestVisit,
-          chiefComplaint,
-        }
-      : null,
-  };
+      return {
+        patient: patient[0],
+        latestVisit: latestVisit
+          ? {
+              ...latestVisit,
+              chiefComplaint,
+            }
+          : null,
+      };
+    },
+    [`patient-overview-${patientId}`],
+    {
+      tags: [`patient:${patientId}`, "patients"],
+      revalidate: 60, // 60 seconds
+    }
+  )();
 }

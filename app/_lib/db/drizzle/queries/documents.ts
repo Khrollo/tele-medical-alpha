@@ -1,6 +1,7 @@
 import { db } from "../index";
 import { documents } from "../schema";
 import { eq, desc } from "drizzle-orm";
+import { unstable_cache } from "next/cache";
 
 export interface CreateDocumentParams {
   patientId: string;
@@ -36,22 +37,40 @@ export async function createDocument(params: CreateDocumentParams) {
  * Get documents for a patient (ordered by newest first)
  */
 export async function getPatientDocuments(patientId: string) {
-  return await db
+  return unstable_cache(
+    async () => {
+      return await db
     .select()
     .from(documents)
     .where(eq(documents.patientId, patientId))
     .orderBy(desc(documents.uploadedAt));
+    },
+    [`patient-documents-${patientId}`],
+    {
+      tags: [`documents:${patientId}`, `patient:${patientId}`],
+      revalidate: 60,
+    }
+  )();
 }
 
 /**
  * Get documents for a visit
  */
 export async function getVisitDocuments(visitId: string) {
-  return await db
+  return unstable_cache(
+    async () => {
+      return await db
     .select()
     .from(documents)
     .where(eq(documents.visitId, visitId))
     .orderBy(documents.uploadedAt);
+    },
+    [`visit-documents-${visitId}`],
+    {
+      tags: [`visit:${visitId}`],
+      revalidate: 60,
+    }
+  )();
 }
 
 /**

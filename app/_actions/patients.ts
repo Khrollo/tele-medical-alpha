@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { getServerSession } from "@/app/_lib/supabase/server";
 import { createPatient } from "@/app/_lib/db/drizzle/queries/patient-personal-details";
@@ -92,7 +92,10 @@ export async function createPatientAction(payload: CreatePatientPayload) {
       consentSignatureUrl: payload.consentSignatureUrl || null,
     });
 
-    // Revalidate the patients list page
+    // Revalidate cache tags
+    revalidateTag("patients", "max");
+    revalidateTag(`patient:${patient.id}`, "max");
+    revalidateTag("waiting-room", "max");
     revalidatePath("/patients");
 
     return { success: true, patientId: patient.id };
@@ -144,7 +147,10 @@ export async function updatePatientAssignmentAction(
 
     await db.update(patients).set(updateData).where(eq(patients.id, patientId));
 
-    // Revalidate the patients list page
+    // Revalidate cache tags
+    revalidateTag(`patient:${patientId}`, "max");
+    revalidateTag("patients", "max");
+    revalidateTag("waiting-room", "max");
     revalidatePath("/patients");
     revalidatePath(`/patients/${patientId}`);
 
@@ -185,7 +191,9 @@ export async function updatePatientConsentSignatureAction(
       .set({ consentSignatureUrl, updatedAt: new Date() })
       .where(eq(patients.id, patientId));
 
-    // Revalidate the patients list page
+    // Revalidate cache tags
+    revalidateTag(`patient:${patientId}`, "max");
+    revalidateTag("patients", "max");
     revalidatePath("/patients");
     revalidatePath(`/patients/${patientId}`);
 

@@ -2,6 +2,12 @@ import { getOfflineDB } from "./db";
 import { getFile, getFileBlob } from "./files";
 import { saveDraft } from "./draft";
 import { toast } from "sonner";
+import { getReadyOperations } from "./repos/outbox.repo";
+import { processOperation } from "./repos/outbox.repo";
+import { isOnline } from "./sync/network";
+import * as patientsRepo from "./repos/patients.repo";
+import * as visitsRepo from "./repos/visits.repo";
+import * as documentsRepo from "./repos/documents.repo";
 
 /**
  * Sync engine to retry pending operations when connection is restored
@@ -50,8 +56,8 @@ export class SyncEngine {
    * Sync all pending operations
    */
   private async syncPendingOperations() {
-    if (!navigator.onLine) return;
-    
+    if (!isOnline()) return;
+
     // Prevent concurrent sync operations
     if (this.isSyncing) {
       console.log("Sync already in progress, skipping...");
@@ -61,6 +67,9 @@ export class SyncEngine {
     this.isSyncing = true;
 
     try {
+      // Process general outbox operations first
+      await this.processOutboxOperations();
+
       const db = getOfflineDB();
 
       // Get all drafts with pending operations
@@ -68,8 +77,15 @@ export class SyncEngine {
 
       let hasPendingOps = false;
       for (const draft of drafts) {
-        if (draft.pendingChunks || draft.pendingTranscription || draft.pendingParsing || 
-            (draft.recordingSessionId && draft.visitIdRemote && !draft.transcript && !draft.pendingTranscription)) {
+        if (
+          draft.pendingChunks ||
+          draft.pendingTranscription ||
+          draft.pendingParsing ||
+          (draft.recordingSessionId &&
+            draft.visitIdRemote &&
+            !draft.transcript &&
+            !draft.pendingTranscription)
+        ) {
           hasPendingOps = true;
           break;
         }
@@ -103,8 +119,12 @@ export class SyncEngine {
           }
 
           // Retry finalization if we have a recording session but no transcript
-          if (currentDraft.recordingSessionId && currentDraft.visitIdRemote && 
-              !currentDraft.transcript && !currentDraft.pendingTranscription) {
+          if (
+            currentDraft.recordingSessionId &&
+            currentDraft.visitIdRemote &&
+            !currentDraft.transcript &&
+            !currentDraft.pendingTranscription
+          ) {
             const opKey = `${currentDraft.draftId}-finalize`;
             if (!this.activeOperations.has(opKey)) {
               this.activeOperations.add(opKey);
@@ -149,9 +169,11 @@ export class SyncEngine {
       }
 
       // Emit custom event to notify forms that sync completed
-      window.dispatchEvent(new CustomEvent("draftSyncCompleted", { 
-        detail: { patientId: drafts[0]?.patientId } 
-      }));
+      window.dispatchEvent(
+        new CustomEvent("draftSyncCompleted", {
+          detail: { patientId: drafts[0]?.patientId },
+        })
+      );
     } finally {
       this.isSyncing = false;
     }
@@ -166,8 +188,12 @@ export class SyncEngine {
     // Double-check draft state before proceeding
     const db = getOfflineDB();
     const currentDraft = await db.draftVisits.get(draft.draftId);
-    if (!currentDraft || !currentDraft.recordingSessionId || 
-        currentDraft.transcript || currentDraft.pendingTranscription) {
+    if (
+      !currentDraft ||
+      !currentDraft.recordingSessionId ||
+      currentDraft.transcript ||
+      currentDraft.pendingTranscription
+    ) {
       // Already completed or in progress
       return;
     }
@@ -186,14 +212,14 @@ export class SyncEngine {
 
       if (response.ok) {
         const data = await response.json();
-        
+
         // Verify draft still exists and hasn't changed
         const verifyDraft = await db.draftVisits.get(draft.draftId);
         if (!verifyDraft || verifyDraft.transcript) {
           // Already completed by another process
           return;
         }
-        
+
         // Update draft with results
         await db.draftVisits.update(draft.draftId, {
           recordingSessionId: undefined, // Clear after successful finalization
@@ -202,11 +228,15 @@ export class SyncEngine {
         });
 
         if (data.transcript) {
-          toast.success("Recording finalized and transcribed. Parsing will start automatically.");
+          toast.success(
+            "Recording finalized and transcribed. Parsing will start automatically."
+          );
           // Emit event to notify form
-          window.dispatchEvent(new CustomEvent("draftUpdated", { 
-            detail: { patientId: draft.patientId } 
-          }));
+          window.dispatchEvent(
+            new CustomEvent("draftUpdated", {
+              detail: { patientId: draft.patientId },
+            })
+          );
         }
       }
     } catch (error) {
@@ -265,15 +295,21 @@ export class SyncEngine {
 
     await db.draftVisits.update(draft.draftId, {
       pendingChunks:
-        remainingChunks.length > 0 ? JSON.stringify(remainingChunks) : undefined,
+        remainingChunks.length > 0
+          ? JSON.stringify(remainingChunks)
+          : undefined,
     });
 
     if (successfulChunks.length > 0) {
-      toast.success(`Uploaded ${successfulChunks.length} pending recording chunk(s). Continuing with transcription...`);
+      toast.success(
+        `Uploaded ${successfulChunks.length} pending recording chunk(s). Continuing with transcription...`
+      );
       // Emit event to notify form
-      window.dispatchEvent(new CustomEvent("draftUpdated", { 
-        detail: { patientId: draft.patientId } 
-      }));
+      window.dispatchEvent(
+        new CustomEvent("draftUpdated", {
+          detail: { patientId: draft.patientId },
+        })
+      );
     }
   }
 
@@ -336,7 +372,7 @@ export class SyncEngine {
             // Already completed by another process
             return;
           }
-          
+
           // Clear pending transcription and save transcript
           await db.draftVisits.update(draft.draftId, {
             pendingTranscription: undefined,
@@ -361,19 +397,26 @@ export class SyncEngine {
                 // Verify draft still exists before updating
                 const verifyDraft = await db.draftVisits.get(draft.draftId);
                 if (!verifyDraft) return;
-                
+
                 // Update draft with parsed data
                 const formState = JSON.parse(verifyDraft.formStateJson || "{}");
                 const mergedState = { ...formState, ...parsed };
                 await db.draftVisits.update(draft.draftId, {
                   formStateJson: JSON.stringify(mergedState),
                 });
-                
-                toast.success("Transcription and parsing completed. Form will update automatically.");
+
+                toast.success(
+                  "Transcription and parsing completed. Form will update automatically."
+                );
                 // Emit event to notify form to reload
-                window.dispatchEvent(new CustomEvent("draftUpdated", { 
-                  detail: { patientId: transcriptionData.patientId, hasParsedData: true } 
-                }));
+                window.dispatchEvent(
+                  new CustomEvent("draftUpdated", {
+                    detail: {
+                      patientId: transcriptionData.patientId,
+                      hasParsedData: true,
+                    },
+                  })
+                );
               }
             } else {
               // Parsing failed, queue for retry only if not already queued
@@ -445,7 +488,7 @@ export class SyncEngine {
             // Already completed by another process
             return;
           }
-          
+
           // Update draft with parsed data
           const formState = JSON.parse(verifyDraft.formStateJson || "{}");
           const mergedState = { ...formState, ...parsed };
@@ -456,13 +499,109 @@ export class SyncEngine {
 
           toast.success("Parsing completed. Form will update automatically.");
           // Emit event to notify form to reload
-          window.dispatchEvent(new CustomEvent("draftUpdated", { 
-            detail: { patientId: parsingData.patientId, hasParsedData: true } 
-          }));
+          window.dispatchEvent(
+            new CustomEvent("draftUpdated", {
+              detail: { patientId: parsingData.patientId, hasParsedData: true },
+            })
+          );
         }
       }
     } catch (error) {
       console.error("Error retrying parsing:", error);
+    }
+  }
+
+  /**
+   * Process general outbox operations (FIFO, respecting dependencies)
+   */
+  private async processOutboxOperations() {
+    if (!isOnline()) return;
+
+    try {
+      // Get ready operations (no dependencies or dependencies completed)
+      const readyOps = await getReadyOperations();
+
+      // Filter out operations that are not ready to retry yet
+      const now = Date.now();
+      const opsToProcess = readyOps.filter((op) => {
+        if (op.retryAt && op.retryAt > now) {
+          return false; // Not ready yet
+        }
+        return (
+          op.status === "queued" || (op.status === "failed" && op.attempts < 8)
+        );
+      });
+
+      if (opsToProcess.length === 0) {
+        return;
+      }
+
+      // Process operations in order (FIFO)
+      for (const op of opsToProcess) {
+        const opKey = `outbox-${op.id}`;
+        if (this.activeOperations.has(opKey)) {
+          continue; // Already processing
+        }
+
+        this.activeOperations.add(opKey);
+        try {
+          const result = await processOperation(op);
+
+          if (result.success && result.response) {
+            // Update cache based on operation type
+            await this.handleOperationSuccess(op, result.response);
+          }
+        } catch (error) {
+          console.error(`Error processing outbox operation ${op.id}:`, error);
+        } finally {
+          this.activeOperations.delete(opKey);
+        }
+      }
+    } catch (error) {
+      console.error("Error processing outbox operations:", error);
+    }
+  }
+
+  /**
+   * Handle successful operation - update cache
+   */
+  private async handleOperationSuccess(
+    op: { type: string; payloadJson: string },
+    response: unknown
+  ): Promise<void> {
+    try {
+      const payload = JSON.parse(op.payloadJson) as Record<string, unknown>;
+
+      // Update cache based on operation type
+      if (op.type.includes("patient")) {
+        if (response && typeof response === "object" && "id" in response) {
+          await patientsRepo.upsertFromServer(
+            response as { id: string; [key: string]: unknown }
+          );
+        }
+      } else if (op.type.includes("visit")) {
+        if (response && typeof response === "object" && "id" in response) {
+          await visitsRepo.upsertFromServer(
+            response as {
+              id: string;
+              patientId: string;
+              [key: string]: unknown;
+            }
+          );
+        }
+      } else if (op.type.includes("document")) {
+        if (response && typeof response === "object" && "id" in response) {
+          await documentsRepo.upsertFromServer(
+            response as {
+              id: string;
+              patientId: string;
+              [key: string]: unknown;
+            }
+          );
+        }
+      }
+    } catch (error) {
+      console.error("Error updating cache after operation success:", error);
     }
   }
 }

@@ -2,6 +2,7 @@
 
 import { SideNav } from "@/components/side-nav";
 import { usePathname } from "next/navigation";
+import { PatientCacheProvider } from "@/app/_components/providers/patient-cache-provider";
 import * as React from "react";
 
 interface RouteWrapperProps {
@@ -27,17 +28,23 @@ export function RouteWrapper({ children, userRole, userName }: RouteWrapperProps
   // If we're on a dynamic patient route, create patient page, or patients list page, don't wrap with SideNav
   // The PatientChartShell, CreatePatientShell, and PatientsShell handle their own navigation
   if (isDynamicPatientRoute || isCreatePatientPage || isPatientsListPage) {
-    return <>{children}</>;
+    return (
+      <PatientCacheProvider>
+        {children}
+      </PatientCacheProvider>
+    );
   }
 
   // For the /patients list page, use SideNav
   return (
-    <div className="flex min-h-screen w-full">
-      <SideNav userRole={userRole} userName={userName} />
-      <main className="flex flex-1 flex-col overflow-hidden pl-14 md:pl-0">
-        {children}
-      </main>
-    </div>
+    <PatientCacheProvider>
+      <div className="flex min-h-screen w-full">
+        <SideNav userRole={userRole} userName={userName} />
+        <main className="flex flex-1 flex-col overflow-hidden pl-14 md:pl-0">
+          {children}
+        </main>
+      </div>
+    </PatientCacheProvider>
   );
 }
 

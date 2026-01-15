@@ -11,7 +11,6 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { SignatureCanvas } from "./signature-canvas";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -76,8 +75,18 @@ export function ConsentFormDialog({
   const [witnessName, setWitnessName] = React.useState("");
   const [witnessSignature, setWitnessSignature] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const signatureContainerRef = React.useRef<HTMLDivElement>(null);
+  const [signatureWidth, setSignatureWidth] = React.useState(500);
 
   const canSubmit = hasReadTerms && patientSignature && (!needsWitness || (witnessName && witnessSignature));
+
+  // Calculate signature canvas width based on container
+  React.useEffect(() => {
+    if (signatureContainerRef.current) {
+      const width = signatureContainerRef.current.offsetWidth - 32; // Account for padding
+      setSignatureWidth(Math.max(400, Math.min(600, width)));
+    }
+  }, [open]);
 
   const handleSubmit = async () => {
     if (!canSubmit || !patientSignature) return;
@@ -105,112 +114,116 @@ export function ConsentFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
-        <DialogHeader>
+      <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0 gap-0">
+        <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-4">
           <DialogTitle>Patient Privacy & Consent for Treatment</DialogTitle>
           <DialogDescription>
             Please read the terms and conditions below and provide your signature.
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 pr-4">
-          <div className="space-y-6">
-            {/* Terms and Conditions Text */}
-            <div className="space-y-4">
-              <div className="prose prose-sm max-w-none">
-                <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed">
-                  {TERMS_AND_CONDITIONS}
-                </pre>
-              </div>
-
-              {/* Consent Checkbox */}
-              <div className="flex items-start space-x-2 pt-4 border-t">
-                <Checkbox
-                  id="readTerms"
-                  checked={hasReadTerms}
-                  onCheckedChange={(checked) => setHasReadTerms(checked === true)}
-                />
-                <Label
-                  htmlFor="readTerms"
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                >
-                  I HAVE READ (OR HAD READ TO ME) THE ABOVE AND AGREE TO RECEIVE TREATMENT.
-                </Label>
-              </div>
-            </div>
-
-            {/* Patient Signature Section */}
-            <div className="space-y-4 border-t pt-4">
-              <div>
-                <Label className="text-base font-semibold">Patient Signature / Mark</Label>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {patientName}
-                </p>
-              </div>
-              <SignatureCanvas
-                onSignatureChange={(dataUrl) => setPatientSignature(dataUrl)}
-                width={600}
-                height={200}
-              />
-            </div>
-
-            {/* Date */}
-            <div className="space-y-2 border-t pt-4">
-              <Label htmlFor="consentDate">Date</Label>
-              <div className="relative">
-                <Input
-                  id="consentDate"
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className="pr-10"
-                />
-                <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-              </div>
-            </div>
-
-            {/* Witness Section */}
-            <div className="space-y-4 border-t pt-4">
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="needsWitness"
-                  checked={needsWitness}
-                  onCheckedChange={(checked) => setNeedsWitness(checked === true)}
-                />
-                <Label
-                  htmlFor="needsWitness"
-                  className="text-sm font-medium leading-none cursor-pointer"
-                >
-                  Patient cannot sign - Witness signature required
-                </Label>
-              </div>
-
-              {needsWitness && (
-                <div className="space-y-4 pl-6 border-l-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="witnessName">Witness Name</Label>
-                    <Input
-                      id="witnessName"
-                      value={witnessName}
-                      onChange={(e) => setWitnessName(e.target.value)}
-                      placeholder="Enter witness name"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Witness Signature</Label>
-                    <SignatureCanvas
-                      onSignatureChange={(dataUrl) => setWitnessSignature(dataUrl)}
-                      width={600}
-                      height={200}
-                    />
-                  </div>
+        <div className="flex-1 min-h-0 overflow-y-auto px-6">
+          <div className="space-y-6 pr-4 pb-6">
+              {/* Terms and Conditions Text */}
+              <div className="space-y-4">
+                <div className="prose prose-sm max-w-none">
+                  <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed">
+                    {TERMS_AND_CONDITIONS}
+                  </pre>
                 </div>
-              )}
-            </div>
-          </div>
-        </ScrollArea>
 
-        <DialogFooter>
+                {/* Consent Checkbox */}
+                <div className="flex items-start space-x-2 pt-4 border-t">
+                  <Checkbox
+                    id="readTerms"
+                    checked={hasReadTerms}
+                    onCheckedChange={(checked) => setHasReadTerms(checked === true)}
+                  />
+                  <Label
+                    htmlFor="readTerms"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                  >
+                    I HAVE READ (OR HAD READ TO ME) THE ABOVE AND AGREE TO RECEIVE TREATMENT.
+                  </Label>
+                </div>
+              </div>
+
+              {/* Patient Signature Section */}
+              <div className="space-y-4 border-t pt-4">
+                <div>
+                  <Label className="text-base font-semibold">Patient Signature / Mark</Label>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {patientName}
+                  </p>
+                </div>
+                <div ref={signatureContainerRef} className="border rounded-lg p-4 bg-muted/30 w-full">
+                  <SignatureCanvas
+                    onSignatureChange={(dataUrl) => setPatientSignature(dataUrl)}
+                    width={signatureWidth}
+                    height={200}
+                  />
+                </div>
+              </div>
+
+              {/* Date */}
+              <div className="space-y-2 border-t pt-4">
+                <Label htmlFor="consentDate">Date</Label>
+                <div className="relative">
+                  <Input
+                    id="consentDate"
+                    type="date"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    className="pr-10"
+                  />
+                  <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                </div>
+              </div>
+
+              {/* Witness Section */}
+              <div className="space-y-4 border-t pt-4">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="needsWitness"
+                    checked={needsWitness}
+                    onCheckedChange={(checked) => setNeedsWitness(checked === true)}
+                  />
+                  <Label
+                    htmlFor="needsWitness"
+                    className="text-sm font-medium leading-none cursor-pointer"
+                  >
+                    Patient cannot sign - Witness signature required
+                  </Label>
+                </div>
+
+                {needsWitness && (
+                  <div className="space-y-4 pl-6 border-l-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="witnessName">Witness Name</Label>
+                      <Input
+                        id="witnessName"
+                        value={witnessName}
+                        onChange={(e) => setWitnessName(e.target.value)}
+                        placeholder="Enter witness name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Witness Signature</Label>
+                      <div className="border rounded-lg p-4 bg-muted/30 w-full">
+                        <SignatureCanvas
+                          onSignatureChange={(dataUrl) => setWitnessSignature(dataUrl)}
+                          width={signatureWidth}
+                          height={200}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+        </div>
+
+        <DialogFooter className="flex-shrink-0 border-t px-6 py-4">
           <Button
             type="button"
             variant="outline"

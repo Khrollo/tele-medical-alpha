@@ -1,4 +1,5 @@
 import { eq, desc } from "drizzle-orm";
+import { unstable_cache } from "next/cache";
 import { db } from "../index";
 import { patients, visits } from "../schema";
 
@@ -36,7 +37,9 @@ export interface PatientBasics {
  * Get patient basics for visit form context
  */
 export async function getPatientBasics(patientId: string): Promise<PatientBasics | null> {
-  const result = await db
+  return unstable_cache(
+    async () => {
+      const result = await db
     .select({
       id: patients.id,
       fullName: patients.fullName,
@@ -80,9 +83,16 @@ export async function getPatientBasics(patientId: string): Promise<PatientBasics
     .orderBy(desc(visits.createdAt))
     .limit(10);
   
-  return {
-    ...result[0],
-    recentVisits: recentVisitsResult,
-  };
+      return {
+        ...result[0],
+        recentVisits: recentVisitsResult,
+      };
+    },
+    [`patient-basics-${patientId}`],
+    {
+      tags: [`patient:${patientId}`, "patients"],
+      revalidate: 60,
+    }
+  )();
 }
 

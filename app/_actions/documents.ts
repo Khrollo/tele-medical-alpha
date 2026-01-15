@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidateTag } from "next/cache";
 import { requireUser } from "@/app/_lib/auth/get-current-user";
 import { createDocument, getPatientDocuments, deleteDocument } from "@/app/_lib/db/drizzle/queries/documents";
 import { getSignedUrl, deleteFile } from "@/app/_lib/storage";
@@ -29,6 +30,13 @@ export async function createDocumentAction(params: CreateDocumentActionParams) {
       storageUrl: params.storageUrl,
       uploadedBy: user.id,
     });
+
+    // Invalidate cache tags
+    revalidateTag(`documents:${params.patientId}`, "max");
+    revalidateTag(`patient:${params.patientId}`, "max");
+    if (params.visitId) {
+      revalidateTag(`visit:${params.visitId}`, "max");
+    }
 
     return { success: true, document };
   } catch (error) {
@@ -114,6 +122,15 @@ export async function deleteDocumentAction(documentId: string, storageUrl: strin
         success: false,
         error: "Document not found",
       };
+    }
+
+    // Invalidate cache tags
+    if (deleted.patientId) {
+      revalidateTag(`documents:${deleted.patientId}`, "max");
+      revalidateTag(`patient:${deleted.patientId}`, "max");
+    }
+    if (deleted.visitId) {
+      revalidateTag(`visit:${deleted.visitId}`, "max");
     }
     
     return { success: true };

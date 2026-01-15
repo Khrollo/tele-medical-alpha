@@ -1,4 +1,5 @@
 import { eq, desc, and, gte, lte, count } from "drizzle-orm";
+import { unstable_cache } from "next/cache";
 import { db } from "../index";
 import { visits, patients } from "../schema";
 
@@ -50,6 +51,12 @@ export async function getVisitHistory(
     from = null,
     to = null,
   } = opts;
+
+  // Create cache key from options
+  const cacheKey = `visit-history-${patientId}-${page}-${pageSize}-${status || "all"}-${from || "none"}-${to || "none"}`;
+
+  return unstable_cache(
+    async () => {
 
   // Verify patient exists
   const patient = await db
@@ -105,12 +112,19 @@ export async function getVisitHistory(
     .limit(pageSize)
     .offset(offset);
 
-  return {
-    patient: patient[0],
-    visits: visitsResult,
-    total,
-    page,
-    pageSize,
-  };
+      return {
+        patient: patient[0],
+        visits: visitsResult,
+        total,
+        page,
+        pageSize,
+      };
+    },
+    [cacheKey],
+    {
+      tags: [`visits:${patientId}`, `patient:${patientId}`],
+      revalidate: 60,
+    }
+  )();
 }
 

@@ -634,7 +634,7 @@ export function CreatePatientForm() {
                     appointmentType: "in-person",
                   });
 
-                  toast.success("Patient sent to waiting room");
+                  // Navigate to form where user will fill in triage and type, then see success toast
                   router.push(`/patients/${createdPatientId}/send-to-waiting-room?visitId=${visitResult.visitId}`);
                 } catch (error) {
                   console.error("Error sending to waiting room:", error);
