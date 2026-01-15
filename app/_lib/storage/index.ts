@@ -110,6 +110,7 @@ export async function deleteFiles(bucket: string, paths: string[]) {
 
 /**
  * List files in a directory (server-side only)
+ * Automatically handles pagination to get all files
  */
 export async function listFiles(
   bucket: string,
@@ -118,21 +119,57 @@ export async function listFiles(
     limit?: number;
     offset?: number;
     sortBy?: { column: string; order?: "asc" | "desc" };
+    paginate?: boolean; // If true, automatically paginate to get all files
   }
 ) {
   const supabase = createSupabaseStorageClient();
 
-  const { data, error } = await supabase.storage.from(bucket).list(path, {
-    limit: options?.limit,
-    offset: options?.offset,
-    sortBy: options?.sortBy,
-  });
+  // If paginate is true (or not specified), automatically get all files
+  if (options?.paginate !== false) {
+    const allFiles: any[] = [];
+    let offset = 0;
+    const pageSize = options?.limit || 10000; // Use provided limit or default to 1000
 
-  if (error) {
-    throw new Error(`Failed to list files: ${error.message}`);
+    while (true) {
+      const { data, error } = await supabase.storage.from(bucket).list(path, {
+        limit: pageSize,
+        offset: offset,
+        sortBy: options?.sortBy,
+      });
+
+      if (error) {
+        throw new Error(`Failed to list files: ${error.message}`);
+      }
+
+      if (!data || data.length === 0) {
+        break; // No more files
+      }
+
+      allFiles.push(...data);
+
+      // If we got fewer files than the page size, we've reached the end
+      if (data.length < pageSize) {
+        break;
+      }
+
+      offset += pageSize;
+    }
+
+    return allFiles;
+  } else {
+    // Original behavior: single page only
+    const { data, error } = await supabase.storage.from(bucket).list(path, {
+      limit: options?.limit,
+      offset: options?.offset,
+      sortBy: options?.sortBy,
+    });
+
+    if (error) {
+      throw new Error(`Failed to list files: ${error.message}`);
+    }
+
+    return data;
   }
-
-  return data;
 }
 
 /**

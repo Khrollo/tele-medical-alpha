@@ -88,7 +88,7 @@ export async function POST(
 
     const { visitId } = await params;
     const body = await request.json();
-    const { recordingSessionId } = body;
+    const { recordingSessionId, expectedChunkCount, mimeType } = body;
 
     if (!recordingSessionId) {
       return NextResponse.json(
@@ -142,9 +142,57 @@ export async function POST(
         sessionPath,
         recordingSessionId,
         totalChunks: chunkFiles.length,
+        expectedChunkCount: expectedChunkCount || "unknown",
         chunkIndices: chunkIndices.slice(0, 10), // First 10 for logging
         hasGaps: chunkIndices.length > 0 && chunkIndices[chunkIndices.length - 1] - chunkIndices[0] + 1 !== chunkIndices.length,
       });
+      
+      // CRITICAL: Validate we have all expected chunks before proceeding
+      if (expectedChunkCount && chunkFiles.length < expectedChunkCount) {
+        const missing = expectedChunkCount - chunkFiles.length;
+        console.warn("Missing chunks detected - refusing to finalize", {
+          expectedChunkCount,
+          foundChunks: chunkFiles.length,
+          missing,
+          chunkIndices: chunkIndices,
+        });
+        
+        // Wait a bit and retry listing (eventual consistency)
+        await new Promise((r) => setTimeout(r, 3000));
+        const retryFiles = await listFiles(CHUNKS_BUCKET, sessionPath);
+        const retryChunkFiles = retryFiles
+          ?.filter((f) => f.name.startsWith("chunk-"))
+          .sort((a, b) => a.name.localeCompare(b.name)) || [];
+        
+        if (retryChunkFiles.length < expectedChunkCount) {
+          return NextResponse.json(
+            {
+              error: `Missing chunks: expected ${expectedChunkCount}, found ${retryChunkFiles.length}. Please wait and retry.`,
+              expectedChunkCount,
+              foundChunks: retryChunkFiles.length,
+              missing: expectedChunkCount - retryChunkFiles.length,
+            },
+            { status: 400 }
+          );
+        }
+        
+        // Update chunkFiles with retry results
+        chunkFiles.length = 0;
+        chunkFiles.push(...retryChunkFiles);
+        
+        // Re-extract indices
+        const retryIndices = chunkFiles.map((f) => {
+          const match = f.name.match(/chunk-(\d+)/);
+          return match ? parseInt(match[1], 10) : -1;
+        }).filter(idx => idx >= 0).sort((a, b) => a - b);
+        chunkIndices.length = 0;
+        chunkIndices.push(...retryIndices);
+        
+        console.log("After retry, chunks found", {
+          totalChunks: chunkFiles.length,
+          expectedChunkCount,
+        });
+      }
 
       if (chunkFiles.length === 0) {
         console.warn("No valid chunk files found for session", { sessionPath, recordingSessionId, files: files.map(f => f.name) });
@@ -159,13 +207,52 @@ export async function POST(
       }
 
       // Download and assemble chunks into single buffer
-      const chunks: Buffer[] = [];
+      // IMPORTANT: Sort by chunk index to ensure correct order
+      const chunks: Array<{ index: number; data: Buffer }> = [];
       for (const chunkFile of chunkFiles) {
-        const chunkPath = `${sessionPath}/${chunkFile.name}`;
-        const chunkData = await downloadFile(CHUNKS_BUCKET, chunkPath);
-        chunks.push(chunkData);
+        const match = chunkFile.name.match(/chunk-(\d+)/);
+        if (match) {
+          const chunkIndex = parseInt(match[1], 10);
+          const chunkPath = `${sessionPath}/${chunkFile.name}`;
+          const chunkData = await downloadFile(CHUNKS_BUCKET, chunkPath);
+          chunks.push({ index: chunkIndex, data: chunkData });
+        }
       }
-      const finalBuffer = Buffer.concat(chunks);
+      
+      // Sort by index to ensure correct order
+      chunks.sort((a, b) => a.index - b.index);
+      
+      // Log chunk sizes for debugging
+      console.log("Assembling chunks", {
+        totalChunks: chunks.length,
+        chunkSizes: chunks.map(c => ({ index: c.index, size: c.data.length })).slice(0, 10),
+        totalSize: chunks.reduce((sum, c) => sum + c.data.length, 0),
+      });
+      
+      // Check for missing chunks (gaps in sequence)
+      if (chunks.length > 0) {
+        const indices = chunks.map(c => c.index).sort((a, b) => a - b);
+        const expectedIndices: number[] = [];
+        for (let i = indices[0]; i <= indices[indices.length - 1]; i++) {
+          expectedIndices.push(i);
+        }
+        const missingIndices = expectedIndices.filter(idx => !indices.includes(idx));
+        if (missingIndices.length > 0) {
+          console.warn("Missing chunk indices detected!", {
+            missingIndices: missingIndices.slice(0, 20), // First 20 missing
+            totalMissing: missingIndices.length,
+            firstChunk: indices[0],
+            lastChunk: indices[indices.length - 1],
+          });
+        }
+      }
+      
+      // Concatenate chunks in order
+      // NOTE: For WebM/Opus, simple Buffer.concat can work for timeslice recordings
+      // because each chunk is a valid WebM segment. However, if playback issues occur,
+      // we may need to use a proper WebM muxer (e.g., webm-muxer) to handle container metadata.
+      // For now, we'll concatenate and validate the result.
+      const finalBuffer = Buffer.concat(chunks.map(c => c.data));
 
       // Determine file extension from first chunk or default to webm
       const extension = "webm"; // Default, could be determined from mimeType if stored

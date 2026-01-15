@@ -252,12 +252,16 @@ export function JoinCallContent({
         console.error("❌ No video tracks published!");
       }
 
+      // Set room and connection state first
       setRoom(twilioRoom);
       setIsConnected(true);
-      setIsPreJoin(false);
-
-      // Ensure local tracks are set - useEffect will handle attachment when element mounts
+      
+      // Ensure local tracks are set BEFORE changing isPreJoin
+      // This ensures the useEffect for attaching video runs with the correct state
       setLocalTrack({ video: videoTrack, audio: audioTrack });
+      
+      // Change isPreJoin last so the video attachment useEffect has all the data it needs
+      setIsPreJoin(false);
 
       // Handle remote participants (doctor) - clean pattern using trackSubscribed only
       const handleParticipant = (participant: any) => {
@@ -328,12 +332,23 @@ export function JoinCallContent({
   // Attach local video track when transitioning to call view
   // Simple, reliable approach: detach from all, attach to new element
   React.useEffect(() => {
-    if (isPreJoin) return;
+    if (isPreJoin || !isConnected) return;
     const videoEl = localVideoRef.current;
     const vTrack = localTrack?.video;
-    if (!videoEl || !vTrack) return;
+    if (!videoEl || !vTrack) {
+      console.warn("Cannot attach local video - missing element or track", {
+        hasElement: !!videoEl,
+        hasTrack: !!vTrack,
+        isPreJoin,
+        isConnected,
+      });
+      return;
+    }
 
-    console.log("Attaching local video track to call view element");
+    console.log("Attaching local video track to call view element", {
+      trackEnabled: vTrack.isEnabled,
+      trackState: vTrack.readyState,
+    });
 
     // Detach from any previous elements, then attach once
     try {
@@ -342,13 +357,18 @@ export function JoinCallContent({
         console.log("Detached from previous elements:", detachedEls.length);
       }
 
+      // Ensure track is enabled before attaching
+      if (!vTrack.isEnabled) {
+        vTrack.enable();
+      }
+
       // Attach to new element
       vTrack.attach(videoEl);
       console.log("Attached to call view element");
 
       // Ensure it plays
-      videoEl.play().catch(() => {
-        // Ignore play errors (AbortError is normal)
+      videoEl.play().catch((error) => {
+        console.warn("Error playing local video:", error);
       });
     } catch (error) {
       console.error("Error attaching local video:", error);
@@ -356,12 +376,14 @@ export function JoinCallContent({
 
     return () => {
       try {
-        if (videoEl) {
-          vTrack?.detach(videoEl);
+        if (videoEl && vTrack) {
+          vTrack.detach(videoEl);
         }
-      } catch { }
+      } catch (error) {
+        console.warn("Error detaching local video:", error);
+      }
     };
-  }, [isPreJoin, localTrack?.video]);
+  }, [isPreJoin, isConnected, localTrack?.video]);
 
   // Reattach remote tracks when refs become available
   React.useEffect(() => {
@@ -379,50 +401,119 @@ export function JoinCallContent({
   }, [remoteTracks]);
 
   const toggleMute = () => {
-    if (localTrack?.audio) {
-      if (isMuted) {
-        localTrack.audio.enable();
-        console.log("Audio enabled");
-      } else {
-        localTrack.audio.disable();
-        console.log("Audio disabled");
+    console.log("Toggle mute called", { isMuted, hasAudioTrack: !!localTrack?.audio, hasRoom: !!room });
+    
+    // Try to get audio track from localTrack state first, then from room
+    let audioTrack: any = localTrack?.audio;
+    if (!audioTrack && room?.localParticipant) {
+      // Fallback: get audio track from room's local participant
+      const audioPublications = Array.from(room.localParticipant.audioTracks.values());
+      if (audioPublications.length > 0) {
+        const pub = audioPublications[0] as any;
+        if (pub?.track) {
+          audioTrack = pub.track;
+          console.log("Using audio track from room localParticipant");
+        }
       }
-      setIsMuted(!isMuted);
+    }
+    
+    if (audioTrack) {
+      try {
+        if (isMuted) {
+          audioTrack.enable();
+          console.log("Audio enabled");
+        } else {
+          audioTrack.disable();
+          console.log("Audio disabled");
+        }
+        setIsMuted(!isMuted);
+      } catch (error) {
+        console.error("Error toggling mute:", error);
+        toast.error("Failed to toggle microphone");
+      }
     } else {
       console.warn("No audio track available to toggle");
+      toast.error("Microphone not available");
     }
   };
 
   const toggleVideo = () => {
-    if (localTrack?.video) {
-      if (isVideoOff) {
-        localTrack.video.enable();
-        console.log("Video enabled");
-        // Reattach when enabling - detach first, then attach
-        if (localVideoRef.current) {
-          try {
-            localTrack.video.detach();
-            localTrack.video.attach(localVideoRef.current);
-            localVideoRef.current.play().catch(() => {
-              // Ignore play errors
-            });
-          } catch (error) {
-            console.error("Error reattaching video:", error);
+    console.log("Toggle video called", { isVideoOff, hasVideoTrack: !!localTrack?.video, hasRoom: !!room });
+    
+    // Try to get video track from localTrack state first, then from room
+    let videoTrack: any = localTrack?.video;
+    if (!videoTrack && room?.localParticipant) {
+      // Fallback: get video track from room's local participant
+      const videoPublications = Array.from(room.localParticipant.videoTracks.values()) as any[];
+      if (videoPublications.length > 0) {
+        const pub = videoPublications[0];
+        if (pub?.track) {
+          videoTrack = pub.track;
+          console.log("Using video track from room localParticipant");
+          // Update state with the track we found
+          if (localTrack) {
+            setLocalTrack({ ...localTrack, video: videoTrack });
+          } else {
+            setLocalTrack({ video: videoTrack, audio: null });
           }
         }
-      } else {
-        localTrack.video.disable();
-        console.log("Video disabled");
       }
-      setIsVideoOff(!isVideoOff);
+    }
+    
+    if (videoTrack) {
+      try {
+        if (isVideoOff) {
+          videoTrack.enable();
+          console.log("Video enabled");
+          // Reattach when enabling - detach first, then attach
+          if (localVideoRef.current) {
+            try {
+              videoTrack.detach();
+              videoTrack.attach(localVideoRef.current);
+              localVideoRef.current.play().catch((error) => {
+                console.warn("Error playing video after enable:", error);
+              });
+            } catch (error) {
+              console.error("Error reattaching video:", error);
+              toast.error("Failed to show video");
+            }
+          }
+        } else {
+          videoTrack.disable();
+          console.log("Video disabled");
+        }
+        setIsVideoOff(!isVideoOff);
+      } catch (error) {
+        console.error("Error toggling video:", error);
+        toast.error("Failed to toggle camera");
+      }
     } else {
       console.warn("No video track available to toggle");
+      toast.error("Camera not available");
     }
   };
 
   const handleEndCall = () => {
-    cleanupTwilioConnection();
-    window.close();
+    console.log("End call called");
+    try {
+      cleanupTwilioConnection();
+      setIsConnected(false);
+      toast.success("Call ended");
+      // Try to close window, but if it fails (e.g., window wasn't opened by script), just navigate away
+      setTimeout(() => {
+        try {
+          window.close();
+        } catch (error) {
+          // If window.close() fails, redirect to a safe page
+          window.location.href = "/";
+        }
+      }, 500);
+    } catch (error) {
+      console.error("Error ending call:", error);
+      toast.error("Failed to end call properly");
+      // Still try to navigate away
+      window.location.href = "/";
+    }
   };
 
   if (isPreJoin) {
@@ -525,11 +616,14 @@ export function JoinCallContent({
             playsInline
             muted
             className="w-full h-full object-cover"
-            style={{ backgroundColor: 'black' }}
+            style={{ 
+              backgroundColor: 'black',
+              display: localTrack?.video && !isVideoOff ? 'block' : 'none'
+            }}
           />
-          {!localTrack?.video && (
+          {(!localTrack?.video || isVideoOff) && (
             <div className="absolute inset-0 flex items-center justify-center bg-black text-white text-xs">
-              Camera off
+              {isVideoOff ? "Camera off" : "Camera not available"}
             </div>
           )}
         </div>
