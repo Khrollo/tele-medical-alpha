@@ -17,6 +17,8 @@ export class SyncEngine {
   private syncInterval: NodeJS.Timeout | null = null;
   private isSyncing = false; // Prevent concurrent sync operations
   private activeOperations = new Set<string>(); // Track operations in progress
+  private lastSyncTime = 0; // Track last sync time to prevent too frequent syncs
+  private readonly SYNC_COOLDOWN_MS = 5000; // Minimum 5 seconds between syncs
 
   /**
    * Start the sync engine (checks for pending operations periodically)
@@ -64,7 +66,14 @@ export class SyncEngine {
       return;
     }
 
+    // Prevent too frequent syncs (cooldown)
+    const now = Date.now();
+    if (now - this.lastSyncTime < this.SYNC_COOLDOWN_MS) {
+      return;
+    }
+
     this.isSyncing = true;
+    this.lastSyncTime = now;
 
     try {
       // Process general outbox operations first
@@ -77,6 +86,15 @@ export class SyncEngine {
 
       let hasPendingOps = false;
       for (const draft of drafts) {
+        // Skip drafts with parsing that has exceeded max retries
+        if (draft.pendingParsing) {
+          const parseRetryCount = (draft as any).parseRetryCount || 0;
+          if (parseRetryCount >= 3) {
+            // Already exceeded max retries, skip it (will be cleared in retryPendingParsing)
+            continue;
+          }
+        }
+
         if (
           draft.pendingChunks ||
           draft.pendingTranscription ||
@@ -153,13 +171,18 @@ export class SyncEngine {
           // Retry pending parsing (reload draft to check current state)
           const draftAfterTranscribe = await db.draftVisits.get(draft.draftId);
           if (draftAfterTranscribe?.pendingParsing) {
-            const opKey = `${draftAfterTranscribe.draftId}-parse`;
-            if (!this.activeOperations.has(opKey)) {
-              this.activeOperations.add(opKey);
-              try {
-                await this.retryPendingParsing(draftAfterTranscribe);
-              } finally {
-                this.activeOperations.delete(opKey);
+            // Check retry count before attempting
+            const parseRetryCount =
+              (draftAfterTranscribe as any).parseRetryCount || 0;
+            if (parseRetryCount < 3) {
+              const opKey = `${draftAfterTranscribe.draftId}-parse`;
+              if (!this.activeOperations.has(opKey)) {
+                this.activeOperations.add(opKey);
+                try {
+                  await this.retryPendingParsing(draftAfterTranscribe);
+                } finally {
+                  this.activeOperations.delete(opKey);
+                }
               }
             }
           }
@@ -174,7 +197,10 @@ export class SyncEngine {
           detail: { patientId: drafts[0]?.patientId },
         })
       );
+    } catch (error) {
+      console.error("Error in syncPendingOperations:", error);
     } finally {
+      // Always reset syncing flag, even on errors
       this.isSyncing = false;
     }
   }
@@ -466,6 +492,25 @@ export class SyncEngine {
       return;
     }
 
+    // Track retry attempts for this draft
+    const retryKey = `parse-retry-${draft.draftId}`;
+    const retryCount = (currentDraft as any).parseRetryCount || 0;
+    const MAX_PARSE_RETRIES = 3;
+
+    if (retryCount >= MAX_PARSE_RETRIES) {
+      // Too many retries, clear pending parsing to stop infinite retries
+      console.warn(
+        `Max parse retries reached for draft ${draft.draftId}, clearing pending parsing`
+      );
+      await db.draftVisits.update(draft.draftId, {
+        pendingParsing: undefined,
+      });
+      toast.error(
+        "Parsing failed after multiple attempts. Please try again manually."
+      );
+      return;
+    }
+
     try {
       const parsingData = JSON.parse(currentDraft.pendingParsing);
       const { transcript, previousTranscripts, patientId } = parsingData;
@@ -480,7 +525,38 @@ export class SyncEngine {
       });
 
       if (parseResponse.ok) {
-        const { parsed } = await parseResponse.json();
+        const responseData = await parseResponse.json();
+
+        // Check if there's an error in the response (even with 200 status)
+        if (responseData.error) {
+          console.error("Parse API returned error:", responseData.error);
+
+          // Increment retry count
+          const newRetryCount = retryCount + 1;
+          await db.draftVisits.update(draft.draftId, {
+            parseRetryCount: newRetryCount,
+          } as any);
+
+          // If it's a JSON parsing error, it's likely permanent - clear after a few retries
+          if (
+            responseData.error.includes("Failed to parse JSON") &&
+            newRetryCount >= 2
+          ) {
+            await db.draftVisits.update(draft.draftId, {
+              pendingParsing: undefined,
+              parseRetryCount: 0,
+            } as any);
+            toast.error(
+              "AI parsing failed. Please try again or enter data manually."
+            );
+            return;
+          }
+
+          // Otherwise, will retry on next sync cycle
+          return;
+        }
+
+        const { parsed } = responseData;
         if (parsed) {
           // Verify draft still has pending parsing before clearing
           const verifyDraft = await db.draftVisits.get(draft.draftId);
@@ -494,8 +570,9 @@ export class SyncEngine {
           const mergedState = { ...formState, ...parsed };
           await db.draftVisits.update(draft.draftId, {
             pendingParsing: undefined,
+            parseRetryCount: 0,
             formStateJson: JSON.stringify(mergedState),
-          });
+          } as any);
 
           toast.success("Parsing completed. Form will update automatically.");
           // Emit event to notify form to reload
@@ -504,10 +581,60 @@ export class SyncEngine {
               detail: { patientId: parsingData.patientId, hasParsedData: true },
             })
           );
+        } else {
+          // No parsed data in response - increment retry count
+          const newRetryCount = retryCount + 1;
+          await db.draftVisits.update(draft.draftId, {
+            parseRetryCount: newRetryCount,
+          } as any);
         }
+      } else {
+        // Non-OK response - try to parse error
+        let errorMessage = "";
+        try {
+          const errorData = await parseResponse.json();
+          errorMessage = errorData.error || errorData.message || "";
+        } catch {
+          const errorText = await parseResponse.text();
+          errorMessage = errorText;
+        }
+
+        console.error(
+          "Parse API error response:",
+          parseResponse.status,
+          errorMessage
+        );
+
+        const newRetryCount = retryCount + 1;
+
+        // If it's a 400 error (bad request) or JSON parsing error, it's likely permanent
+        if (
+          (parseResponse.status === 400 ||
+            errorMessage.includes("Failed to parse JSON")) &&
+          newRetryCount >= 2
+        ) {
+          await db.draftVisits.update(draft.draftId, {
+            pendingParsing: undefined,
+            parseRetryCount: 0,
+          } as any);
+          toast.error(
+            "AI parsing failed. Please try again or enter data manually."
+          );
+          return;
+        }
+
+        // Increment retry count for retryable errors
+        await db.draftVisits.update(draft.draftId, {
+          parseRetryCount: newRetryCount,
+        } as any);
       }
     } catch (error) {
       console.error("Error retrying parsing:", error);
+
+      // Increment retry count on error
+      await db.draftVisits.update(draft.draftId, {
+        parseRetryCount: retryCount + 1,
+      } as any);
     }
   }
 
@@ -536,8 +663,10 @@ export class SyncEngine {
         return;
       }
 
-      // Process operations in order (FIFO)
-      for (const op of opsToProcess) {
+      // Process operations in order (FIFO) - limit to 5 at a time to avoid overwhelming
+      const opsToProcessNow = opsToProcess.slice(0, 5);
+
+      for (const op of opsToProcessNow) {
         const opKey = `outbox-${op.id}`;
         if (this.activeOperations.has(opKey)) {
           continue; // Already processing

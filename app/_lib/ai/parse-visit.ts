@@ -12,6 +12,180 @@ interface ParseVisitOptions {
 }
 
 /**
+ * Clean JSON content by removing comments, extracting JSON from markdown, etc.
+ */
+function cleanJsonContent(rawContent: string): string {
+  let cleaned = rawContent;
+
+  // Extract JSON from markdown code blocks
+  const jsonMatch =
+    cleaned.match(/```json\s*([\s\S]*?)\s*```/) ||
+    cleaned.match(/```\s*([\s\S]*?)\s*```/);
+  if (jsonMatch) {
+    cleaned = jsonMatch[1];
+  }
+
+  // Extract JSON object (from first { to last })
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+  }
+
+  // Remove single-line comments
+  const lines = cleaned.split("\n");
+  const cleanedLines: string[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    // Skip comment-only lines
+    if (trimmed.startsWith("//")) {
+      continue;
+    }
+
+    // Remove inline comments
+    const commentMatch = line.match(/(.*?)(\/\/.*)$/);
+    if (commentMatch) {
+      const beforeComment = commentMatch[1].trim();
+      // Check if the part before // looks like valid JSON (ends with quote, number, bracket, etc.)
+      // Check if it ends with valid JSON tokens: quote, digit, ], }, comma, whitespace
+      // Place ] at the start of character class to avoid escaping issues
+      const endsWithValidJson = /[\]"}\d,]\s*$/.test(beforeComment.trim());
+      if (endsWithValidJson) {
+        cleanedLines.push(beforeComment);
+        continue;
+      }
+    }
+
+    cleanedLines.push(line);
+  }
+  cleaned = cleanedLines.join("\n");
+
+  // Remove remaining inline comments
+  cleaned = cleaned.replace(/(["\d\]\}\]])\s*\/\/[^\n]*/g, "$1");
+
+  // Remove multi-line comments
+  cleaned = cleaned.replace(/\/\*[\s\S]*?\*\//g, "");
+
+  // Remove trailing commas
+  cleaned = cleaned.replace(/,(\s*[}\]])/g, "$1");
+
+  return cleaned;
+}
+
+/**
+ * Remove duplicate keys from JSON string
+ */
+function removeDuplicateKeys(jsonStr: string): string {
+  const duplicatePattern = /,\s*"familyHistory"\s*:\s*\[[\s\S]*?\]\s*(?=,|\})/g;
+  const matches = [...jsonStr.matchAll(duplicatePattern)];
+  if (matches.length > 0) {
+    // Remove all but the first occurrence
+    for (let i = matches.length - 1; i > 0; i--) {
+      const match = matches[i];
+      if (match.index !== undefined) {
+        jsonStr =
+          jsonStr.substring(0, match.index) +
+          jsonStr.substring(match.index + match[0].length);
+      }
+    }
+  }
+  return jsonStr;
+}
+
+/**
+ * Aggressively clean and parse JSON with fallback strategies
+ */
+function parseJsonWithFallback(content: string): unknown {
+  try {
+    let jsonContent = cleanJsonContent(content);
+
+    try {
+      return JSON.parse(jsonContent);
+    } catch (firstError) {
+      // Try removing duplicate keys
+      jsonContent = removeDuplicateKeys(jsonContent);
+      jsonContent = cleanJsonContent(jsonContent);
+      return JSON.parse(jsonContent);
+    }
+  } catch (parseError) {
+    console.error("Failed to parse JSON from AI response");
+    console.error("Parse error:", parseError);
+    console.error("Content length:", content.length);
+    console.error(
+      "Content preview (first 1000 chars):",
+      content.substring(0, 1000)
+    );
+    console.error(
+      "Content preview (last 1000 chars):",
+      content.substring(Math.max(0, content.length - 1000))
+    );
+
+    // Last resort: aggressive cleanup
+    const jsonStart = content.indexOf("{");
+    const jsonEnd = content.lastIndexOf("}");
+    if (jsonStart === -1 || jsonEnd === -1) {
+      throw parseError;
+    }
+
+    let cleanedJson = content.substring(jsonStart, jsonEnd + 1);
+
+    // Remove all comments
+    cleanedJson = cleanedJson.replace(/\/\/[^\n\r]*(?:\n|\r|$)/gm, "");
+    cleanedJson = cleanedJson.replace(/\/\*[\s\S]*?\*\//g, "");
+
+    // Remove trailing commas
+    cleanedJson = cleanedJson.replace(/,(\s*[}\]])/g, "$1");
+
+    // Remove duplicate familyHistory key
+    const lastFamilyHistoryIndex = cleanedJson.lastIndexOf('"familyHistory"');
+    if (lastFamilyHistoryIndex > 0) {
+      const firstFamilyHistoryIndex = cleanedJson.indexOf('"familyHistory"');
+      if (lastFamilyHistoryIndex !== firstFamilyHistoryIndex) {
+        // Find the matching closing bracket for the duplicate
+        let bracketCount = 0;
+        let removeStart = lastFamilyHistoryIndex;
+        let removeEnd = lastFamilyHistoryIndex;
+
+        // Find the start (go back to find the comma or opening brace)
+        for (let i = lastFamilyHistoryIndex - 1; i >= 0; i--) {
+          if (cleanedJson[i] === ",") {
+            removeStart = i;
+            break;
+          } else if (cleanedJson[i] === "{" || cleanedJson[i] === "}") {
+            removeStart = i + 1;
+            break;
+          }
+        }
+
+        // Find the end (find matching ])
+        for (let i = lastFamilyHistoryIndex; i < cleanedJson.length; i++) {
+          if (cleanedJson[i] === "[") bracketCount++;
+          if (cleanedJson[i] === "]") bracketCount--;
+          if (bracketCount === 0 && cleanedJson[i] === "]") {
+            removeEnd = i + 1;
+            // Also remove trailing comma if present
+            if (i + 1 < cleanedJson.length && cleanedJson[i + 1] === ",") {
+              removeEnd = i + 2;
+            }
+            break;
+          }
+        }
+
+        // Remove the duplicate
+        cleanedJson =
+          cleanedJson.substring(0, removeStart) +
+          cleanedJson.substring(removeEnd);
+      }
+    }
+
+    const parsed = JSON.parse(cleanedJson);
+    console.log("Successfully parsed after aggressive cleanup");
+    return parsed;
+  }
+}
+
+/**
  * Parse transcript into structured visit note
  * This is the core parsing logic that can be called directly from server code
  * without going through the HTTP API.
@@ -35,6 +209,13 @@ export async function parseVisitNoteFromTranscript(
   const systemPrompt = `You are a medical assistant that extracts structured visit note data from transcripts. 
 Return ONLY valid JSON matching this exact schema. Never omit required fields - use empty strings, false, or empty arrays for missing data.
 Never hallucinate values - if information is not in the transcript, use empty string, false, or empty array.
+
+CRITICAL JSON FORMATTING RULES:
+- Return ONLY valid JSON - no comments, no explanations, no markdown code blocks
+- Do NOT include // comments in the JSON
+- Do NOT include duplicate keys (each key must appear only once)
+- Do NOT wrap the JSON in markdown code blocks or add explanatory text
+- Return the raw JSON object only, starting with { and ending with }
 
 CRITICAL EXTRACTION RULES:
 1. EXTRACT ALL INFORMATION that is explicitly mentioned in the transcript
@@ -300,31 +481,21 @@ Schema:
           .join("\n\n")}`
       : "";
 
-  // Use provided prompt or default
-  const userPrompt =
-    prompt ||
-    `Extract structured visit note data from this medical transcript.${contextPrompt}${previousTranscriptsContext}\n\nTranscript:\n${transcript}`;
-
   // Get current date for relative date calculations
   const today = new Date();
   const currentDateStr = today.toISOString().split("T")[0]; // YYYY-MM-DD format
 
-  // Use provided prompt or default
+  // Build user prompt
   const basePrompt =
     prompt ||
     `Parse this medical visit transcript into the structured JSON schema below.${contextPrompt}${previousTranscriptsContext}\n\nIMPORTANT: The NEW transcript below takes precedence over any previous transcripts. Only use previous transcripts for additional context.\n\nCURRENT DATE: ${currentDateStr} - Use this date to calculate relative dates (e.g., "a month ago" = ${currentDateStr} minus 1 month).`;
 
-  // Combine system prompt with user prompt
-  // The system prompt contains the schema and instructions
-  // The user prompt contains the transcript to parse
+  // Combine prompts
   const combinedUserPrompt = `${basePrompt}\n\nNEW Transcript (takes precedence - extract all information from this):\n${transcript}\n\nNow extract all information from the transcript above and populate the JSON schema. Be thorough and extract ALL mentioned information including vitals, measurements, medications, diagnoses, point of care test results (diabetes, HIV, syphilis), etc.`;
 
-  // DeepSeek on Replicate expects the full prompt including system instructions
-  const fullPrompt = `${systemPrompt}\n\n${combinedUserPrompt}`;
+  const fullPrompt = `${systemPrompt}\n\n${combinedUserPrompt}\n\nRemember: Return ONLY valid JSON with no comments, no duplicate keys, and no explanatory text. Just the raw JSON object starting with { and ending with }.`;
 
-  // Parse transcript and generate summary using DeepSeek LLM via Replicate
-  const deepSeekModel = "meta/meta-llama-3-8b-instruct";
-  // const deepSeekModel = "deepseek-ai/deepseek-v3.1";
+  const deepSeekModel = "deepseek-ai/deepseek-v3.1";
 
   const combinedInput = {
     prompt: fullPrompt,
@@ -346,8 +517,16 @@ Schema:
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Replicate API error: ${error}`);
+    let errorMessage = `Replicate API error: ${response.status} ${response.statusText}`;
+    try {
+      const errorData = await response.json();
+      errorMessage = errorData.detail || errorData.error || errorMessage;
+      console.error("Replicate API error details:", errorData);
+    } catch {
+      const errorText = await response.text();
+      errorMessage = errorText || errorMessage;
+    }
+    throw new Error(errorMessage);
   }
 
   const prediction = await response.json();
@@ -357,9 +536,10 @@ Schema:
   let completed = false;
   let attempts = 0;
   const maxAttempts = 60; // 5 minutes max
+  const pollInterval = 5000; // 5 seconds
 
   while (!completed && attempts < maxAttempts) {
-    await new Promise((resolve) => setTimeout(resolve, 5000)); // Wait 5 seconds
+    await new Promise((resolve) => setTimeout(resolve, pollInterval));
 
     const statusResponse = await fetch(
       `https://api.replicate.com/v1/predictions/${predictionId}`,
@@ -371,7 +551,16 @@ Schema:
     );
 
     if (!statusResponse.ok) {
-      throw new Error("Failed to check prediction status");
+      const errorText = await statusResponse.text();
+      console.error(
+        `Failed to check prediction status: ${statusResponse.status} ${statusResponse.statusText}`,
+        errorText
+      );
+      throw new Error(
+        `Failed to check prediction status: ${statusResponse.status} ${
+          errorText || statusResponse.statusText
+        }`
+      );
     }
 
     const status = await statusResponse.json();
@@ -395,26 +584,17 @@ Schema:
       }
 
       // Parse and validate JSON
-      let parsed: unknown;
-      try {
-        // Try to extract JSON if it's wrapped in markdown code blocks
-        const jsonMatch =
-          content.match(/```json\s*([\s\S]*?)\s*```/) ||
-          content.match(/```\s*([\s\S]*?)\s*```/);
-        if (jsonMatch) {
-          parsed = JSON.parse(jsonMatch[1]);
-        } else {
-          parsed = JSON.parse(content);
-        }
-      } catch (parseError) {
-        console.error("Failed to parse JSON:", content);
-        throw new Error("Failed to parse JSON from AI response");
-      }
-
-      // Validate and return parsed note
+      const parsed = parseJsonWithFallback(content);
       return parseVisitNote(parsed);
     } else if (status.status === "failed" || status.status === "canceled") {
-      throw new Error(`Parsing failed: ${status.error || "Unknown error"}`);
+      const errorDetails =
+        status.error || status.logs?.join("\n") || "Unknown error";
+      console.error("Replicate prediction failed:", {
+        status: status.status,
+        error: status.error,
+        logs: status.logs,
+      });
+      throw new Error(`Parsing failed: ${errorDetails}`);
     }
 
     attempts++;

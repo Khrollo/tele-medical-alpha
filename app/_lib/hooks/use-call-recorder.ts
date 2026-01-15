@@ -51,6 +51,7 @@ export function useCallRecorder({
   const chunkIndexRef = useRef<number>(0);
   const recordingSessionIdRef = useRef<string | null>(null);
   const isStoppingRef = useRef<boolean>(false); // Guard against multiple simultaneous stop calls
+  const uploadPromisesRef = useRef<Promise<void>[]>([]); // Track all chunk upload promises
 
   // Get best supported MIME type
   const getBestMimeType = useCallback(() => {
@@ -391,6 +392,7 @@ export function useCallRecorder({
 
       // Track upload status
       let pendingUploads = 0;
+      uploadPromisesRef.current = []; // Reset upload promises for new recording
       const incrementUploads = () => {
         pendingUploads++;
         setState((prev) => ({
@@ -418,9 +420,9 @@ export function useCallRecorder({
           const currentChunkIndex = chunkIndexRef.current;
           chunkIndexRef.current++;
 
-          // Upload chunk asynchronously
+          // Upload chunk asynchronously and track the promise
           incrementUploads();
-          uploadChunk(event.data, currentChunkIndex, sessionId, mimeType)
+          const uploadPromise = uploadChunk(event.data, currentChunkIndex, sessionId, mimeType)
             .then(() => {
               decrementUploads();
             })
@@ -430,7 +432,9 @@ export function useCallRecorder({
                 error
               );
               decrementUploads();
+              throw error; // Re-throw to keep promise rejected
             });
+          uploadPromisesRef.current.push(uploadPromise);
         }
       };
 
@@ -631,8 +635,25 @@ export function useCallRecorder({
               statusMessage: "Waiting for uploads to complete...",
             }));
 
-            // Give a moment for pending uploads
-            await new Promise((r) => setTimeout(r, 1000));
+            // Wait for all pending chunk uploads to complete
+            // This is critical for iPad where the final chunk might be delayed
+            const uploadPromises = uploadPromisesRef.current || [];
+            if (uploadPromises.length > 0) {
+              console.log(`Waiting for ${uploadPromises.length} chunk uploads to complete...`);
+              try {
+                // Wait for all uploads with a timeout (max 10 seconds)
+                await Promise.race([
+                  Promise.allSettled(uploadPromises),
+                  new Promise((r) => setTimeout(r, 10000)),
+                ]);
+                console.log("All chunk uploads completed or timed out");
+              } catch (error) {
+                console.warn("Error waiting for uploads:", error);
+              }
+            } else {
+              // Give a moment for any final chunk to be emitted and uploaded
+              await new Promise((r) => setTimeout(r, 500));
+            }
 
             // Finalize recording on server
             setState((prev) => ({
@@ -831,7 +852,28 @@ export function useCallRecorder({
         // Now stop the recorder
         console.log("Stopping MediaRecorder");
         try {
-          mediaRecorder.stop();
+          // Request any remaining data before stopping (important for iPad)
+          // This ensures the final chunk is captured
+          if (mediaRecorder.state === "recording") {
+            mediaRecorder.requestData();
+            
+            // Small delay to allow requestData to process before stopping
+            // Use setTimeout without await since we're in a Promise executor
+            setTimeout(() => {
+              try {
+                if (mediaRecorder.state === "recording") {
+                  console.log("Stopping MediaRecorder after requestData delay");
+                  mediaRecorder.stop();
+                }
+              } catch (stopError) {
+                console.error("Error stopping MediaRecorder after requestData:", stopError);
+                // Still resolve to prevent hanging
+                resolve();
+              }
+            }, 150);
+          } else {
+            mediaRecorder.stop();
+          }
         } catch (error) {
           console.error("Error stopping MediaRecorder:", error);
           // Reset state on error
