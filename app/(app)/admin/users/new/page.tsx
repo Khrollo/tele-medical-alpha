@@ -1,7 +1,11 @@
 import { redirect } from "next/navigation";
 import { getServerSession } from "@/app/_lib/supabase/server";
+import { cookies } from "next/headers";
 import { CreateUserForm } from "./create-user-form";
 import { SideNav } from "@/components/side-nav";
+import { PasswordCheckWrapper } from "./password-check-wrapper";
+
+const PASSWORD_COOKIE_NAME = "new_user_access_granted";
 
 export default async function CreateUserPage() {
   const session = await getServerSession();
@@ -13,6 +17,16 @@ export default async function CreateUserPage() {
   // Only doctors and nurses can create users
   if (session.role !== "doctor" && session.role !== "nurse") {
     redirect("/");
+  }
+
+  // Check if password protection is enabled
+  const expectedPassword = process.env.NEW_USER_PWD;
+  const cookieStore = await cookies();
+  const hasAccess = cookieStore.get(PASSWORD_COOKIE_NAME)?.value === "true";
+
+  // If password is configured but access not granted, show password check
+  if (expectedPassword && !hasAccess) {
+    return <PasswordCheckWrapper />;
   }
 
   const userRole = session.role;

@@ -39,7 +39,7 @@ const createUserSchema = z.object({
     .min(2, "Name must be at least 2 characters")
     .max(100, "Name must be less than 100 characters"),
   role: z.enum(["doctor", "nurse"], {
-    required_error: "Please select a role",
+    message: "Please select a role",
   }),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords do not match",
