@@ -81,6 +81,10 @@ export function NewVisitForm({
   visitTwilioRoomName,
 }: NewVisitFormProps) {
   const router = useRouter();
+  const postSaveSessionKey = React.useMemo(
+    () => `visit-post-save:${patientId}`,
+    [patientId]
+  );
   // Get sections based on role
   const roleSections = React.useMemo(() => getSectionsForRole(userRole), [userRole]);
   const [currentSection, setCurrentSection] = React.useState(roleSections[0].id);
@@ -139,6 +143,34 @@ export function NewVisitForm({
   const [showPostSaveModal, setShowPostSaveModal] = React.useState(false);
   const [isProcessingAction, setIsProcessingAction] = React.useState(false);
   const appliedParsedDataRef = React.useRef<any>(null);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const rawState = window.sessionStorage.getItem(postSaveSessionKey);
+    if (!rawState) return;
+
+    window.sessionStorage.removeItem(postSaveSessionKey);
+
+    try {
+      const savedState = JSON.parse(rawState) as {
+        patientId?: string;
+        visitId?: string;
+      };
+
+      if (savedState.patientId !== patientId) {
+        return;
+      }
+
+      if (savedState.visitId) {
+        setVisitIdRemote(savedState.visitId);
+      }
+
+      setShowPostSaveModal(true);
+    } catch (error) {
+      console.warn("Failed to restore post-save state:", error);
+    }
+  }, [patientId, postSaveSessionKey]);
 
   const form = useForm({
     resolver: zodResolver(visitNoteSchema),
@@ -479,8 +511,9 @@ export function NewVisitForm({
     setIsSaving(true);
     try {
       const formData = form.getValues() as VisitNote;
+      let savedVisitId = visitIdRemote;
 
-      if (!visitIdRemote) {
+      if (!savedVisitId) {
         // Load draft to get transcript if available
         const draft = await loadDraft(patientId, userId, userRole);
 
@@ -490,6 +523,7 @@ export function NewVisitForm({
           notesJson: formData,
           transcript: draft.transcript || undefined,
         });
+        savedVisitId = result.visitId;
         setVisitIdRemote(result.visitId);
 
         // Save any transcripts from draft to database
@@ -506,21 +540,21 @@ export function NewVisitForm({
         }
       } else {
         // Update visit
-        await updateVisitDraftAction(visitIdRemote, {
+        await updateVisitDraftAction(savedVisitId, {
           notesJson: formData,
         });
       }
 
       // Save documents to database
       const documents = formData.docs?.uploadedDocuments || [];
-      if (documents.length > 0 && visitIdRemote) {
+      if (documents.length > 0 && savedVisitId) {
         const documentPromises = documents.map(async (doc: any) => {
           // Only save if it doesn't already have a DB record (check if it has storageUrl)
           // Documents uploaded during the form already have storageUrl from the upload endpoint
           if (doc.storageUrl) {
             return createDocumentAction({
               patientId,
-              visitId: visitIdRemote,
+              visitId: savedVisitId,
               filename: doc.name,
               mimeType: doc.type,
               size: doc.size.toString(),
@@ -541,6 +575,16 @@ export function NewVisitForm({
       // Don't finalize yet - keep as "In Progress" unless user clicks "Sign Note"
       // The visit status will remain "In Progress" until explicitly signed
       // Medications will be synced to patient record when the note is signed
+
+      if (typeof window !== "undefined" && savedVisitId) {
+        window.sessionStorage.setItem(
+          postSaveSessionKey,
+          JSON.stringify({
+            patientId,
+            visitId: savedVisitId,
+          })
+        );
+      }
 
       // Clear draft
       await clearDraft(patientId, userId);

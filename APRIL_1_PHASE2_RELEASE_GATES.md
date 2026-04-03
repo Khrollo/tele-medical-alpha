@@ -6,8 +6,8 @@
 |---|---|---|---|---|---|---|---|---|---|---|
 | RG-1 | Post-login landing goes to `/` instead of role home | Sign in as nurse or doctor on live prod | nurse, doctor | `/sign-in` -> `/` | client redirect trusts `user_metadata.role` and uses SPA navigation instead of server-verified session/DB role | `app/(auth)/sign-in/sign-in-form.tsx` | Agent | **fixed in repo / locally re-validated / pending deployed smoke** | live prod still fails; current branch seeded-session smoke lands on `/patients` for nurse and `/waiting-room` for doctor | **Yes** until deployed smoke |
 | RG-2 | Client navigation dead on hydrated workflow screens | nurse: patient chart `Visit History`; visit history `Log New Visit`; doctor: `Open Notes` -> `Continue Note` | nurse, doctor | `/patients`, `/patients/[id]/visit-history`, `/open-notes` | hydration mismatch (`React error #418`) and brittle CTA markup on route buttons | `app/(app)/patients/patients-list.tsx`, `app/(app)/patients/[id]/patient-overview-cards.tsx`, `app/_components/patient-chart/patient-chart-shell.tsx`, `app/(app)/patients/[id]/visit-history/visit-history-content.tsx`, `app/(app)/open-notes/open-notes-content.tsx`, `app/_lib/utils/format-date.ts` | Agent | **fixed in repo / locally re-validated / pending deployed smoke** | live prod still fails; current branch seeded-session smoke passes `Visit History`, `Log New Visit`, visit detail, and `Continue Note` transitions locally | **Yes** until deployed smoke |
-| RG-3 | Waiting-room handoff fails | doctor -> `/waiting-room` -> click `Assign To Me` on `Cora Mercer` | doctor | `/waiting-room` | server action or client fetch is failing; button loads but no route change; console shows `Error assigning visit: TypeError: Failed to fetch` | `app/(app)/waiting-room/waiting-room-list.tsx`, `app/_actions/visits.ts` (`getPatientOpenVisitAction`, `assignVisitToMeAction`) | Agent / teammate 3 | **open** | live prod failed; no narrow fix implemented yet | **Yes** if waiting-room handoff is in demo |
-| RG-4 | No proven save/finalize persistence path | nurse reached `/new-visit` directly, but Save disabled; doctor never reached assign/continue/finalize path | nurse, doctor | `/patients/[id]/new-visit`, `/open-notes`, `/waiting-room` | upstream workflow blocked before persistence validation; fresh new-visit also requires more reviewed sections than a short demo path allows | visit form / handoff path, not yet isolated to one single file | Kejhawn + Agent / teammate 2 | **guarded** | current prod not proven | **Yes** until a redeployed smoke proves save/reopen/finalize |
+| RG-3 | Waiting-room handoff fails | doctor -> `/waiting-room` -> click `Assign To Me` on approved waiting-room record | doctor | `/waiting-room` | previously blocked by missing local proof state and stale waiting-room cache after nurse handoff | `app/_components/visit/new-visit-form.tsx`, `app/_actions/visits.ts`, `app/(app)/waiting-room/waiting-room-list.tsx` | Agent | **fixed and behaviorally validated locally** | local Batch 3 smoke now proves nurse save -> send to waiting room -> doctor sees assignable row -> `Assign To Me` routes into `/patients/[id]/new-visit?visitId=...`; hosted smoke still pending | **Yes** until deployed smoke |
+| RG-4 | No proven save/finalize persistence path | approved nurse -> doctor handoff record -> save -> history -> reopen -> sign | nurse, doctor | `/patients/[id]/new-visit`, `/patients/[id]/send-to-waiting-room`, `/waiting-room`, `/patients/[id]/visit-history`, `/patients/[id]/visit-history/[visitId]` | previously blocked by post-save next-step continuity breaking after save refresh and by missing approved proof setup | `app/_components/visit/new-visit-form.tsx`, `app/_actions/visits.ts`, visit history / detail routes for validation | Agent | **fixed and behaviorally validated locally** | local Batch 3 smoke now proves doctor save persistence, history/detail reopen with expected content, and sign success on the same record; hosted smoke still pending | **Yes** until deployed smoke |
 
 ## Detailed Gate Notes
 
@@ -37,14 +37,20 @@
 - **Evidence:** `phase2_artifacts/1775073532648-doctor-assigned-visit.png`
 - **Observed behavior:** `Assign To Me` switches to loading, remains on `/waiting-room`, and logs `Error assigning visit: TypeError: Failed to fetch`.
 - **Why it matters:** this is the main nurse -> doctor continuity handoff path for the live workflow.
-- **Current decision:** no narrow fix applied yet because the live failure needs one more code-level isolation pass before safely changing assignment behavior.
+- **Batch 3 proof setup:** `Cora Mercer` / `94ecb626-334f-49da-9a4f-de292e04e963` was reset locally into a nurse-owned `In Progress` visit, then the real nurse UI path was used to save and send it back to waiting room.
+- **Batch 3 code change:** `updateVisitWaitingRoomAction()` now revalidates waiting-room / patient / visit caches so the doctor sees the new assignable row immediately after the nurse handoff.
+- **Batch 3 local re-test:** doctor waiting room now shows the assignable row locally, `Assign To Me` resolves, and the route transitions into `/patients/[id]/new-visit?visitId=...` on the current branch.
+- **Current status label:** `fixed and behaviorally validated locally`
 
 ### RG-4 — Persistence not proven
 
 - **Evidence:** `phase2_artifacts/1775073526215-nurse-save-disabled.png`
 - **Observed behavior:** direct new-visit route renders, but Save is disabled for the tested fresh workflow.
 - **Why it matters:** tomorrow’s demo requires an explainable save/reopen/finalize story.
-- **Current decision:** treat fresh new-visit as **disallowed** until a redeployed build proves a pre-seeded continue-note path.
+- **Batch 3 operating rule applied:** fresh blank new-visit remained out of scope; proof was built on the approved existing `visitId` continuation path instead.
+- **Batch 3 code change:** `new-visit-form.tsx` now restores the post-save modal across the save-triggered route refresh so the nurse and doctor can continue into the next explicit workflow step after saving.
+- **Batch 3 local re-test:** nurse save -> send to waiting room, doctor assign -> continue note -> save, visit-history/detail reopen, and sign all pass locally on the same record; a fresh history-page reload also later reflects `Signed & Complete`.
+- **Current status label:** `fixed and behaviorally validated locally`
 
 ## Batch 1 Execution Update
 
@@ -68,3 +74,14 @@
 - **Local validation completed:** `npx tsc --noEmit`, `npx eslint` on the five touched files, seeded-session Playwright smoke against `localhost:3000`
 - **Local validation result:** patient list -> chart, chart -> visit history, visit history -> existing visit, patient chart / visit history -> `Log New Visit`, and doctor `Open Notes -> Continue Note` all transition successfully on the current branch with no 404 response or client runtime error captured
 - **Remaining blocker posture after Batch 2:** `RG-3` waiting-room assign remains unproven locally and `RG-4` persistence still needs an approved-record deployed smoke
+
+## Batch 3 Execution Update
+
+- **Execution date:** April 3, 2026
+- **Branch:** `fix/demo-batch-3-handoff-persistence`
+- **Files changed:** `app/_components/visit/new-visit-form.tsx`, `app/_actions/visits.ts`
+- **Why these changes were made:** preserve the post-save action surface across save-triggered refreshes, and make waiting-room assignment immediately provable again after the nurse handoff by invalidating the cached waiting-room data when a visit is sent back to queue
+- **Proof setup used:** existing `Cora Mercer` visit `94ecb626-334f-49da-9a4f-de292e04e963` was reset locally into a nurse-owned `In Progress` record before exercising the real nurse -> doctor handoff path
+- **Local validation completed:** `npx tsc --noEmit`, `npx eslint app/_components/visit/new-visit-form.tsx app/_actions/visits.ts`, authenticated Playwright smoke against `localhost:3000`, direct DB checks for patient / visit / note state
+- **Local validation result:** nurse save -> send to waiting room -> doctor `Assign To Me` -> doctor save -> history/detail reopen -> sign now works locally on the current branch, and the persisted doctor-authored note content survives the reopen step
+- **Remaining blocker posture after Batch 3:** hosted deployment smoke is still required before RG-3 / RG-4 can be treated as green for demo use on the actual deployed build
