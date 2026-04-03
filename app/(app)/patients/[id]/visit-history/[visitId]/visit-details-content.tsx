@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { markVisitInProgressAction, finalizeVisitAction } from "@/app/_actions/visits";
 import { getDocumentSignedUrlAction } from "@/app/_actions/documents";
 import { cn } from "@/app/_lib/utils/cn";
+import { formatVisitStatusLabel } from "@/app/_lib/utils/visit-status-label";
 import Link from "next/link";
 
 interface VisitDetailsContentProps {
@@ -397,7 +398,7 @@ export function VisitDetailsContent({
             const badge = getStatusBadge(visit.status);
             return (
               <Badge variant={badge.variant} className={badge.className}>
-                {visit.status || "—"}
+                {formatVisitStatusLabel(visit.status)}
               </Badge>
             );
           })()}

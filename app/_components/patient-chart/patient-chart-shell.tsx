@@ -41,7 +41,7 @@ export function PatientChartShell({
             {/* Main Content Area */}
             <div className="flex flex-1 flex-col overflow-hidden transition-all duration-300 ease-in-out">
                 {/* Top Bar */}
-                <div className="flex h-16 items-center gap-4 border-b border-border bg-background px-6">
+                <div className="relative z-50 flex h-16 items-center gap-4 border-b border-border bg-background px-6">
                     {/* Mobile hamburger button - inline with search */}
                     <Button
                         variant="ghost"

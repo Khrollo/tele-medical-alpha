@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Video, Copy, Check, Phone, Mail, Calendar, User, Pill, AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { formatDate, formatDateTime } from "@/app/_lib/utils/format-date";
+import { formatVisitStatusLabel } from "@/app/_lib/utils/visit-status-label";
 
 interface VisitInfo {
   id: string;
@@ -122,7 +123,7 @@ export function PatientsList({ patients, userRole }: PatientsListProps) {
     if (statusLower === "waiting") {
       return <Badge variant="default" className="bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500">Waiting</Badge>;
     }
-    return <Badge variant="outline">{status}</Badge>;
+    return <Badge variant="outline">{formatVisitStatusLabel(status)}</Badge>;
   };
 
   const getAppointmentTypeBadge = (type: string | null) => {
