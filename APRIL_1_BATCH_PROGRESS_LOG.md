@@ -25,11 +25,11 @@
 | Owner | `GPT-5.4` |
 | Branch | `batch-1-demo-critical-release-gates` |
 | PR title | `Batch 1: close demo-critical release gates` |
-| Status | `ready for validation` |
+| Status | `in progress` |
 | Started at | `2026-04-03 02:11 UTC` |
 | Finished at | `2026-04-03 02:19 UTC` |
 | Validation owner | `GPT-5.4` |
-| Validation result | `TypeScript + touched-file ESLint passed. Local auth-backed smoke was blocked because the tracked demo credentials no longer authenticate against Supabase, so role landing and end-to-end clinician workflow still require real-user validation on branch/deploy.` |
+| Validation result | `TypeScript + touched-file ESLint passed. Direct Supabase auth confirmed the tracked demo credentials, and seeded-session local smoke now proves role landing (`/patients` for nurse, `/waiting-room` for doctor). However, core demo-path UI route continuity still reproduces locally (`Visit History`, `Log New Visit`, and `Continue Note` did not transition routes under automation), and waiting-room assign could not be proven because no assignable row rendered in the local dataset.` |
 | Deploy target validated | `No` |
 
 ### Execution notes
@@ -37,7 +37,10 @@
 - Narrow code change applied only to the Batch 1 open handoff path in `app/(app)/waiting-room/waiting-room-list.tsx`.
 - Waiting-room `Assign To Me` now uses the visit ID already loaded on the card instead of doing a second preflight server-action fetch before assignment.
 - Post-assign navigation now uses a full-page transition into `/patients/[id]/new-visit?visitId=...` to keep the handoff path on a fresh server render.
-- Local Playwright probing was attempted after the code change, but sign-in could not proceed because both tracked demo users returned `Invalid login credentials`.
+- Direct Supabase auth now succeeds for `demonurse@telehealth.com` and `demodoctor@telehealth.com` with the restored demo password.
+- Seeded-session local smoke proves `RG-1` locally: nurse lands on `/patients`, doctor lands on `/waiting-room`.
+- Seeded-session local smoke still reproduces `RG-2`: patient-chart `Visit History`, `Log New Visit`, and `Open Notes -> Continue Note` did not navigate during automated local verification.
+- `RG-3` remains unproven locally because `/waiting-room` rendered with no visible `Assign To Me` button for the authenticated doctor session in the current local dataset.
 
 ### Validation checklist result
 
@@ -103,6 +106,6 @@
 |---|---|
 | Current recommended presenter batch | `Batch 1` |
 | Current approved demo path | `Role-correct sign-in -> stable continue-note path -> save -> history -> reopen -> finalize/sign on one approved record` |
-| Current blocked path(s) | `Auth-backed Batch 1 smoke still required; waiting-room assign fix is in repo but not yet proven with a real authenticated session` |
+| Current blocked path(s) | `Hydrated route continuity on patient chart / visit history / open notes still needs closure; waiting-room assign fix is in repo but still not behaviorally proven on an assignable local or deployed record` |
 | Last updated by | `GPT-5.4` |
 | Last updated at | `2026-04-03 02:19 UTC` |
