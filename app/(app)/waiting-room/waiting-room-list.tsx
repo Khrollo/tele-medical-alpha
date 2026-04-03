@@ -3,16 +3,15 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { useState, useMemo } from "react";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { getPatientOpenVisitAction, assignVisitToMeAction } from "@/app/_actions/visits";
+import { assignVisitToMeAction } from "@/app/_actions/visits";
 import { toast } from "sonner";
-import { Search, Clock, ArrowUpDown, Video, Copy, Check, QrCode, RefreshCw } from "lucide-react";
+import { Clock, ArrowUpDown, Video, Copy, Check, QrCode, RefreshCw } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useWaitingRoomRealtime } from "@/app/_lib/hooks/use-waiting-room-realtime";
 
@@ -48,10 +47,10 @@ export function WaitingRoomList({ patients: initialPatients }: WaitingRoomListPr
   const [sortField, setSortField] = useState<SortField>("waitTime");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
-  const [virtualVisitData, setVirtualVisitData] = useState<Record<string, { joinUrl: string; visitId: string }>>({});
+  const [virtualVisitData] = useState<Record<string, { joinUrl: string; visitId: string }>>({});
 
   // Use polling hook to get live updates
-  const { patients, isConnected, error: realtimeError, refresh } = useWaitingRoomRealtime({
+  const { patients, refresh } = useWaitingRoomRealtime({
     initialPatients,
     onError: (error) => {
       // Only log errors, don't spam console
@@ -73,31 +72,34 @@ export function WaitingRoomList({ patients: initialPatients }: WaitingRoomListPr
     }
   };
 
-  const handleAssignToMe = async (patientId: string, e: React.MouseEvent) => {
+  const navigateToVisitEditor = (patientId: string, visitId?: string | null) => {
+    const target = visitId
+      ? `/patients/${patientId}/new-visit?visitId=${visitId}`
+      : `/patients/${patientId}/new-visit`;
+
+    // Use a full navigation so the edit surface loads from a fresh server render.
+    window.location.assign(target);
+  };
+
+  const handleAssignToMe = async (
+    patientId: string,
+    visitId: string | null,
+    e: React.MouseEvent
+  ) => {
     e.preventDefault();
     e.stopPropagation();
 
     setLoadingPatientId(patientId);
 
     try {
-      // Check if patient has an open visit
-      const result = await getPatientOpenVisitAction(patientId);
-
-      if (result.visit) {
-        // Assign the visit to the current user
-        const assignResult = await assignVisitToMeAction(result.visit.id);
-
-        // Navigate to the new-visit page for this visit
-        router.push(`/patients/${patientId}/new-visit?visitId=${result.visit.id}`);
-      } else {
-        // No open visit, navigate to new visit page
-        router.push(`/patients/${patientId}/new-visit`);
+      if (visitId) {
+        await assignVisitToMeAction(visitId);
       }
+
+      navigateToVisitEditor(patientId, visitId);
     } catch (error) {
       console.error("Error assigning visit:", error);
       toast.error("Failed to assign visit");
-      // Fallback to patient page
-      router.push(`/patients/${patientId}`);
     } finally {
       setLoadingPatientId(null);
     }
@@ -158,7 +160,7 @@ export function WaitingRoomList({ patients: initialPatients }: WaitingRoomListPr
 
   // Filter and sort patients
   const filteredAndSortedPatients = useMemo(() => {
-    let filtered = patients.filter(patient => {
+    const filtered = patients.filter(patient => {
       if (!searchQuery) return true;
       const query = searchQuery.toLowerCase();
       return (
@@ -336,8 +338,6 @@ export function WaitingRoomList({ patients: initialPatients }: WaitingRoomListPr
                     patient.visit?.patientJoinToken)) ? (
                   <div onClick={(e) => e.stopPropagation()}>
                     <VirtualAppointmentActions
-                      patientId={patient.id}
-                      visitId={virtualVisitData[patient.id]?.visitId || patient.visit?.id || ""}
                       joinUrl={
                         typeof window !== 'undefined'
                           ? `${window.location.origin}/visit/${virtualVisitData[patient.id]?.visitId || patient.visit?.id || ""}/call`
@@ -348,7 +348,7 @@ export function WaitingRoomList({ patients: initialPatients }: WaitingRoomListPr
                   </div>
                 ) : (
                   <Button
-                    onClick={(e) => handleAssignToMe(patient.id, e)}
+                    onClick={(e) => handleAssignToMe(patient.id, patient.visit?.id ?? null, e)}
                     className="w-full"
                     variant="default"
                     disabled={loadingPatientId === patient.id}
@@ -375,13 +375,9 @@ export function WaitingRoomList({ patients: initialPatients }: WaitingRoomListPr
 
 // Virtual Appointment Actions Component
 function VirtualAppointmentActions({
-  patientId,
-  visitId,
   joinUrl,
   onJoin,
 }: {
-  patientId: string;
-  visitId: string;
   joinUrl: string;
   onJoin: () => void;
 }) {

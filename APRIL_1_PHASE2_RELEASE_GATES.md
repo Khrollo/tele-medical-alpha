@@ -38,3 +38,15 @@
 - **Observed behavior:** direct new-visit route renders, but Save is disabled for the tested fresh workflow.
 - **Why it matters:** tomorrow’s demo requires an explainable save/reopen/finalize story.
 - **Current decision:** treat fresh new-visit as **disallowed** until a redeployed build proves a pre-seeded continue-note path.
+
+## Batch 1 Execution Update
+
+- **Execution date:** April 3, 2026
+- **Branch:** `batch-1-demo-critical-release-gates`
+- **Narrow code fix applied:** `app/(app)/waiting-room/waiting-room-list.tsx`
+- **What changed:** waiting-room handoff now uses the visit ID already present in the rendered card instead of making a second preflight `getPatientOpenVisitAction()` call before assignment, and successful handoff now full-navigates into the visit editor.
+- **Why this is the smallest safe fix:** the waiting-room page already renders the authoritative open visit for the card, so the extra fetch widened the failure surface without improving the approved handoff path.
+- **Local validation completed:** `npx tsc --noEmit`, `npx eslint app/(app)/waiting-room/waiting-room-list.tsx`
+- **Credential check update:** the tracked demo credentials are valid again against Supabase.
+- **Seeded-session local smoke:** `RG-1` now passes locally (`/patients` for nurse, `/waiting-room` for doctor) when the browser is seeded with a real Supabase session.
+- **Remaining local findings:** `RG-2` still reproduces under local automation because patient-chart `Visit History`, `Log New Visit`, and `Open Notes -> Continue Note` did not transition routes. `RG-3` remains unproven locally because no visible `Assign To Me` row rendered for the authenticated doctor session in the current local dataset.
