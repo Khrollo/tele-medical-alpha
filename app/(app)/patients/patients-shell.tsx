@@ -29,8 +29,8 @@ export function PatientsShell({ children, userRole, userName }: PatientsShellPro
             {/* Main Content Area */}
             <div className="flex flex-1 flex-col overflow-hidden transition-all duration-300 ease-in-out">
                 {/* Top Bar */}
-                <div className="flex h-16 items-center gap-4 border-b border-border bg-background px-6">
-                    {/* Mobile hamburger button - inline with search */}
+                <div className="flex h-16 items-center gap-4 border-b border-border bg-background px-6 sticky top-0 z-10">
+                    {/* Mobile hamburger button */}
                     <Button
                         variant="ghost"
                         size="icon"
@@ -42,17 +42,21 @@ export function PatientsShell({ children, userRole, userName }: PatientsShellPro
                         <Menu className="h-5 w-5" />
                         <span className="sr-only">Open menu</span>
                     </Button>
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0 max-w-md relative">
                         <Input
-                            placeholder="Search by name, phone, email, or physician..."
-                            className="max-w-md w-full"
+                            placeholder="Search patients..."
+                            className="w-full pl-9 h-9 text-sm"
                             id="patients-search"
+                            autoComplete="off"
                         />
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                        </div>
                     </div>
                 </div>
 
                 {/* Page Content */}
-                <div className="flex-1 overflow-y-auto bg-background">
+                <div className="flex-1 overflow-y-auto">
                     {children}
                 </div>
             </div>

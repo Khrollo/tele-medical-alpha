@@ -49,6 +49,7 @@ export function WaitingRoomShell({ children, userRole, userName }: WaitingRoomSh
                                 placeholder="Search by name, priority, or appointment type..."
                                 className="max-w-md w-full"
                                 id="waiting-room-search"
+                                autoComplete="off"
                             />
                         </div>
                     </div>

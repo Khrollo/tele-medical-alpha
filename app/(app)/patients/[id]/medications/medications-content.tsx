@@ -6,7 +6,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { toast } from "sonner";
-import { Plus, Trash2, Pencil } from "lucide-react";
+import { Plus, Trash2, Pencil, Pill, Activity, Clock, FlaskConical, CalendarDays } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -186,13 +187,13 @@ export function MedicationsContent({
   };
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
+    <div className="flex flex-1 flex-col gap-8 p-4 md:p-8 bg-slate-50/30 dark:bg-transparent">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Medications</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Manage medications for {patientName}
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Medications</h1>
+          <p className="mt-1 text-sm font-medium text-slate-500">
+            Active prescriptions and medical therapy for {patientName}
           </p>
         </div>
         <Button onClick={() => setShowAddModal(true)}>
@@ -203,11 +204,14 @@ export function MedicationsContent({
 
       {/* Medications List */}
       {medications.length === 0 ? (
-        <Card>
-          <CardContent className="flex items-center justify-center py-12">
+        <Card className="rounded-[2rem] border-dashed border-2 bg-transparent shadow-none">
+          <CardContent className="flex items-center justify-center py-20">
             <div className="text-center">
-              <p className="text-muted-foreground mb-4">No medications recorded</p>
-              <Button onClick={() => setShowAddModal(true)} variant="outline">
+              <div className="h-16 w-16 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Pill className="h-8 w-8 text-slate-400" />
+              </div>
+              <p className="text-slate-500 font-medium mb-6">No medications recorded yet</p>
+              <Button onClick={() => setShowAddModal(true)} variant="outline" className="rounded-full">
                 <Plus className="h-4 w-4 mr-2" />
                 Add First Medication
               </Button>
@@ -215,30 +219,35 @@ export function MedicationsContent({
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-6 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
           {medications.map((medication) => {
             const statusBadge = getStatusBadge(medication.status);
 
             return (
-              <Card key={medication.id} className="relative">
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <CardTitle className="text-lg font-semibold">
-                      {getMedicationDisplayName(medication)}
-                    </CardTitle>
+              <Card key={medication.id} className="rounded-[2rem] border border-slate-50 dark:border-slate-800 bg-white dark:bg-slate-900 transition-transform hover:-translate-y-1">
+                <CardHeader className="pb-3 border-b border-slate-50 dark:border-slate-800/50">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-500">
+                        <FlaskConical className="h-5 w-5" />
+                      </div>
+                      <CardTitle className="text-base font-bold text-slate-800 dark:text-slate-100 truncate max-w-[150px]">
+                        {getMedicationDisplayName(medication)}
+                      </CardTitle>
+                    </div>
                     <div className="flex gap-1">
                       <Button
                         variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
+                        size="sm"
+                        className="h-8 w-8 rounded-full"
                         onClick={() => handleEdit(medication)}
                       >
-                        <Pencil className="h-4 w-4" />
+                        <Pencil className="h-4 w-4 text-slate-400" />
                       </Button>
                       <Button
                         variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-destructive hover:text-destructive"
+                        size="sm"
+                        className="h-8 w-8 rounded-full text-destructive hover:text-destructive hover:bg-destructive/5"
                         onClick={() => handleDelete(medication.id)}
                         disabled={deletingId === medication.id}
                       >
@@ -247,35 +256,45 @@ export function MedicationsContent({
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex flex-wrap gap-2">
+                <CardContent className="pt-6 space-y-6">
+                  <div className="flex items-center justify-between">
                     <Badge
                       variant={statusBadge.variant}
-                      className={statusBadge.className || ""}
+                      className={cn("rounded-full px-4 py-1 text-[10px] font-bold uppercase tracking-wider", statusBadge.className)}
                     >
                       {statusBadge.label}
                     </Badge>
                   </div>
-                  {(medication.strength || medication.form) && (
-                    <div>
-                      <p className="text-xs text-muted-foreground">Strength & Form</p>
-                      <p className="text-sm font-medium">
-                        {[medication.strength, medication.form].filter(Boolean).join(" • ")}
-                      </p>
-                    </div>
-                  )}
-                  {(medication.dosage || medication.frequency) && (
-                    <div>
-                      <p className="text-xs text-muted-foreground">Dosage & Frequency</p>
-                      <p className="text-sm font-medium">
-                        {[medication.dosage, medication.frequency].filter(Boolean).join(" • ")}
-                      </p>
-                    </div>
-                  )}
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    {(medication.strength || medication.form) && (
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                          <Activity className="h-3 w-3" />
+                          Strength
+                        </div>
+                        <p className="text-sm font-bold text-slate-700 dark:text-slate-300 truncate">
+                          {[medication.strength, medication.form].filter(Boolean).join(" • ")}
+                        </p>
+                      </div>
+                    )}
+                    {(medication.dosage || medication.frequency) && (
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                          <Clock className="h-3 w-3" />
+                          Schedule
+                        </div>
+                        <p className="text-sm font-bold text-slate-700 dark:text-slate-300 truncate">
+                          {[medication.dosage, medication.frequency].filter(Boolean).join(" • ")}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
                   {medication.notes && (
-                    <div>
-                      <p className="text-xs text-muted-foreground">Notes</p>
-                      <p className="text-sm">{medication.notes}</p>
+                    <div className="pt-4 border-t border-slate-50 dark:border-slate-800/50">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Clinical Notes</p>
+                      <p className="text-sm text-slate-600 dark:text-slate-400 line-clamp-3">{medication.notes}</p>
                     </div>
                   )}
                 </CardContent>

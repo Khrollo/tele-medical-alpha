@@ -3,8 +3,9 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Menu, X, LogOut, Clock, Users, FileText, UserPlus, ChevronLeft, ChevronRight, Info, User, Pill, Syringe, History, Stethoscope, AlertCircle, Activity, FolderOpen } from "lucide-react";
+import { Menu, X, LogOut, Clock, Users, FileText, UserPlus, ChevronLeft, ChevronRight, Info, User, Pill, Syringe, History, Stethoscope, AlertCircle, Activity, FolderOpen, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ThemeToggle } from "./theme-toggle";
 import { cn } from "@/app/_lib/utils/cn";
 import { createSupabaseBrowserClient } from "@/app/_lib/supabase/client";
@@ -102,6 +103,11 @@ export function SideNav({ userRole, userName, patientId, patientName, onMobileSt
 
         if (userRole === "doctor") {
             items.push({
+                href: "/patients",
+                label: "Patients",
+                icon: <Users className="h-4 w-4" />,
+            });
+            items.push({
                 href: "/waiting-room",
                 label: "Waiting Room",
                 icon: <Clock className="h-4 w-4" />,
@@ -123,15 +129,6 @@ export function SideNav({ userRole, userName, patientId, patientName, onMobileSt
                 href: "/waiting-room",
                 label: "Waiting Room",
                 icon: <Clock className="h-4 w-4" />,
-            });
-        }
-
-        // Both doctors and nurses can create patients
-        if (userRole === "doctor" || userRole === "nurse") {
-            items.push({
-                href: "/patients/new",
-                label: "Create Patient",
-                icon: <UserPlus className="h-4 w-4" />,
             });
         }
 
@@ -229,6 +226,8 @@ export function SideNav({ userRole, userName, patientId, patientName, onMobileSt
                 "flex-1 space-y-1 overflow-y-auto transition-[padding] duration-300 ease-in-out thin-scrollbar",
                 shouldCenter ? "p-2" : "p-4"
             )}>
+                {/* Search Bar - hidden for now */}
+
                 {/* NAVIGATION Section */}
                 <div className={cn("mb-4", shouldCenter && "mb-2")}>
                     {showLabels && (
@@ -261,108 +260,13 @@ export function SideNav({ userRole, userName, patientId, patientName, onMobileSt
                     </div>
                 </div>
 
-                {/* MEDICAL SECTIONS - Only show when on patient route */}
-                {isOnPatientRoute && patientId && (
+                {/* Patient name context - show when on patient route */}
+                {isOnPatientRoute && patientId && patientName && showLabels && (
                     <>
                         <div className={cn("border-t border-border", shouldCenter ? "my-2" : "my-4")} />
-                        <div className={cn("mt-2", shouldCenter && "mt-1")}>
-                            {patientName && showLabels && (() => {
-                                // Use last word if name would be too long
-                                const nameParts = patientName.trim().split(/\s+/);
-                                const displayName = nameParts.length > 1 && patientName.length > 20
-                                    ? nameParts[nameParts.length - 1]
-                                    : patientName;
-
-                                return (
-                                    <div className="px-3 py-2 mb-2 animate-in fade-in duration-300">
-                                        <h3 className="text-xs font-semibold text-foreground">Patient Name</h3>
-                                        <p className="text-xs text-muted-foreground truncate mt-1" title={patientName}>{displayName}</p>
-                                    </div>
-                                );
-                            })()}
-                            {showLabels && (
-                                <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground animate-in fade-in duration-300">
-                                    MEDICAL SECTIONS
-                                </p>
-                            )}
-                            <div className="space-y-1">
-                                {medicalSections.map((section) => {
-                                    const href = `${patientBasePath}${section.href || ""}`;
-                                    const active = isMedicalSectionActive(section.href);
-
-                                    // Map section IDs to medical panel section IDs
-                                    const medicalPanelSectionMap: Record<string, string> = {
-                                        'medications': 'medications',
-                                        'vaccines': 'vaccines',
-                                        'family': 'familyHistory',
-                                        'surgical': 'surgicalHistory',
-                                        'past-medical': 'pastMedicalHistory',
-                                        'allergies': 'allergies',
-                                        'vitals': 'vitals',
-                                        'orders': 'orders',
-                                    };
-
-                                    const medicalPanelSectionId = medicalPanelSectionMap[section.id];
-                                    const isOnVisitPage = pathname?.includes('/new-visit') && pathname.startsWith(patientBasePath);
-
-                                    // If on visit page and section has a medical panel equivalent, use button instead of Link
-                                    if (isOnVisitPage && medicalPanelSectionId) {
-                                        return (
-                                            <button
-                                                key={section.id}
-                                                type="button"
-                                                onClick={(e) => {
-                                                    e.preventDefault();
-                                                    e.stopPropagation();
-                                                    setIsOpen(false);
-                                                    // Trigger a custom event that the visit form can listen to
-                                                    const event = new CustomEvent('openMedicalPanel', {
-                                                        detail: { sectionId: medicalPanelSectionId },
-                                                        bubbles: true,
-                                                        cancelable: true
-                                                    });
-                                                    window.dispatchEvent(event);
-                                                }}
-                                                className={cn(
-                                                    "flex w-full items-center rounded-md text-sm transition-colors text-left",
-                                                    shouldCenter ? "justify-center px-2 py-2" : "gap-3 px-3 py-2",
-                                                    active
-                                                        ? "bg-accent text-accent-foreground font-medium"
-                                                        : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
-                                                )}
-                                                title={shouldCenter ? section.label : undefined}
-                                            >
-                                                {section.icon}
-                                                {showLabels && (
-                                                    <span className="animate-in fade-in duration-300">{section.label}</span>
-                                                )}
-                                            </button>
-                                        );
-                                    }
-
-                                    // Regular navigation link
-                                    return (
-                                        <Link
-                                            key={section.id}
-                                            href={href}
-                                            onClick={() => setIsOpen(false)}
-                                            className={cn(
-                                                "flex items-center rounded-md text-sm transition-colors",
-                                                shouldCenter ? "justify-center px-2 py-2" : "gap-3 px-3 py-2",
-                                                active
-                                                    ? "bg-accent text-accent-foreground font-medium"
-                                                    : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
-                                            )}
-                                            title={shouldCenter ? section.label : undefined}
-                                        >
-                                            {section.icon}
-                                            {showLabels && (
-                                                <span className="animate-in fade-in duration-300">{section.label}</span>
-                                            )}
-                                        </Link>
-                                    );
-                                })}
-                            </div>
+                        <div className="px-3 py-2 animate-in fade-in duration-300">
+                            <h3 className="text-xs font-semibold text-foreground">Patient Name</h3>
+                            <p className="text-xs text-muted-foreground truncate mt-1" title={patientName}>{patientName}</p>
                         </div>
                     </>
                 )}
