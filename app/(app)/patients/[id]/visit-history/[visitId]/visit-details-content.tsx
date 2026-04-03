@@ -1,9 +1,10 @@
 "use client";
 
 import * as React from "react";
+import NextImage from "next/image";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowLeft, Edit, FileText, AudioWaveform, File, Clock, User, CheckCircle2, AlertCircle, FileSignature, Eye, Download, Image, Video } from "lucide-react";
+import { ArrowLeft, Edit, FileText, AudioWaveform, File, Clock, User, CheckCircle2, AlertCircle, FileSignature, Eye, Download, ImageIcon, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +15,7 @@ import { markVisitInProgressAction, finalizeVisitAction } from "@/app/_actions/v
 import { getDocumentSignedUrlAction } from "@/app/_actions/documents";
 import { cn } from "@/app/_lib/utils/cn";
 import { formatVisitStatusLabel } from "@/app/_lib/utils/visit-status-label";
+import type { VisitNote } from "@/app/_lib/visit-note/schema";
 import Link from "next/link";
 
 interface VisitDetailsContentProps {
@@ -70,6 +72,49 @@ interface VisitDetailsContentProps {
     toStatus: string;
     reason?: string;
   }>;
+}
+
+type LegacyAssessmentPlan = {
+  assessment?: string;
+  plan?: string;
+};
+
+type NoteMedication = VisitNote["medications"][number] & {
+  name?: string;
+  takingAsPrescribed?: boolean;
+  missedDoses?: boolean;
+  sideEffects?: boolean;
+  sideEffectsNotes?: string;
+};
+
+type AssessmentMedication = VisitNote["assessmentPlan"][number]["medications"][number];
+type NoteOrder = VisitNote["orders"][number];
+type VaccineEntry = VisitNote["vaccines"][number];
+type FamilyHistoryEntry = VisitNote["familyHistory"][number];
+type SurgicalHistoryEntry = VisitNote["surgicalHistory"][number];
+type PastMedicalHistoryEntry = VisitNote["pastMedicalHistory"][number];
+
+type VisitDetailsNote = Partial<Omit<VisitNote, "assessmentPlan" | "objective">> & {
+  assessmentPlan?: VisitNote["assessmentPlan"] | LegacyAssessmentPlan;
+  objective?:
+    | (Partial<VisitNote["objective"]> & {
+        examFindings?: VisitNote["objective"]["examFindings"] | string;
+      })
+    | string;
+};
+
+function isLegacyAssessmentPlan(
+  value: VisitDetailsNote["assessmentPlan"]
+): value is LegacyAssessmentPlan {
+  return !!value && !Array.isArray(value);
+}
+
+function isObjectiveRecord(
+  value: VisitDetailsNote["objective"]
+): value is Partial<VisitNote["objective"]> & {
+  examFindings?: VisitNote["objective"]["examFindings"] | string;
+} {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 export function VisitDetailsContent({
@@ -245,8 +290,10 @@ export function VisitDetailsContent({
   };
 
   // Parse note content
-  const noteData = notes[0]?.note as any;
-  const noteContent = notes[0]?.content;
+  const noteData = (notes[0]?.note as VisitDetailsNote | null | undefined) ?? null;
+  const objectiveData = isObjectiveRecord(noteData?.objective)
+    ? noteData.objective
+    : null;
 
   // Deduplicate documents - remove duplicates by ID, storageUrl, or filename+size combination
   // Use a Map to track seen documents for better performance
@@ -327,7 +374,7 @@ export function VisitDetailsContent({
 
   const getFileIcon = (mimeType: string) => {
     if (mimeType.startsWith("image/")) {
-      return <Image className="h-5 w-5" />;
+      return <ImageIcon className="h-5 w-5" />;
     }
     if (mimeType === "application/pdf") {
       return <FileText className="h-5 w-5" />;
@@ -342,6 +389,100 @@ export function VisitDetailsContent({
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const objectiveExamFindingCategories = [
+    { key: "general", label: "General" },
+    { key: "heent", label: "HEENT" },
+    { key: "neck", label: "Neck" },
+    { key: "cardiovascular", label: "Cardiovascular" },
+    { key: "lungs", label: "Lungs" },
+    { key: "abdomen", label: "Abdomen" },
+    { key: "musculoskeletal", label: "Musculoskeletal" },
+    { key: "neurologic", label: "Neurologic" },
+    { key: "skin", label: "Skin" },
+    { key: "psychological", label: "Psychological" },
+  ] as const;
+
+  const hasValue = (value: unknown): boolean => {
+    if (value === null || value === undefined) {
+      return false;
+    }
+
+    if (typeof value === "string") {
+      return value.trim() !== "";
+    }
+
+    if (Array.isArray(value)) {
+      return value.length > 0;
+    }
+
+    if (typeof value === "object") {
+      return Object.values(value).some((nestedValue) => hasValue(nestedValue));
+    }
+
+    return true;
+  };
+
+  const formatObjectiveValue = (
+    key: string,
+    value: unknown
+  ): React.ReactNode | null => {
+    if (!value || value === "") {
+      return null;
+    }
+
+    if (key === "examFindings") {
+      if (typeof value === "string") {
+        return (
+          <div className="space-y-1">
+            <div className="font-medium">Exam Findings:</div>
+            <div className="text-muted-foreground whitespace-pre-wrap">{value}</div>
+          </div>
+        );
+      }
+
+      if (typeof value === "object" && !Array.isArray(value)) {
+        const examFindings = value as Record<string, unknown>;
+        const visibleFindings = objectiveExamFindingCategories.filter((category) => {
+          const categoryValue = examFindings[category.key];
+          return typeof categoryValue === "string" && categoryValue.trim() !== "";
+        });
+
+        if (visibleFindings.length === 0) {
+          return null;
+        }
+
+        return (
+          <div className="space-y-3">
+            <div className="font-medium">Physical Examination:</div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {visibleFindings.map((category) => (
+                <div key={category.key} className="space-y-1">
+                  <div className="font-medium">{category.label}:</div>
+                  <div className="text-muted-foreground whitespace-pre-wrap">
+                    {String(examFindings[category.key])}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      }
+    }
+
+    if (typeof value === "object") {
+      return null;
+    }
+
+    return (
+      <div>
+        <span className="font-medium capitalize">
+          {key.replace(/([A-Z])/g, " $1").trim()}:{" "}
+        </span>
+        {String(value)}
+      </div>
+    );
   };
 
   return (
@@ -464,19 +605,27 @@ export function VisitDetailsContent({
                   {noteData.objective && (
                     <div>
                       <h3 className="font-semibold mb-2">Objective</h3>
-                      <div className="grid gap-2 md:grid-cols-2 text-sm">
-                        {Object.entries(noteData.objective).map(([key, value]) => {
-                          if (!value || value === "") return null;
-                          return (
-                            <div key={key}>
-                              <span className="font-medium capitalize">
-                                {key.replace(/([A-Z])/g, " $1").trim()}:{" "}
-                              </span>
-                              {String(value)}
-                            </div>
-                          );
-                        })}
-                      </div>
+                      {typeof noteData.objective === "string" ? (
+                        <div className="text-sm text-muted-foreground whitespace-pre-wrap">
+                          {noteData.objective}
+                        </div>
+                      ) : isObjectiveRecord(noteData.objective) ? (
+                        <div className="grid gap-2 md:grid-cols-2 text-sm">
+                          {Object.entries(noteData.objective).map(([key, value]) => {
+                            const renderedValue = formatObjectiveValue(key, value);
+                            if (!renderedValue) return null;
+
+                            return (
+                              <div
+                                key={key}
+                                className={key === "examFindings" ? "md:col-span-2" : undefined}
+                              >
+                                {renderedValue}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : null}
                     </div>
                   )}
 
@@ -486,7 +635,7 @@ export function VisitDetailsContent({
                       <div className="space-y-4 text-sm">
                         {Array.isArray(noteData.assessmentPlan) ? (
                           // New format: array of detailed assessment-plan entries
-                          noteData.assessmentPlan.map((item: any, index: number) => (
+                          noteData.assessmentPlan.map((item: VisitNote["assessmentPlan"][number], index: number) => (
                             <div key={index} className="space-y-2 pb-3 border-b last:border-b-0 last:pb-0">
                               {item.assessment && (
                                 <div>
@@ -504,7 +653,7 @@ export function VisitDetailsContent({
                                 <div>
                                   <span className="font-medium">Medications: </span>
                                   <div className="mt-1 space-y-1">
-                                    {item.medications.map((med: any, medIndex: number) => (
+                                    {item.medications.map((med: AssessmentMedication, medIndex: number) => (
                                       <div key={medIndex} className="pl-2">
                                         {med.brandName} {med.dosage && med.dosage} {med.frequency && med.frequency}
                                       </div>
@@ -516,7 +665,7 @@ export function VisitDetailsContent({
                                 <div>
                                   <span className="font-medium">Orders: </span>
                                   <div className="mt-1 space-y-1">
-                                    {item.orders.map((order: any, orderIndex: number) => (
+                                    {item.orders.map((order: NoteOrder, orderIndex: number) => (
                                       <div key={orderIndex} className="pl-2">
                                         {order.details || "None"}
                                       </div>
@@ -549,7 +698,7 @@ export function VisitDetailsContent({
                               )}
                             </div>
                           ))
-                        ) : (
+                        ) : isLegacyAssessmentPlan(noteData.assessmentPlan) ? (
                           // Backward compatibility: old format
                           <>
                             {noteData.assessmentPlan.assessment && (
@@ -565,7 +714,7 @@ export function VisitDetailsContent({
                               </div>
                             )}
                           </>
-                        )}
+                        ) : null}
                       </div>
                     </div>
                   )}
@@ -599,41 +748,47 @@ export function VisitDetailsContent({
                         )}
 
                         {/* Objective */}
-                        {noteData.objective && Object.values(noteData.objective).some((v: any) => v && v !== "") && (
+                        {objectiveData && Object.values(objectiveData).some((value) => hasValue(value)) && (
                           <Card>
                             <CardHeader className="pb-2">
                               <CardTitle className="text-base">Objective</CardTitle>
                             </CardHeader>
                             <CardContent className="pt-0">
                               <div className="grid gap-2 md:grid-cols-2 text-sm">
-                                {noteData.objective.bp && (
-                                  <div><span className="font-medium">Blood Pressure: </span>{noteData.objective.bp}</div>
+                                {objectiveData.bp && (
+                                  <div><span className="font-medium">Blood Pressure: </span>{objectiveData.bp}</div>
                                 )}
-                                {noteData.objective.hr && (
-                                  <div><span className="font-medium">Heart Rate: </span>{noteData.objective.hr}</div>
+                                {objectiveData.hr && (
+                                  <div><span className="font-medium">Heart Rate: </span>{objectiveData.hr}</div>
                                 )}
-                                {noteData.objective.temp && (
-                                  <div><span className="font-medium">Temperature: </span>{noteData.objective.temp}</div>
+                                {objectiveData.temp && (
+                                  <div><span className="font-medium">Temperature: </span>{objectiveData.temp}</div>
                                 )}
-                                {noteData.objective.weight && (
-                                  <div><span className="font-medium">Weight: </span>{noteData.objective.weight} lbs</div>
+                                {objectiveData.weight && (
+                                  <div><span className="font-medium">Weight: </span>{objectiveData.weight} lbs</div>
                                 )}
-                                {noteData.objective.height && (
-                                  <div><span className="font-medium">Height: </span>{noteData.objective.height} cm</div>
+                                {objectiveData.height && (
+                                  <div><span className="font-medium">Height: </span>{objectiveData.height} cm</div>
                                 )}
-                                {noteData.objective.examFindings && (
+                                {objectiveData.examFindings && (
                                   <div className="md:col-span-2 space-y-3">
                                     <div className="font-medium text-base border-b pb-1">Physical Examination</div>
-                                    {typeof noteData.objective.examFindings === "string" ? (
+                                    {typeof objectiveData.examFindings === "string" ? (
                                       // Backward compatibility: if it's a string, display as before
                                       <div>
                                         <span className="font-medium">Exam Findings: </span>
-                                        {noteData.objective.examFindings}
+                                        {objectiveData.examFindings}
                                       </div>
                                     ) : (
                                       // New format: display by category
                                       <div className="grid gap-3 md:grid-cols-2 text-sm">
-                                        {[
+                                        {(() => {
+                                          const examFindings = objectiveData.examFindings;
+                                          if (!examFindings || typeof examFindings === "string") {
+                                            return null;
+                                          }
+
+                                          return [
                                           { key: "general", label: "General" },
                                           { key: "heent", label: "HEENT" },
                                           { key: "neck", label: "Neck" },
@@ -645,29 +800,33 @@ export function VisitDetailsContent({
                                           { key: "skin", label: "Skin" },
                                           { key: "psychological", label: "Psychological" },
                                         ].map((category) => {
-                                          const value = noteData.objective.examFindings?.[category.key as keyof typeof noteData.objective.examFindings];
-                                          return value && value !== "" ? (
-                                            <div key={category.key} className="space-y-1">
-                                              <div className="font-medium text-foreground">{category.label}:</div>
-                                              <div className="text-muted-foreground pl-2 whitespace-pre-wrap">{value}</div>
-                                            </div>
-                                          ) : null;
-                                        })}
+                                            const value =
+                                              examFindings[
+                                                category.key as keyof typeof examFindings
+                                              ];
+                                            return value && value !== "" ? (
+                                              <div key={category.key} className="space-y-1">
+                                                <div className="font-medium text-foreground">{category.label}:</div>
+                                                <div className="text-muted-foreground pl-2 whitespace-pre-wrap">{value}</div>
+                                              </div>
+                                            ) : null;
+                                          });
+                                        })()}
                                       </div>
                                     )}
                                   </div>
                                 )}
-                                {(noteData.objective.visionOd || noteData.objective.visionOs || noteData.objective.visionOu) && (
+                                {(objectiveData.visionOd || objectiveData.visionOs || objectiveData.visionOu) && (
                                   <div className="md:col-span-2 space-y-1">
                                     <div className="font-medium">Vision:</div>
-                                    {noteData.objective.visionOd && <div className="pl-4">OD: {noteData.objective.visionOd}</div>}
-                                    {noteData.objective.visionOs && <div className="pl-4">OS: {noteData.objective.visionOs}</div>}
-                                    {noteData.objective.visionOu && <div className="pl-4">OU: {noteData.objective.visionOu}</div>}
-                                    {noteData.objective.visionCorrection && <div className="pl-4">Correction: {noteData.objective.visionCorrection}</div>}
-                                    {noteData.objective.visionBlurry && <div className="pl-4">Blurry: {noteData.objective.visionBlurry}</div>}
-                                    {noteData.objective.visionFloaters && <div className="pl-4">Floaters: {noteData.objective.visionFloaters}</div>}
-                                    {noteData.objective.visionPain && <div className="pl-4">Pain: {noteData.objective.visionPain}</div>}
-                                    {noteData.objective.visionLastExamDate && <div className="pl-4">Last Exam Date: {noteData.objective.visionLastExamDate}</div>}
+                                    {objectiveData.visionOd && <div className="pl-4">OD: {objectiveData.visionOd}</div>}
+                                    {objectiveData.visionOs && <div className="pl-4">OS: {objectiveData.visionOs}</div>}
+                                    {objectiveData.visionOu && <div className="pl-4">OU: {objectiveData.visionOu}</div>}
+                                    {objectiveData.visionCorrection && <div className="pl-4">Correction: {objectiveData.visionCorrection}</div>}
+                                    {objectiveData.visionBlurry && <div className="pl-4">Blurry: {objectiveData.visionBlurry}</div>}
+                                    {objectiveData.visionFloaters && <div className="pl-4">Floaters: {objectiveData.visionFloaters}</div>}
+                                    {objectiveData.visionPain && <div className="pl-4">Pain: {objectiveData.visionPain}</div>}
+                                    {objectiveData.visionLastExamDate && <div className="pl-4">Last Exam Date: {objectiveData.visionLastExamDate}</div>}
                                   </div>
                                 )}
                               </div>
@@ -677,7 +836,7 @@ export function VisitDetailsContent({
 
                         {/* Point of Care */}
                         {noteData.pointOfCare && (
-                          (noteData.pointOfCare.diabetes && Object.values(noteData.pointOfCare.diabetes).some((v: any) => v && v !== "")) ||
+                          (noteData.pointOfCare.diabetes && Object.values(noteData.pointOfCare.diabetes).some((value) => hasValue(value))) ||
                           (noteData.pointOfCare.hiv && noteData.pointOfCare.hiv !== "") ||
                           (noteData.pointOfCare.syphilis && (noteData.pointOfCare.syphilis.result || noteData.pointOfCare.syphilis.reactivity))
                         ) && (
@@ -687,7 +846,7 @@ export function VisitDetailsContent({
                               </CardHeader>
                               <CardContent className="pt-0 space-y-6">
                                 {/* Diabetes Subsection */}
-                                {noteData.pointOfCare.diabetes && Object.values(noteData.pointOfCare.diabetes).some((v: any) => v && v !== "") && (
+                                {noteData.pointOfCare.diabetes && Object.values(noteData.pointOfCare.diabetes).some((value) => hasValue(value)) && (
                                   <div className="space-y-3">
                                     <h4 className="text-sm font-semibold text-foreground border-b pb-1">Diabetes</h4>
                                     <div className="grid gap-2 md:grid-cols-2 text-sm">
@@ -761,7 +920,7 @@ export function VisitDetailsContent({
                               <CardTitle className="text-base">Medications ({noteData.medications.length})</CardTitle>
                             </CardHeader>
                             <CardContent className="pt-0 space-y-4">
-                              {noteData.medications.map((med: any, index: number) => (
+                              {noteData.medications.map((med: NoteMedication, index: number) => (
                                 <div key={index} className="border-l-2 pl-4 space-y-1 text-sm">
                                   {med.name && <div className="font-medium">{med.name}</div>}
                                   {med.dosage && <div className="text-muted-foreground">Dosage: {med.dosage}</div>}
@@ -782,7 +941,8 @@ export function VisitDetailsContent({
                         {/* Assessment & Plan */}
                         {noteData.assessmentPlan && (
                           (Array.isArray(noteData.assessmentPlan) && noteData.assessmentPlan.length > 0) ||
-                          (typeof noteData.assessmentPlan === "object" && (noteData.assessmentPlan.assessment || noteData.assessmentPlan.plan))
+                          (isLegacyAssessmentPlan(noteData.assessmentPlan) &&
+                            (!!noteData.assessmentPlan.assessment || !!noteData.assessmentPlan.plan))
                         ) && (
                             <Card>
                               <CardHeader className="pb-2">
@@ -791,7 +951,7 @@ export function VisitDetailsContent({
                               <CardContent className="pt-0 space-y-4 text-sm">
                                 {Array.isArray(noteData.assessmentPlan) ? (
                                   // New format: array of detailed assessment-plan entries
-                                  noteData.assessmentPlan.map((item: any, index: number) => (
+                                  noteData.assessmentPlan.map((item: VisitNote["assessmentPlan"][number], index: number) => (
                                     <div key={index} className="space-y-3 pb-4 border-b last:border-b-0 last:pb-0">
                                       {item.assessment && (
                                         <div>
@@ -809,7 +969,7 @@ export function VisitDetailsContent({
                                         <div>
                                           <span className="font-medium">Medications: </span>
                                           <div className="mt-1 space-y-1">
-                                            {item.medications.map((med: any, medIndex: number) => (
+                                            {item.medications.map((med: AssessmentMedication, medIndex: number) => (
                                               <div key={medIndex} className="pl-2">
                                                 {med.brandName} {med.dosage && med.dosage} {med.frequency && med.frequency}
                                               </div>
@@ -821,7 +981,7 @@ export function VisitDetailsContent({
                                         <div>
                                           <span className="font-medium">Orders: </span>
                                           <div className="mt-1 space-y-1">
-                                            {item.orders.map((order: any, orderIndex: number) => (
+                                            {item.orders.map((order: NoteOrder, orderIndex: number) => (
                                               <div key={orderIndex} className="pl-2">
                                                 {order.details || "None"}
                                               </div>
@@ -854,7 +1014,7 @@ export function VisitDetailsContent({
                                       )}
                                     </div>
                                   ))
-                                ) : (
+                                ) : isLegacyAssessmentPlan(noteData.assessmentPlan) ? (
                                   // Backward compatibility: old format (object with assessment/plan)
                                   <>
                                     {noteData.assessmentPlan.assessment && (
@@ -870,7 +1030,7 @@ export function VisitDetailsContent({
                                       </div>
                                     )}
                                   </>
-                                )}
+                                ) : null}
                               </CardContent>
                             </Card>
                           )}
@@ -882,7 +1042,7 @@ export function VisitDetailsContent({
                               <CardTitle className="text-base">Vaccines ({noteData.vaccines.length})</CardTitle>
                             </CardHeader>
                             <CardContent className="pt-0 space-y-3">
-                              {noteData.vaccines.map((vaccine: any, index: number) => (
+                              {noteData.vaccines.map((vaccine: VaccineEntry, index: number) => (
                                 <div key={index} className="border-l-2 pl-4 space-y-1 text-sm">
                                   {vaccine.name && <div className="font-medium">{vaccine.name}</div>}
                                   <div className="grid gap-1 md:grid-cols-2 text-muted-foreground">
@@ -906,7 +1066,7 @@ export function VisitDetailsContent({
                               <CardTitle className="text-base">Family History ({noteData.familyHistory.length})</CardTitle>
                             </CardHeader>
                             <CardContent className="pt-0 space-y-3">
-                              {noteData.familyHistory.map((fh: any, index: number) => (
+                              {noteData.familyHistory.map((fh: FamilyHistoryEntry, index: number) => (
                                 <div key={index} className="border-l-2 pl-4 space-y-1 text-sm">
                                   {fh.relationship && <div className="font-medium">{fh.relationship}</div>}
                                   <div className="text-muted-foreground">
@@ -920,7 +1080,7 @@ export function VisitDetailsContent({
                         )}
 
                         {/* Risk Flags */}
-                        {noteData.riskFlags && Object.values(noteData.riskFlags).some((v: any) => v && v !== "") && (
+                        {noteData.riskFlags && Object.values(noteData.riskFlags).some((value) => hasValue(value)) && (
                           <Card>
                             <CardHeader className="pb-2">
                               <CardTitle className="text-base">Risk Flags</CardTitle>
@@ -957,7 +1117,7 @@ export function VisitDetailsContent({
                               <CardTitle className="text-base">Surgical History ({noteData.surgicalHistory.length})</CardTitle>
                             </CardHeader>
                             <CardContent className="pt-0 space-y-3">
-                              {noteData.surgicalHistory.map((surg: any, index: number) => (
+                              {noteData.surgicalHistory.map((surg: SurgicalHistoryEntry, index: number) => (
                                 <div key={index} className="border-l-2 pl-4 space-y-1 text-sm">
                                   {surg.procedure && <div className="font-medium">{surg.procedure}</div>}
                                   <div className="grid gap-1 md:grid-cols-2 text-muted-foreground">
@@ -980,7 +1140,7 @@ export function VisitDetailsContent({
                               <CardTitle className="text-base">Past Medical History ({noteData.pastMedicalHistory.length})</CardTitle>
                             </CardHeader>
                             <CardContent className="pt-0 space-y-3">
-                              {noteData.pastMedicalHistory.map((pmh: any, index: number) => (
+                              {noteData.pastMedicalHistory.map((pmh: PastMedicalHistoryEntry, index: number) => (
                                 <div key={index} className="border-l-2 pl-4 space-y-1 text-sm">
                                   {pmh.condition && <div className="font-medium">{pmh.condition}</div>}
                                   <div className="grid gap-1 md:grid-cols-2 text-muted-foreground">
@@ -1003,7 +1163,7 @@ export function VisitDetailsContent({
                               <CardTitle className="text-base">Orders ({noteData.orders.length})</CardTitle>
                             </CardHeader>
                             <CardContent className="pt-0 space-y-3">
-                              {noteData.orders.map((order: any, index: number) => (
+                              {noteData.orders.map((order: NoteOrder, index: number) => (
                                 <div key={index} className="border-l-2 pl-4 space-y-1 text-sm">
                                   {order.type && <div className="font-medium">{order.type}</div>}
                                   <div className="grid gap-1 md:grid-cols-2 text-muted-foreground">
@@ -1216,9 +1376,12 @@ export function VisitDetailsContent({
               {previewUrl ? (
                 previewDocument.mimeType.startsWith("image/") ? (
                   <div className="flex items-center justify-center w-full">
-                    <img
+                    <NextImage
                       src={previewUrl}
                       alt={previewDocument.filename}
+                      width={1600}
+                      height={1200}
+                      unoptimized
                       className="max-w-full max-h-[70vh] object-contain rounded-lg"
                     />
                   </div>
