@@ -11,9 +11,9 @@ import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Calendar, Heart, Pill, Users2, History, AlertTriangle, FileText, Package, Video, QrCode, Copy, Check } from "lucide-react";
+import { Calendar, Heart, Pill, History, AlertTriangle, FileText, Video, Copy, Check } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-import { cn } from "@/app/_lib/utils/cn";
+import { formatDate } from "@/app/_lib/utils/format-date";
 import { toast } from "sonner";
 
 interface PatientOverviewCardsProps {
@@ -161,13 +161,7 @@ export function PatientOverviewCards({
 
   // Visit progress
   const visitProgress = latestVisit ? calculateVisitProgress(latestVisit.notesStatus) : 0;
-  const visitDate = latestVisit
-    ? new Date(latestVisit.createdAt).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    })
-    : null;
+  const visitDate = latestVisit ? formatDate(latestVisit.createdAt) : null;
 
   return (
     <div className="grid gap-6 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
