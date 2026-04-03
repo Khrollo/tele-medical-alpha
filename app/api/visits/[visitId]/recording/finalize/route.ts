@@ -321,7 +321,7 @@ export async function POST(
       const storagePath = `visits/${visit.patientId}/${visitId}/${fileName}`;
 
       // Upload to Supabase Storage
-      const bucket = process.env.STORAGE_BUCKET || "visits";
+      const bucket = getAudioStorageBucket();
       try {
         await uploadFile(bucket, storagePath, finalBuffer, {
           contentType: `audio/${extension}`,
