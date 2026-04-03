@@ -49,7 +49,12 @@ export async function getPatientPastMedicalHistory(patientId: string): Promise<P
 
     // Check if it's the new format with entries array
     if (typeof pmh === 'object' && 'entries' in pmh) {
-      return pmh as PastMedicalHistoryData;
+      const obj = pmh as Record<string, unknown>;
+      return {
+        entries: Array.isArray(obj.entries) ? obj.entries as PastMedicalHistoryEntry[] : [],
+        noSignificantPMH: typeof obj.noSignificantPMH === 'boolean' ? obj.noSignificantPMH : false,
+        lastUpdated: typeof obj.lastUpdated === 'string' ? obj.lastUpdated : undefined,
+      };
     }
 
     // Legacy format: array of entries
