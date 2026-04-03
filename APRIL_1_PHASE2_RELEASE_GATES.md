@@ -4,8 +4,8 @@
 
 | ID | Blocker | Reproduction steps | Affected role(s) | Affected route(s) | Root cause hypothesis | Code area implicated | Fix owner | Status | Re-test result | Remains demo blocker? |
 |---|---|---|---|---|---|---|---|---|---|---|
-| RG-1 | Post-login landing goes to `/` instead of role home | Sign in as nurse or doctor on live prod | nurse, doctor | `/sign-in` -> `/` | client redirect trusts `user_metadata.role` and uses SPA navigation instead of server-verified session/DB role | `app/(auth)/sign-in/sign-in-form.tsx` | Agent | **fixed in repo / pending redeploy** | live prod still fails; repo fix not yet deployed | **Yes** on current prod |
-| RG-2 | Client navigation dead on hydrated workflow screens | nurse: patient chart `Visit History`; visit history `Log New Visit`; doctor: `Open Notes` -> `Continue Note` | nurse, doctor | `/patients`, `/patients/[id]/visit-history`, `/open-notes` | hydration mismatch (`React error #418`) likely from client-side date formatting text mismatch, breaking event wiring / client routing | `app/(app)/patients/patients-list.tsx`, `app/(app)/patients/[id]/visit-history/visit-history-content.tsx`, `app/_lib/utils/format-date.ts`, `app/(app)/open-notes/open-notes-content.tsx` | Agent | **fixed in repo / pending redeploy** | live prod still fails; repo fix not yet deployed | **Yes** on current prod |
+| RG-1 | Post-login landing goes to `/` instead of role home | Sign in as nurse or doctor on live prod | nurse, doctor | `/sign-in` -> `/` | client redirect trusts `user_metadata.role` and uses SPA navigation instead of server-verified session/DB role | `app/(auth)/sign-in/sign-in-form.tsx` | Agent | **fixed in repo / locally re-validated / pending deployed smoke** | live prod still fails; current branch seeded-session smoke lands on `/patients` for nurse and `/waiting-room` for doctor | **Yes** until deployed smoke |
+| RG-2 | Client navigation dead on hydrated workflow screens | nurse: patient chart `Visit History`; visit history `Log New Visit`; doctor: `Open Notes` -> `Continue Note` | nurse, doctor | `/patients`, `/patients/[id]/visit-history`, `/open-notes` | hydration mismatch (`React error #418`) and brittle CTA markup on route buttons | `app/(app)/patients/patients-list.tsx`, `app/(app)/patients/[id]/patient-overview-cards.tsx`, `app/_components/patient-chart/patient-chart-shell.tsx`, `app/(app)/patients/[id]/visit-history/visit-history-content.tsx`, `app/(app)/open-notes/open-notes-content.tsx`, `app/_lib/utils/format-date.ts` | Agent | **fixed in repo / locally re-validated / pending deployed smoke** | live prod still fails; current branch seeded-session smoke passes `Visit History`, `Log New Visit`, visit detail, and `Continue Note` transitions locally | **Yes** until deployed smoke |
 | RG-3 | Waiting-room handoff fails | doctor -> `/waiting-room` -> click `Assign To Me` on `Cora Mercer` | doctor | `/waiting-room` | server action or client fetch is failing; button loads but no route change; console shows `Error assigning visit: TypeError: Failed to fetch` | `app/(app)/waiting-room/waiting-room-list.tsx`, `app/_actions/visits.ts` (`getPatientOpenVisitAction`, `assignVisitToMeAction`) | Agent / teammate 3 | **open** | live prod failed; no narrow fix implemented yet | **Yes** if waiting-room handoff is in demo |
 | RG-4 | No proven save/finalize persistence path | nurse reached `/new-visit` directly, but Save disabled; doctor never reached assign/continue/finalize path | nurse, doctor | `/patients/[id]/new-visit`, `/open-notes`, `/waiting-room` | upstream workflow blocked before persistence validation; fresh new-visit also requires more reviewed sections than a short demo path allows | visit form / handoff path, not yet isolated to one single file | Kejhawn + Agent / teammate 2 | **guarded** | current prod not proven | **Yes** until a redeployed smoke proves save/reopen/finalize |
 
@@ -24,6 +24,13 @@
 - **Observed behavior:** target CTAs are visible but clicking them does not move routes.
 - **Console/runtime evidence:** React error `#418` on `/patients`, `/visit-history`, and `/open-notes`.
 - **Repo fix applied:** moved critical date rendering onto deterministic shared formatter to reduce hydration mismatch risk.
+- **Batch 2 fix applied:** converted demo-critical CTA surfaces to valid `Button asChild` links on patient chart / visit-history / open-notes and removed remaining hydration-sensitive patient-route date output that still directly touched those screens.
+- **Batch 2 local re-test:** seeded-session smoke on the current branch now passes:
+  - `/patients` -> `/patients/[id]`
+  - patient chart -> `/patients/[id]/visit-history`
+  - visit history -> `/patients/[id]/visit-history/[visitId]`
+  - patient chart / visit history -> `/patients/[id]/new-visit`
+  - `/open-notes` -> `/patients/[id]/new-visit?visitId=...`
 
 ### RG-3 — Waiting-room assign broken
 
@@ -50,3 +57,14 @@
 - **Credential check update:** the tracked demo credentials are valid again against Supabase.
 - **Seeded-session local smoke:** `RG-1` now passes locally (`/patients` for nurse, `/waiting-room` for doctor) when the browser is seeded with a real Supabase session.
 - **Remaining local findings:** `RG-2` still reproduces under local automation because patient-chart `Visit History`, `Log New Visit`, and `Open Notes -> Continue Note` did not transition routes. `RG-3` remains unproven locally because no visible `Assign To Me` row rendered for the authenticated doctor session in the current local dataset.
+
+## Batch 2 Execution Update
+
+- **Execution date:** April 3, 2026
+- **Branch:** `fix/demo-batch-2-routing`
+- **Batch dependency:** built on top of `batch-1-demo-critical-release-gates` because Batch 1 release docs and local gate findings were not yet merged to `main`
+- **Files changed:** `app/_components/patient-chart/patient-chart-shell.tsx`, `app/(app)/patients/[id]/visit-history/visit-history-content.tsx`, `app/(app)/open-notes/open-notes-content.tsx`, `app/(app)/patients/[id]/patient-overview-cards.tsx`, `app/(app)/patients/patients-list.tsx`
+- **Why these changes were made:** remove invalid CTA nesting on demo-critical route actions and reduce remaining hydration-sensitive route output on the patient navigation lane without widening the batch into unrelated cleanup
+- **Local validation completed:** `npx tsc --noEmit`, `npx eslint` on the five touched files, seeded-session Playwright smoke against `localhost:3000`
+- **Local validation result:** patient list -> chart, chart -> visit history, visit history -> existing visit, patient chart / visit history -> `Log New Visit`, and doctor `Open Notes -> Continue Note` all transition successfully on the current branch with no 404 response or client runtime error captured
+- **Remaining blocker posture after Batch 2:** `RG-3` waiting-room assign remains unproven locally and `RG-4` persistence still needs an approved-record deployed smoke
