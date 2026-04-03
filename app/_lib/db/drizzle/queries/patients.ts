@@ -295,8 +295,8 @@ export async function getPatientOverview(patientId: string) {
     return null;
   }
 
-  // Get latest visit for this patient
-  const latestVisitResult = await db
+  // Get recent visits for this patient (up to 5)
+  const recentVisitsResult = await db
     .select({
       id: visits.id,
       createdAt: visits.createdAt,
@@ -310,9 +310,9 @@ export async function getPatientOverview(patientId: string) {
     .from(visits)
     .where(eq(visits.patientId, patientId))
     .orderBy(desc(visits.createdAt))
-    .limit(1);
+    .limit(5);
 
-  const latestVisit = latestVisitResult[0] || null;
+  const latestVisit = recentVisitsResult[0] || null;
 
   // Count orders from notes across all visits for this patient.
   // Orders are stored inside the JSONB `note` column, so we still need
@@ -377,6 +377,12 @@ export async function getPatientOverview(patientId: string) {
               chiefComplaint,
             }
           : null,
+        recentVisits: recentVisitsResult.map((v) => ({
+          id: v.id,
+          createdAt: v.createdAt,
+          status: v.status,
+          appointmentType: v.appointmentType,
+        })),
       };
     },
     [`patient-overview-${patientId}`],

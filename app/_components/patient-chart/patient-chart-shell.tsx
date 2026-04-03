@@ -111,7 +111,7 @@ export function PatientChartShell({
 
                 {/* Patient Dashboard Sub Navigation (Hidden for New Visit) */}
                 {pathname.split("/").pop() !== "new-visit" && (
-                  <div className="bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800">
+                  <div className="border-b border-slate-200 dark:border-slate-700">
                     <nav className="flex items-center justify-start gap-8 px-8 overflow-x-auto thin-scrollbar no-scrollbar scroll-smooth">
                       {[
                         { label: "Overview", icon: Home, href: `/patients/${patientId}` },
@@ -137,16 +137,16 @@ export function PatientChartShell({
                             href={item.href}
                             className={cn(
                               "flex flex-col items-center gap-1.5 pt-4 pb-3 transition-all relative group",
-                              isActive ? "text-slate-900 dark:text-white" : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
+                              isActive ? "text-black dark:text-white opacity-100" : "text-black dark:text-white opacity-70 hover:opacity-90"
                             )}
                           >
                             <item.icon className={cn(
                               "h-5 w-5 stroke-[1.5]",
-                              isActive ? "text-slate-900 dark:text-white" : "text-slate-400 dark:text-slate-500"
+                              isActive ? "text-black dark:text-white" : "text-black dark:text-white"
                             )} />
                             <span className={cn(
                               "text-xs font-bold tracking-tight",
-                              isActive ? "opacity-100" : "opacity-80 group-hover:opacity-100"
+                              isActive ? "opacity-100" : "opacity-100"
                             )}>
                               {item.label}
                             </span>

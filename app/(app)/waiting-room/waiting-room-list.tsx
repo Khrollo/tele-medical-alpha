@@ -246,13 +246,13 @@ export function WaitingRoomList({ patients: initialPatients }: WaitingRoomListPr
   }, [searchQuery]);
 
   return (
-    <div className="space-y-8 p-4 md:p-8 bg-slate-50/30 dark:bg-transparent">
+    <div className="space-y-6 p-4 md:p-6">
       {/* Header Area */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Waiting Room</h1>
-          <p className="mt-1 text-sm font-medium text-slate-500">
-            Monitor and assign incoming patient visits in real-time.
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Waiting Room</h2>
+          <p className="mt-0.5 text-sm text-slate-500">
+            Monitor and assign incoming patient visits.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -292,7 +292,7 @@ export function WaitingRoomList({ patients: initialPatients }: WaitingRoomListPr
       </div>
 
       {/* Patient Cards */}
-      <div className="grid gap-6 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
         {filteredAndSortedPatients.map((patient) => {
           const waitTime = getWaitTime(patient.visit);
           const priorityBadge = getPriorityBadge(patient.visit?.priority ?? null);
@@ -303,22 +303,22 @@ export function WaitingRoomList({ patients: initialPatients }: WaitingRoomListPr
             <Card
               key={patient.id}
               className={cn(
-                "group relative rounded-[2.5rem] border-none bg-white dark:bg-slate-900 overflow-hidden transition-all hover:translate-y-[-4px]",
+                "group relative rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden transition-all hover:shadow-md hover:translate-y-[-2px]",
                 isUrgent && "ring-2 ring-red-500/10"
               )}
             >
               {isUrgent && (
                 <div className="absolute top-0 left-0 right-0 h-1 bg-red-500/50" />
               )}
-              <CardContent className="p-8">
-                <div className="flex justify-between items-start mb-6">
-                  <div className="h-14 w-14 rounded-2xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-400 group-hover:bg-slate-900 group-hover:text-white transition-all">
-                    <User className="h-7 w-7" />
+              <CardContent className="p-5">
+                <div className="flex justify-between items-start mb-3">
+                  <div className="h-10 w-10 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-400 group-hover:bg-slate-900 group-hover:text-white transition-all">
+                    <User className="h-5 w-5" />
                   </div>
-                  <div className="p-2 rounded-2xl bg-slate-50 dark:bg-slate-800/50 flex flex-col items-center min-w-[70px]">
-                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Wait</span>
+                  <div className="px-2.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 flex flex-col items-center min-w-[56px]">
+                     <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">Wait</span>
                      <span className={cn(
-                       "text-sm font-bold",
+                       "text-sm font-medium",
                        waitTime > 30 ? "text-red-500" : waitTime > 15 ? "text-orange-500" : "text-slate-700 dark:text-slate-200"
                      )}>
                        {waitTime > 0 ? formatWaitTime(waitTime) : "NEW"}
@@ -326,15 +326,15 @@ export function WaitingRoomList({ patients: initialPatients }: WaitingRoomListPr
                   </div>
                 </div>
 
-                <div className="mb-6">
-                  <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">
+                <div className="mb-3">
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-1.5">
                     {patient.fullName}
                   </h3>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-1.5">
                     <Badge
                       variant={priorityBadge.variant}
                       className={cn(
-                        "rounded-full px-4 py-1 text-[10px] font-bold uppercase tracking-wider h-6",
+                        "rounded-full px-3 py-0.5 text-[10px] font-medium uppercase tracking-wider h-5",
                         priorityBadge.className
                       )}
                     >
@@ -343,7 +343,7 @@ export function WaitingRoomList({ patients: initialPatients }: WaitingRoomListPr
                     <Badge
                       variant={appointmentBadge.variant}
                       className={cn(
-                        "rounded-full px-4 py-1 text-[10px] font-bold uppercase tracking-wider h-6",
+                        "rounded-full px-3 py-0.5 text-[10px] font-medium uppercase tracking-wider h-5",
                         appointmentBadge.className
                       )}
                     >
@@ -353,7 +353,7 @@ export function WaitingRoomList({ patients: initialPatients }: WaitingRoomListPr
                 </div>
 
                 {/* Show virtual appointment actions if ready */}
-                <div className="pt-6 border-t border-slate-50 dark:border-slate-800">
+                <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
                   {(virtualVisitData[patient.id] ||
                     (patient.visit?.appointmentType?.toLowerCase() === "virtual" &&
                       patient.visit?.status === "In Progress" &&
@@ -384,13 +384,13 @@ export function WaitingRoomList({ patients: initialPatients }: WaitingRoomListPr
       </div>
 
       {filteredAndSortedPatients.length === 0 && (
-        <Card className="rounded-[2rem] border-dashed border-2 bg-transparent shadow-none">
-          <CardContent className="flex items-center justify-center py-24">
+        <Card className="rounded-2xl border-dashed border-2 bg-transparent shadow-none">
+          <CardContent className="flex items-center justify-center py-16">
             <div className="text-center">
-              <div className="h-16 w-16 bg-white dark:bg-slate-900 rounded-full border border-slate-100 flex items-center justify-center mx-auto mb-4">
-                 <RefreshCw className="h-8 w-8 text-slate-300" />
+              <div className="h-12 w-12 bg-white dark:bg-slate-900 rounded-full border border-slate-100 flex items-center justify-center mx-auto mb-3">
+                 <RefreshCw className="h-5 w-5 text-slate-300" />
               </div>
-              <p className="text-slate-500 font-medium">No patients currently in the waiting room.</p>
+              <p className="text-sm text-slate-500">No patients currently in the waiting room.</p>
             </div>
           </CardContent>
         </Card>

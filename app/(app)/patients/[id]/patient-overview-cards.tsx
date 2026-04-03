@@ -47,6 +47,12 @@ interface PatientOverviewCardsProps {
     twilioRoomName: string | null;
     chiefComplaint: string | null;
   } | null;
+  recentVisits: Array<{
+    id: string;
+    createdAt: Date;
+    status: string | null;
+    appointmentType: string | null;
+  }>;
   userRole: string;
 }
 
@@ -272,6 +278,7 @@ export function PatientOverviewCards({
   patient,
   stats,
   latestVisit,
+  recentVisits,
   userRole,
 }: PatientOverviewCardsProps) {
   const router = useRouter();
@@ -321,14 +328,14 @@ export function PatientOverviewCards({
       return dateB - dateA;
     })[0] : null;
 
-  const bpRaw = latestVital?.bp || "120/80";
-  const sys = parseInt(bpRaw.split("/")[0]) || 120;
-  const dia = parseInt(bpRaw.split("/")[1]) || 80;
-  const hr = parseInt(latestVital?.hr || "75");
-  const tempRaw = parseFloat(latestVital?.temp || "98.6");
-  
+  const bpRaw = latestVital?.bp || null;
+  const sys = bpRaw ? parseInt(bpRaw.split("/")[0]) || null : null;
+  const dia = bpRaw ? parseInt(bpRaw.split("/")[1]) || null : null;
+  const hr = latestVital?.hr ? parseInt(latestVital.hr) || null : null;
+  const tempRaw = latestVital?.temp ? parseFloat(latestVital.temp) || null : null;
+
   // Normalize temp to a pie scale roughly between 95 and 105 for visual gauge
-  const tempScale = Math.min(Math.max((tempRaw - 95) / 10 * 100, 0), 100);
+  const tempScale = tempRaw !== null ? Math.min(Math.max((tempRaw - 95) / 10 * 100, 0), 100) : 0;
 
   const visitDate = latestVisit
     ? new Date(latestVisit.createdAt).toLocaleDateString("en-US", {
@@ -338,16 +345,6 @@ export function PatientOverviewCards({
   return (
     <div className="flex flex-col gap-8 pb-10">
       
-      {/* Top Banner Toggles (Visual) */}
-      <div className="flex items-center gap-3">
-         <div className="bg-slate-900 text-white rounded-full px-6 py-2.5 text-sm font-semibold border border-slate-800">
-            Health indicators
-         </div>
-         <div className="bg-white text-slate-600 rounded-full px-6 py-2.5 text-sm font-semibold border border-slate-200">
-            Diagnosis
-         </div>
-      </div>
-
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         
         {/* Left Col - Health Overview Widgets */}
@@ -365,10 +362,13 @@ export function PatientOverviewCards({
                     </div>
                     <div>
                       <h3 className="font-semibold text-sm">Blood Pressure</h3>
-                      <div className="text-secondary-foreground font-bold text-2xl tracking-tight">{bpRaw} <span className="text-xs font-medium text-muted-foreground ml-1">mmHg</span></div>
+                      <div className="text-secondary-foreground font-bold text-2xl tracking-tight">
+                        {bpRaw ? <>{bpRaw} <span className="text-xs font-medium text-muted-foreground ml-1">mmHg</span></> : <span className="text-muted-foreground text-base">No data</span>}
+                      </div>
                     </div>
                   </div>
                   <div className="flex-1 w-full mt-auto -ml-2">
+                    {sys && dia ? (
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={generateBPData(sys, dia)}>
                         <defs>
@@ -381,6 +381,9 @@ export function PatientOverviewCards({
                         <Area type="monotone" dataKey="dia" stroke="#ef4444" fillOpacity={0} strokeWidth={2.5} />
                       </AreaChart>
                     </ResponsiveContainer>
+                    ) : (
+                      <div className="flex items-center justify-center h-full text-sm text-muted-foreground">Record vitals to see chart</div>
+                    )}
                   </div>
                 </div>
 
@@ -395,10 +398,14 @@ export function PatientOverviewCards({
                     </div>
                     <div>
                       <h3 className="font-semibold text-sm">Vital Temp</h3>
-                      <div className="text-secondary-foreground font-bold text-2xl tracking-tight">{tempRaw} <span className="text-xs font-medium text-muted-foreground ml-1">°F</span></div>
+                      <div className="text-secondary-foreground font-bold text-2xl tracking-tight">
+                        {tempRaw !== null ? <>{tempRaw} <span className="text-xs font-medium text-muted-foreground ml-1">°F</span></> : <span className="text-muted-foreground text-base">No data</span>}
+                      </div>
                     </div>
                   </div>
                   <div className="flex-1 w-full relative mt-[-20px]">
+                    {tempRaw !== null ? (
+                    <>
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie
@@ -416,6 +423,10 @@ export function PatientOverviewCards({
                       </PieChart>
                     </ResponsiveContainer>
                     <div className="absolute bottom-1 left-1/2 -translate-x-1/2 text-xs font-semibold text-muted-foreground">Thermometer</div>
+                    </>
+                    ) : (
+                      <div className="flex items-center justify-center h-full text-sm text-muted-foreground">Record vitals to see gauge</div>
+                    )}
                   </div>
                 </div>
 
@@ -430,78 +441,104 @@ export function PatientOverviewCards({
                     </div>
                     <div>
                       <h3 className="font-semibold text-sm">Heart rate</h3>
-                      <div className="text-secondary-foreground font-bold text-2xl tracking-tight">{hr} <span className="text-xs font-medium text-muted-foreground ml-1">bpm</span></div>
+                      <div className="text-secondary-foreground font-bold text-2xl tracking-tight">
+                        {hr !== null ? <>{hr} <span className="text-xs font-medium text-muted-foreground ml-1">bpm</span></> : <span className="text-muted-foreground text-base">No data</span>}
+                      </div>
                     </div>
                   </div>
                   <div className="flex-1 w-full -ml-3 relative">
+                    {hr !== null ? (
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={generateEKGData(hr)}>
                         <Line type="linear" dataKey="val" stroke="#ef4444" strokeWidth={2.5} dot={false} isAnimationActive={false} />
                       </LineChart>
                     </ResponsiveContainer>
+                    ) : (
+                      <div className="flex items-center justify-center h-full text-sm text-muted-foreground">Record vitals to see chart</div>
+                    )}
                   </div>
-                  <div className="text-sm font-medium text-muted-foreground text-center mt-2 absolute bottom-5 left-0 right-0">Normal sinus rhythm</div>
                 </div>
 
-                {/* Empty Add Placeholder matching design */}
-                <div className="bg-transparent rounded-[2rem] p-6 flex flex-col relative h-[240px] border-2 border-dashed border-slate-200 dark:border-slate-700 items-center justify-center cursor-pointer hover:bg-slate-50/50 transition-colors">
-                   <div className="h-12 w-12 rounded-full border border-slate-300 flex items-center justify-center text-slate-400">
-                      <span className="text-2xl font-light leading-none">+</span>
-                   </div>
+                {/* Allergies Summary Widget */}
+                <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-6 border border-slate-100 dark:border-slate-800 flex flex-col relative h-[240px]">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="h-12 w-12 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-500">
+                      <AlertCircle className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-sm">Allergies</h3>
+                      <div className="text-secondary-foreground font-bold text-2xl tracking-tight">
+                        {allergies.length > 0 ? <>{allergies.length} <span className="text-xs font-medium text-muted-foreground ml-1">recorded</span></> : <span className="text-muted-foreground text-base">None recorded</span>}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex-1 overflow-hidden">
+                    {allergies.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {allergies.slice(0, 5).map((a, i) => (
+                          <span key={i} className="bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-full px-3 py-1 text-xs font-semibold">
+                            {a.name || 'Unknown'}
+                          </span>
+                        ))}
+                        {allergies.length > 5 && (
+                          <span className="bg-slate-100 dark:bg-slate-800 text-slate-600 rounded-full px-3 py-1 text-xs font-bold">+{allergies.length - 5} more</span>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center h-full text-sm text-muted-foreground">No known allergies</div>
+                    )}
+                  </div>
                 </div>
 
             </div>
         </div>
 
-        {/* Right Col - Appointments Timeline */}
+        {/* Right Col - Recent Visits Timeline */}
         <div className="lg:col-span-4">
             <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-8 border border-slate-100 dark:border-slate-800 h-full min-h-[400px]">
               <div className="flex items-center justify-between mb-8">
-                <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-slate-800 to-slate-500">Appointments</h2>
+                <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-slate-800 to-slate-500">Recent Visits</h2>
                 <div className="h-10 w-10 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center">
-                  <CalendarDays className="h-5 w-5 text-slate-500" />
+                  <History className="h-5 w-5 text-slate-500" />
                 </div>
               </div>
-              
-              <div className="relative border-l-[3px] border-slate-100 dark:border-slate-800 ml-[11px] space-y-10 pb-4">
-                
-                {/* Latest Visit Block */}
-                {latestVisit ? (
-                  <div className="relative pl-8 group">
-                    <div className="absolute -left-[10px] top-1.5 h-4 w-4 rounded-full border-[3.5px] border-white dark:border-slate-900 bg-emerald-500 group-hover:scale-125 transition-transform" />
-                    <div className="absolute -left-[50px] top-1.5 text-xs font-bold text-slate-600">Now</div>
-                    
-                    <div className="mb-1 text-sm font-semibold text-emerald-600 dark:text-emerald-400">{visitDate}</div>
-                    <div className="text-base font-bold text-slate-800 dark:text-slate-200 mb-1">
-                      {latestVisit.appointmentType?.toLowerCase() === "virtual" ? "Online consultation" : "In-Person Checkup"}
-                    </div>
-                    
-                    <div className="flex items-center gap-2 mb-3">
-                       <div className="h-6 w-6 rounded-full bg-slate-200 flex items-center justify-center overflow-hidden shrink-0">
-                          <img src={`https://api.dicebear.com/7.x/notionists/svg?seed=${latestVisit.clinicianId || 'doctor'}`} alt="avatar" />
-                       </div>
-                       <div className="text-sm font-medium text-slate-600">Assigned Clinician</div>
-                    </div>
-                    
-                    {isVirtualVisitReady() && (
-                      <Button onClick={() => setShowVirtualModal(true)} variant="secondary" className="rounded-full h-8 px-4 text-xs font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 border dark:border-none border-emerald-200">
-                         <Video className="h-3.5 w-3.5 mr-2" /> Join Call
-                      </Button>
-                    )}
-                  </div>
-                ) : (
+
+              <div className="relative border-l-[3px] border-slate-100 dark:border-slate-800 ml-[11px] space-y-8 pb-4">
+
+                {recentVisits.length > 0 ? recentVisits.map((visit, idx) => {
+                  const vDate = new Date(visit.createdAt).toLocaleDateString("en-US", {
+                    month: "short", day: "numeric", hour: "numeric", minute: "2-digit"
+                  });
+                  const statusColor = visit.status?.toLowerCase() === "signed & complete" || visit.status?.toLowerCase() === "completed"
+                    ? "bg-emerald-500"
+                    : visit.status?.toLowerCase() === "in progress"
+                    ? "bg-amber-500"
+                    : "bg-slate-300";
+
+                  return (
+                    <Link key={visit.id} href={`/patients/${patient.id}/visit-history`} className="relative pl-8 group block">
+                      <div className={`absolute -left-[10px] top-1.5 h-4 w-4 rounded-full border-[3.5px] border-white dark:border-slate-900 ${statusColor} group-hover:scale-125 transition-transform`} />
+                      {idx === 0 && <div className="absolute -left-[50px] top-1.5 text-xs font-bold text-slate-600">Latest</div>}
+
+                      <div className="mb-1 text-sm font-semibold text-slate-500">{vDate}</div>
+                      <div className="text-sm font-bold text-slate-800 dark:text-slate-200 capitalize">
+                        {visit.appointmentType || "Visit"}
+                      </div>
+                      <div className="text-xs font-medium text-slate-500 mt-0.5">{visit.status || "Unknown status"}</div>
+
+                      {idx === 0 && isVirtualVisitReady() && (
+                        <Button onClick={(e) => { e.preventDefault(); setShowVirtualModal(true); }} variant="secondary" className="rounded-full h-8 px-4 text-xs font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 border dark:border-none border-emerald-200 mt-2">
+                           <Video className="h-3.5 w-3.5 mr-2" /> Join Call
+                        </Button>
+                      )}
+                    </Link>
+                  );
+                }) : (
                   <div className="relative pl-8">
                      <div className="absolute -left-[9px] top-1 h-4 w-4 rounded-full border-[3px] border-white dark:border-slate-900 bg-slate-300" />
-                     <div className="text-sm font-semibold text-muted-foreground">No recent appointments</div>
+                     <div className="text-sm font-semibold text-muted-foreground">No visits recorded</div>
                   </div>
                 )}
-
-                {/* Future Empty Block */}
-                 <div className="relative pl-8 opacity-60">
-                    <div className="absolute -left-[9.5px] top-1 h-3.5 w-3.5 rounded-full border-[3px] border-white dark:border-slate-900 bg-slate-200" />
-                    <div className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-1">Schedule Next</div>
-                    <div className="text-sm font-medium text-slate-500">Unbooked</div>
-                 </div>
               </div>
             </div>
         </div>
@@ -530,14 +567,13 @@ export function PatientOverviewCards({
                     <div className="flex flex-col flex-1 py-1">
                       <div className="mb-2">
                         <span className="font-bold text-[15px] leading-tight line-clamp-2 text-slate-800 dark:text-slate-100">
-                           {pmh.condition || 'Documented Condition'}
+                           {pmh.condition || 'Unnamed condition'}
                         </span>
                       </div>
                       <div className="flex items-center gap-2 mb-4 text-xs font-medium text-slate-500">
-                        <div className="h-5 w-5 rounded-full overflow-hidden shrink-0 bg-slate-200">
-                           <img src={`https://api.dicebear.com/7.x/notionists/svg?seed=${pmh.condition || 'doc'}`} alt="doc" />
-                        </div>
-                        <span>Attending Specialist</span>
+                        {pmh.status && <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-[10px] font-bold uppercase">{pmh.status}</span>}
+                        {pmh.diagnosedDate && <span>{pmh.diagnosedDate}</span>}
+                        {!pmh.status && !pmh.diagnosedDate && <span className="text-slate-400">No details recorded</span>}
                       </div>
                       
                       <div className="mt-auto">

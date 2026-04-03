@@ -212,21 +212,21 @@ export function PatientsList({ patients, userRole }: PatientsListProps) {
   };
 
   return (
-    <div className="flex flex-col gap-8 p-4 md:p-8">
+    <div className="flex flex-col gap-6 p-4 md:p-6">
       {/* Results Count & Action */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-           {filteredPatients.length > 0 && (
-            <div className="text-sm font-semibold text-slate-400 uppercase tracking-widest">
-              {filteredPatients.length} Patients Total
-            </div>
-          )}
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-white mt-1">Patient Directory</h2>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+            Patients
+            {filteredPatients.length > 0 && (
+              <span className="ml-2 text-sm font-normal text-slate-400">({filteredPatients.length})</span>
+            )}
+          </h2>
         </div>
         <Link href="/patients/new">
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            Add New Patient
+          <Button size="sm">
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
+            Add Patient
           </Button>
         </Link>
       </div>
@@ -239,8 +239,8 @@ export function PatientsList({ patients, userRole }: PatientsListProps) {
 
       {/* Patient Cards */}
       {paginatedPatients.length === 0 ? (
-        <Card className="rounded-[2rem] border-dashed border-2 bg-transparent shadow-none">
-          <CardContent className="flex items-center justify-center py-24">
+        <Card className="rounded-2xl border-dashed border-2 bg-transparent shadow-none">
+          <CardContent className="flex items-center justify-center py-16">
             <div className="text-center">
               <p className="text-slate-500 font-medium">
                 {searchQuery ? `No patients found matching "${searchQuery}"` : "Your patient list is empty."}
@@ -250,7 +250,7 @@ export function PatientsList({ patients, userRole }: PatientsListProps) {
         </Card>
       ) : (
         <>
-          <div className="grid gap-6 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
             {paginatedPatients.map((patient) => {
               const virtualReady = isVirtualVisitReady(patient.visit);
               const joinUrl = getJoinUrl(patient.visit);
@@ -258,74 +258,72 @@ export function PatientsList({ patients, userRole }: PatientsListProps) {
 
               return (
                 <Link key={patient.id} href={`/patients/${patient.id}`} className="block group">
-                  <Card className="h-full rounded-[2.5rem] border-none bg-white dark:bg-slate-900 overflow-hidden transition-all hover:translate-y-[-4px]">
-                    <CardContent className="p-8">
-                      <div className="flex justify-between items-start mb-6">
-                        <div className="h-14 w-14 rounded-2xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-400 group-hover:bg-slate-900 group-hover:text-white transition-all">
-                          <User className="h-7 w-7" />
+                  <Card className="h-full rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden transition-all hover:shadow-md hover:translate-y-[-2px]">
+                    <CardContent className="p-5">
+                      <div className="flex justify-between items-start mb-3">
+                        <div className="h-10 w-10 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-400 group-hover:bg-slate-900 group-hover:text-white transition-all">
+                          <User className="h-5 w-5" />
                         </div>
                         {patient.visit && (
-                          <div className="flex flex-col items-end gap-2">
+                          <div className="flex items-center gap-1.5">
                              {getStatusBadge(patient.visit.status)}
                              {getAppointmentTypeBadge(patient.visit.appointmentType)}
                           </div>
                         )}
                       </div>
 
-                      <div className="mb-6">
-                        <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-1 group-hover:text-blue-600 transition-colors">
+                      <div className="mb-3">
+                        <h3 className="text-base font-semibold text-slate-900 dark:text-white group-hover:text-blue-600 transition-colors">
                           {patient.fullName}
                         </h3>
-                        <div className="flex flex-wrap gap-3">
+                        <div className="flex flex-wrap gap-2 mt-1">
                           {age !== null && (
-                            <span className="inline-flex items-center px-3 py-1 rounded-full bg-slate-50 dark:bg-slate-800 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                              {age} Years
+                            <span className="text-xs text-slate-500">
+                              {age} yrs
                             </span>
                           )}
+                          {age !== null && patient.dob && (
+                            <span className="text-xs text-slate-300">·</span>
+                          )}
                           {patient.dob && (
-                             <span className="inline-flex items-center px-3 py-1 rounded-full bg-slate-50 dark:bg-slate-800 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                             <span className="text-xs text-slate-500">
                               {formatDate(patient.dob)}
                             </span>
                           )}
                         </div>
                       </div>
 
-                      <div className="space-y-4 mb-8">
+                      <div className="space-y-3 mb-4">
                         {patient.clinicianName && (
-                          <div className="flex items-center gap-3">
-                             <div className="h-8 w-8 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center text-blue-600">
-                                <User className="h-4 w-4" />
-                             </div>
-                             <div className="flex flex-col">
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Clinician</span>
-                                <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{patient.clinicianName}</span>
-                             </div>
+                          <div className="flex items-center gap-2 text-xs text-slate-500">
+                             <User className="h-3.5 w-3.5 text-slate-400" />
+                             <span>{patient.clinicianName}</span>
                           </div>
                         )}
 
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50">
-                             <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Meds</span>
-                             <div className="flex items-center gap-2">
-                                <Pill className="h-3.5 w-3.5 text-blue-500" />
-                                <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{patient.medicationsCount}</span>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50">
+                             <span className="block text-[10px] font-medium text-slate-400 uppercase tracking-wider mb-0.5">Meds</span>
+                             <div className="flex items-center gap-1.5">
+                                <Pill className="h-3 w-3 text-blue-500" />
+                                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{patient.medicationsCount}</span>
                              </div>
                           </div>
-                          <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50">
-                             <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Allergies</span>
-                             <div className="flex items-center gap-2">
-                                <AlertCircle className="h-3.5 w-3.5 text-red-500" />
-                                <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{patient.allergiesCount}</span>
+                          <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50">
+                             <span className="block text-[10px] font-medium text-slate-400 uppercase tracking-wider mb-0.5">Allergies</span>
+                             <div className="flex items-center gap-1.5">
+                                <AlertCircle className="h-3 w-3 text-red-500" />
+                                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{patient.allergiesCount}</span>
                              </div>
                           </div>
                         </div>
                       </div>
 
-                      {/* Footer Actions */}
-                      <div className="pt-6 border-t border-slate-50 dark:border-slate-800 flex items-center justify-between">
-                         <div className="flex flex-col">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Last Seen</span>
-                            <span className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                      {/* Footer */}
+                      <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                         <div>
+                            <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">Last Seen</span>
+                            <span className="block text-xs text-slate-600 dark:text-slate-300">
                                {patient.visit ? formatDate(patient.visit.createdAt) : "No visits"}
                             </span>
                          </div>
@@ -342,9 +340,10 @@ export function PatientsList({ patients, userRole }: PatientsListProps) {
                                 });
                               }}
                               variant="secondary"
-                              className="rounded-full h-10 px-4 text-xs font-bold"
+                              size="sm"
+                              className="rounded-full px-3 text-xs"
                             >
-                              <Video className="h-3.5 w-3.5 mr-2" />
+                              <Video className="h-3.5 w-3.5 mr-1.5" />
                               Call
                             </Button>
                          )}
@@ -358,7 +357,7 @@ export function PatientsList({ patients, userRole }: PatientsListProps) {
 
           {/* Pagination Controls */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between mt-12 pt-8 border-t border-slate-100 dark:border-slate-800">
+            <div className="flex items-center justify-between mt-6 pt-4 border-t border-slate-100 dark:border-slate-800">
               <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">
                 Page {currentPage} of {totalPages}
               </div>
