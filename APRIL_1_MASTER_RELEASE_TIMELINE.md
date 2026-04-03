@@ -40,6 +40,7 @@
 | April 2, 2026, runbook assembled | [`April 2 Demo Runbook.md`](./April%202%20Demo%20Runbook.md), [`Known Risks to Avoid in Demo.md`](./Known%20Risks%20to%20Avoid%20in%20Demo.md) | The runbook and risk sheet convert the release record into presenter instructions: use isolated users, prefer continue-note paths, avoid fresh new visits unless Save is proven, and keep Twilio/AI optional. | Execution guidance aligned to guarded release posture |
 | April 3, 2026, Batch 1 authenticated local smoke | [`APRIL_1_BATCH_PROGRESS_LOG.md`](./APRIL_1_BATCH_PROGRESS_LOG.md), [`APRIL_1_PHASE2_RELEASE_GATES.md`](./APRIL_1_PHASE2_RELEASE_GATES.md) | Restored demo credentials are re-checked against Supabase. Seeded-session local smoke proves role landing on the current branch (`/patients` for nurse, `/waiting-room` for doctor), separating auth correctness from the remaining route continuity issues. | `RG-1` locally re-validated; deployed smoke still pending |
 | April 3, 2026, Batch 2 routing continuity pass | [`APRIL_1_BATCH_PROGRESS_LOG.md`](./APRIL_1_BATCH_PROGRESS_LOG.md), [`APRIL_1_PHASE2_RELEASE_GATES.md`](./APRIL_1_PHASE2_RELEASE_GATES.md) | Batch 2 narrows route continuity to the demo-critical patient lane. Invalid button-in-link CTA markup is corrected on patient-chart, visit-history, and open-notes actions, and remaining patient-route date output is made more deterministic where it still directly touched those flows. | `RG-2` locally re-validated on the current branch; waiting-room and persistence gates remain open |
+| April 3, 2026, Batch 3 handoff + persistence proof | [`APRIL_1_BATCH3_PROOF_SETUP.md`](./APRIL_1_BATCH3_PROOF_SETUP.md), [`APRIL_1_BATCH_PROGRESS_LOG.md`](./APRIL_1_BATCH_PROGRESS_LOG.md), [`APRIL_1_PHASE2_RELEASE_GATES.md`](./APRIL_1_PHASE2_RELEASE_GATES.md) | Batch 3 creates the missing local proof state on the approved patient/visit pair, restores the post-save handoff modal across save refreshes, and revalidates waiting-room data when a nurse sends a visit back to queue. Local smoke then proves nurse save -> waiting room -> doctor assign -> doctor save -> history/detail reopen -> sign on the current branch. | `RG-3` and `RG-4` locally behaviorally validated; deployed smoke still pending |
 
 ---
 
@@ -71,6 +72,13 @@
 | Demo credentials authenticate | [`APRIL_1_PHASE2_DEMO_VALIDATION_TRACKER.md`](./APRIL_1_PHASE2_DEMO_VALIDATION_TRACKER.md), [`APRIL_1_PHASE2_FINAL_VERDICT.md`](./APRIL_1_PHASE2_FINAL_VERDICT.md) | `fixed and validated` |
 | Direct route loads for `/patients`, `/waiting-room`, `/visit-history`, `/new-visit`, `/open-notes` | [`APRIL_1_PHASE2_DEMO_VALIDATION_TRACKER.md`](./APRIL_1_PHASE2_DEMO_VALIDATION_TRACKER.md), [`APRIL_1_PHASE2_DEMO_VALIDATION_FINDINGS.md`](./APRIL_1_PHASE2_DEMO_VALIDATION_FINDINGS.md) | `fixed and validated` |
 | Shared demo patient visible in nurse and doctor contexts | [`APRIL_1_PHASE2_DEMO_VALIDATION_TRACKER.md`](./APRIL_1_PHASE2_DEMO_VALIDATION_TRACKER.md), [`APRIL_1_PHASE2_FINAL_VERDICT.md`](./APRIL_1_PHASE2_FINAL_VERDICT.md) | `fixed and validated` |
+
+### Locally behaviorally validated after Batch 3
+
+| Item | Source(s) | State |
+|---|---|---|
+| Waiting-room handoff continuity on an approved nurse -> doctor record | [`APRIL_1_BATCH3_PROOF_SETUP.md`](./APRIL_1_BATCH3_PROOF_SETUP.md), [`APRIL_1_BATCH_PROGRESS_LOG.md`](./APRIL_1_BATCH_PROGRESS_LOG.md), [`APRIL_1_PHASE2_RELEASE_GATES.md`](./APRIL_1_PHASE2_RELEASE_GATES.md) | `fixed locally` |
+| Save -> history/detail reopen -> sign persistence on the approved record | [`APRIL_1_BATCH3_PROOF_SETUP.md`](./APRIL_1_BATCH3_PROOF_SETUP.md), [`APRIL_1_BATCH_PROGRESS_LOG.md`](./APRIL_1_BATCH_PROGRESS_LOG.md), [`APRIL_1_PHASE2_RELEASE_GATES.md`](./APRIL_1_PHASE2_RELEASE_GATES.md) | `fixed locally` |
 
 ### Still open at the end of the record
 

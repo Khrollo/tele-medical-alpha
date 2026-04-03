@@ -348,6 +348,15 @@ export async function updateVisitWaitingRoomAction(params: {
     );
   }
 
+  revalidateTag(`visit:${params.visitId}`, "max");
+  revalidateTag(`visits:${patientId}`, "max");
+  revalidateTag(`patient:${patientId}`, "max");
+  revalidateTag("waiting-room", "max");
+  revalidateTag("patients", "max");
+  const { revalidatePath } = await import("next/cache");
+  revalidatePath("/waiting-room");
+  revalidatePath("/open-notes");
+
   return { success: true };
 }
 

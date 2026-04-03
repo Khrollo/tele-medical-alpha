@@ -82,6 +82,10 @@ Core chart/visit/finalize **authorization** and patient list **React correctness
 
 On April 3, 2026, the patient-routing continuity lane was tightened further on `fix/demo-batch-2-routing`. Demo-critical CTAs on patient chart, visit history, and open notes were converted to valid link/button composition, and remaining patient-route date output was made more deterministic where it still directly touched those screens. Local seeded-session smoke on that branch now passes patient chart -> visit history, visit history -> existing visit, chart/history -> `Log New Visit`, and `Open Notes -> Continue Note`; waiting-room assign and deployed persistence proof still remain outside this addendum’s closure.
 
+## Batch 3 Addendum
+
+On April 3, 2026, `fix/demo-batch-3-handoff-persistence` closed the remaining local proof gap for the approved handoff/persistence story. The visit form now preserves its post-save action modal across the save-triggered refresh, and sending a visit to waiting room now revalidates the waiting-room dataset so the doctor immediately sees the assignable row. Local smoke on the current branch now proves: nurse continue/save -> send to waiting room -> doctor `Assign To Me` -> doctor continue/save -> history/detail reopen -> sign on the same approved record. Hosted smoke is still required before the live verdict can improve.
+
 ---
 
 _See [APRIL_1_DEMO_STABILIZATION_TRACKER.md](./APRIL_1_DEMO_STABILIZATION_TRACKER.md) for per-issue detail._
