@@ -3,6 +3,8 @@ import { getServerSession } from "@/app/_lib/supabase/server";
 import { getPatientOverview } from "@/app/_lib/db/drizzle/queries/patients";
 import { PatientChartShell } from "@/app/_components/patient-chart/patient-chart-shell";
 
+export const dynamic = "force-dynamic";
+
 export default async function PatientChartLayout({
     children,
     params,
