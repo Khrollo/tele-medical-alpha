@@ -1,4 +1,9 @@
 import { getSignedUrl } from "@/app/_lib/storage";
+import { getAudioStorageBucket } from "@/app/_lib/storage/config";
+
+interface ReplicateTranscriptSegment {
+  text?: string;
+}
 
 /**
  * Transcribe audio from Supabase Storage
@@ -13,7 +18,7 @@ export async function transcribeAudio(audioPath: string) {
   }
 
   // Get signed URL from Supabase Storage using service role key
-  const bucket = process.env.STORAGE_BUCKET || "telehealth_audio";
+  const bucket = getAudioStorageBucket();
 
   let audioUrl: string;
   try {
@@ -97,7 +102,11 @@ export async function transcribeAudio(audioPath: string) {
         } else if (output?.text) {
           transcript = output.text;
         } else if (Array.isArray(output)) {
-          transcript = output.map((seg: any) => seg.text || seg).join(" ");
+          transcript = output
+            .map((seg: string | ReplicateTranscriptSegment) =>
+              typeof seg === "string" ? seg : seg.text || ""
+            )
+            .join(" ");
         }
         
         return {
