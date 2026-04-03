@@ -1,9 +1,6 @@
-import { createServerClient } from "@supabase/ssr";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { cache } from "react";
-import { eq } from "drizzle-orm";
-import { db } from "@/app/_lib/db/drizzle/index";
-import { users } from "@/app/_lib/db/drizzle/schema";
 
 // Track last Supabase auth rate-limit hit for logging only (do not block subsequent requests)
 let lastAuthRateLimitLogAt = 0;
@@ -33,7 +30,7 @@ export const createSupabaseServerClient = cache(async () => {
       get(name: string) {
         return cookieStore.get(name)?.value;
       },
-      set(name: string, value: string, options?: any) {
+      set(name: string, value: string, options?: CookieOptions) {
         try {
           cookieStore.set(name, value, options);
         } catch {
@@ -42,7 +39,7 @@ export const createSupabaseServerClient = cache(async () => {
           // user sessions.
         }
       },
-      remove(name: string, options?: any) {
+      remove(name: string, options?: CookieOptions) {
         try {
           cookieStore.set(name, "", { ...options, maxAge: 0 });
         } catch {
@@ -84,25 +81,11 @@ export const getServerSession = cache(async () => {
       return null;
     }
 
-    // Get user info from users table (name, role)
-    const userRecord = await db
-      .select({
-        name: users.name,
-        role: users.role,
-      })
-      .from(users)
-      .where(eq(users.id, user.id))
-      .limit(1);
-
-    // Fallback to metadata if not in users table
-    const role = userRecord[0]?.role || (user.user_metadata?.role as string) || "patient";
-    const name = userRecord[0]?.name || null;
-
     return {
       id: user.id,
       email: user.email,
-      role,
-      name,
+      role: (user.user_metadata?.role as string) || "patient",
+      name: (user.user_metadata?.name as string) || null,
     };
   } catch (error: unknown) {
     const err = error as { status?: number; code?: string; message?: string };

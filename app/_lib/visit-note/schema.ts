@@ -297,6 +297,8 @@ export const visitNoteSchema = z.object({
             uploadedAt: z.string(),
             dataUrl: z.string().optional(), // Client preview only, not stored in DB
             storageUrl: z.string().optional(), // Storage path for DB persistence
+            dbDocumentId: z.string().optional(), // DB row id once persisted
+            persistedVisitId: z.string().optional(), // Visit id this metadata was persisted against
           })
         )
         .default([]),
@@ -322,12 +324,12 @@ export function createEmptyVisitNote(): VisitNote {
  * Migrate old format data to new format
  * Handles backward compatibility for examFindings (string -> object)
  */
-function migrateVisitNoteData(data: any): any {
+function migrateVisitNoteData(data: unknown): unknown {
   if (!data || typeof data !== "object") {
     return data;
   }
 
-  const migrated = { ...data };
+  const migrated = { ...(data as Record<string, unknown>) } as Record<string, unknown>;
 
   // Ensure objective exists
   if (!migrated.objective) {
@@ -336,13 +338,14 @@ function migrateVisitNoteData(data: any): any {
 
   // Migrate examFindings from string to object format
   if (typeof migrated.objective === "object") {
-    const examFindings = migrated.objective.examFindings;
+    const objective = migrated.objective as Record<string, unknown>;
+    const examFindings = objective.examFindings as Record<string, unknown> | string | undefined;
     
     if (typeof examFindings === "string") {
       // Convert old string format to new object format
       // Put the old string in the "general" category
       migrated.objective = {
-        ...migrated.objective,
+        ...objective,
         examFindings: {
           general: examFindings || "",
           heent: "",
@@ -362,7 +365,7 @@ function migrateVisitNoteData(data: any): any {
     ) {
       // Ensure examFindings exists and has the correct structure
       migrated.objective = {
-        ...migrated.objective,
+        ...objective,
         examFindings: {
           general: examFindings?.general || "",
           heent: examFindings?.heent || "",
@@ -401,7 +404,7 @@ function migrateVisitNoteData(data: any): any {
       }
     } else if (Array.isArray(migrated.assessmentPlan)) {
       // Ensure all entries have the new structure
-      migrated.assessmentPlan = migrated.assessmentPlan.map((entry: any) => ({
+      migrated.assessmentPlan = migrated.assessmentPlan.map((entry: Record<string, unknown>) => ({
         assessment: entry.assessment || "",
         plan: entry.plan || "",
         medications: entry.medications || [],

@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
 import { getServerSession } from "@/app/_lib/supabase/server";
-import { db } from "@/app/_lib/db/drizzle/index";
-import { patients } from "@/app/_lib/db/drizzle/schema";
 import { getVisitById } from "@/app/_lib/db/drizzle/queries/visit";
 import {
   uploadFile,
@@ -10,6 +7,7 @@ import {
   downloadFile,
   deleteFiles,
 } from "@/app/_lib/storage";
+import { getAudioStorageBucket } from "@/app/_lib/storage/config";
 import {
   saveTranscriptAction,
   updateVisitDraftAction,
@@ -19,7 +17,7 @@ import type { VisitNote } from "@/app/_lib/visit-note/schema";
 export const runtime = "nodejs";
 export const maxDuration = 300; // 5 minutes for longer processing
 
-const CHUNKS_BUCKET = "telehealth_audio";
+const CHUNKS_BUCKET = getAudioStorageBucket();
 // Supabase Free plan has 50MB file size limit
 // Pro plan can go up to 500GB, but we'll check and warn
 const SUPABASE_FREE_PLAN_LIMIT = 50 * 1024 * 1024; // 50MB
@@ -104,20 +102,9 @@ export async function POST(
       );
     }
 
-    // Verify visit and assignment (align with finalizeVisitAction: visit OR patient assignee)
+    // Verify visit and assignment
     const visit = await getVisitById(visitId);
-    if (!visit) {
-      return NextResponse.json({ error: "Visit not found" }, { status: 404 });
-    }
-    const [patientRow] = await db
-      .select({ clinicianId: patients.clinicianId })
-      .from(patients)
-      .where(eq(patients.id, visit.patientId))
-      .limit(1);
-    const canFinalizeRecording =
-      visit.clinicianId === session.id ||
-      patientRow?.clinicianId === session.id;
-    if (!canFinalizeRecording) {
+    if (!visit || visit.clinicianId !== session.id) {
       return NextResponse.json(
         { error: "Not authorized for this visit" },
         { status: 403 }
@@ -320,7 +307,7 @@ export async function POST(
       const storagePath = `visits/${visit.patientId}/${visitId}/${fileName}`;
 
       // Upload to Supabase Storage
-      const bucket = process.env.STORAGE_BUCKET || "visits";
+      const bucket = getAudioStorageBucket();
       try {
         await uploadFile(bucket, storagePath, finalBuffer, {
           contentType: `audio/${extension}`,

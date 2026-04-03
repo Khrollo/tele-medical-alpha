@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath, revalidateTag } from "next/cache";
 import { getServerSession } from "@/app/_lib/supabase/server";
 import { redirect } from "next/navigation";
 import { getPatientVitals, updatePatientVitals, type VitalEntry } from "@/app/_lib/db/drizzle/queries/vitals";
@@ -60,6 +61,10 @@ export async function addVitalAction(
   );
 
   await updatePatientVitals(patientId, updatedVitals);
+  revalidatePath(`/patients/${patientId}/vitals`);
+  revalidatePath(`/patients/${patientId}`);
+  revalidateTag(`patient:${patientId}`, "max");
+  revalidateTag("patients", "max");
 }
 
 /**
@@ -101,6 +106,10 @@ export async function updateVitalAction(
   });
 
   await updatePatientVitals(patientId, updatedVitals);
+  revalidatePath(`/patients/${patientId}/vitals`);
+  revalidatePath(`/patients/${patientId}`);
+  revalidateTag(`patient:${patientId}`, "max");
+  revalidateTag("patients", "max");
 }
 
 /**
@@ -124,5 +133,9 @@ export async function deleteVitalAction(
   const updatedVitals = existingVitals.filter((v) => v.id !== vitalId);
 
   await updatePatientVitals(patientId, updatedVitals);
+  revalidatePath(`/patients/${patientId}/vitals`);
+  revalidatePath(`/patients/${patientId}`);
+  revalidateTag(`patient:${patientId}`, "max");
+  revalidateTag("patients", "max");
 }
 

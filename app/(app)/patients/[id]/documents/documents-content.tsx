@@ -1,8 +1,10 @@
 "use client";
 
 import * as React from "react";
+import NextImage from "next/image";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Trash2, Download, FileText, Image, File, Calendar, Eye, X } from "lucide-react";
+import { Plus, Trash2, Download, FileText, ImageIcon, File, Calendar, Eye, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,7 +19,6 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  getPatientDocumentsAction,
   deleteDocumentAction,
   getDocumentSignedUrlAction,
   createDocumentAction,
@@ -49,6 +50,7 @@ export function DocumentsContent({
   patientName,
   documents: initialDocuments,
 }: DocumentsContentProps) {
+  const router = useRouter();
   const [documents, setDocuments] = React.useState<Document[]>(initialDocuments);
   const [showUploadModal, setShowUploadModal] = React.useState(false);
   const [isUploading, setIsUploading] = React.useState(false);
@@ -58,6 +60,10 @@ export function DocumentsContent({
   const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    setDocuments(initialDocuments);
+  }, [initialDocuments]);
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -129,6 +135,13 @@ export function DocumentsContent({
       }
 
       if (newDocuments.length > 0) {
+        setDocuments((prev) => {
+          const next = [...newDocuments, ...prev];
+          next.sort(
+            (a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
+          );
+          return next;
+        });
         toast.success(
           `Successfully uploaded ${newDocuments.length} document${newDocuments.length > 1 ? "s" : ""}`
         );
@@ -136,8 +149,7 @@ export function DocumentsContent({
         if (fileInputRef.current) {
           fileInputRef.current.value = "";
         }
-        // Refresh to get latest data
-        window.location.reload();
+        router.refresh();
       }
     } catch (error) {
       console.error("Error uploading document:", error);
@@ -160,9 +172,9 @@ export function DocumentsContent({
       if (!result.success) {
         throw new Error(result.error || "Failed to delete document");
       }
+      setDocuments((prev) => prev.filter((document) => document.id !== documentId));
       toast.success("Document deleted successfully");
-      // Refresh to get latest data
-      window.location.reload();
+      router.refresh();
     } catch (error) {
       console.error("Error deleting document:", error);
       toast.error(
@@ -245,7 +257,7 @@ export function DocumentsContent({
 
   const getFileIcon = (mimeType: string) => {
     if (mimeType.startsWith("image/")) {
-      return <Image className="h-5 w-5" />;
+      return <ImageIcon className="h-5 w-5" />;
     }
     if (mimeType === "application/pdf") {
       return <FileText className="h-5 w-5" />;
@@ -493,9 +505,12 @@ export function DocumentsContent({
                 ) : previewUrl ? (
                   previewDocument.mimeType.startsWith("image/") ? (
                     <div className="flex items-center justify-center h-full min-h-[400px]">
-                      <img
+                      <NextImage
                         src={previewUrl}
                         alt={previewDocument.filename}
+                        width={1600}
+                        height={1200}
+                        unoptimized
                         className="max-w-full max-h-full object-contain rounded-lg shadow-lg"
                       />
                     </div>

@@ -1,11 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { useForm, useWatch } from "react-hook-form";
+import Image from "next/image";
+import { useForm, useWatch, type Resolver, type UseFormReturn } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Save, CheckCircle2, ChevronLeft, ChevronRight, Plus, Pencil, Trash2, CheckCircle, AlertCircle, XCircle, Camera, X, Loader2, User, Clock, FileSignature, Video } from "lucide-react";
+import { CheckCircle2, ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Camera, X, Loader2, User, Clock, FileSignature, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -22,25 +23,83 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
 import { SectionStepper, visitSections, getSectionsForRole } from "./section-stepper";
 import { AICapturePanel } from "./ai-capture-panel";
 import { OfflineSyncBadge } from "./offline-sync-badge";
 import { MedicalInfoPanel } from "./medical-info-panel";
 import { visitNoteSchema, type VisitNote, createEmptyVisitNote, parseVisitNote } from "@/app/_lib/visit-note/schema";
 import { preloadLamejs } from "@/app/_lib/utils/audioConverter";
-import type { z } from "zod";
 import { mergeVisitNote } from "@/app/_lib/visit-note/merge-with-conflicts";
 import { loadDraft, saveDraft, getReviewedSections, clearDraft } from "@/app/_lib/offline/draft";
+import { getSyncEngine } from "@/app/_lib/offline/sync-engine";
 import { createVisitDraftAction, updateVisitDraftAction, finalizeVisitAction, updatePatientAssignedAction, saveTranscriptAction } from "@/app/_actions/visits";
-import { createDocumentAction } from "@/app/_actions/documents";
+import { createDocumentAction, deleteDocumentAction } from "@/app/_actions/documents";
 import { cn } from "@/app/_lib/utils/cn";
 import type { PatientBasics } from "@/app/_lib/db/drizzle/queries/patient";
+
+type ParsedVisitData = Partial<VisitNote>;
+type VisitSectionFormApi = Pick<
+  UseFormReturn<VisitNote>,
+  "watch" | "getValues" | "setValue" | "register" | "control"
+>;
+type UploadedDocument = VisitNote["docs"]["uploadedDocuments"][number];
+type MedicationEntry = VisitNote["medications"][number];
+type AssessmentPlanEntry = VisitNote["assessmentPlan"][number];
+type ExamFindingKey = keyof VisitNote["objective"]["examFindings"];
+type VisionFieldKey =
+  | "visionOd"
+  | "visionOs"
+  | "visionOu"
+  | "visionCorrection"
+  | "visionBlurry"
+  | "visionFloaters"
+  | "visionPain"
+  | "visionLastExamDate";
+type DiabetesFieldKey = keyof VisitNote["pointOfCare"]["diabetes"];
+type RiskFlagKey = keyof VisitNote["riskFlags"];
+
+async function persistDocumentsForVisit(
+  patientId: string,
+  visitId: string,
+  documents: UploadedDocument[]
+): Promise<UploadedDocument[]> {
+  const persistedDocuments = await Promise.all(
+    documents.map(async (document) => {
+      if (!document.storageUrl) {
+        return document;
+      }
+
+      if (document.dbDocumentId && document.persistedVisitId === visitId) {
+        return document;
+      }
+
+      const result = await createDocumentAction({
+        patientId,
+        visitId,
+        filename: document.name,
+        mimeType: document.type,
+        size: document.size.toString(),
+        storageUrl: document.storageUrl,
+      });
+
+      if (!result.success || !result.document?.id) {
+        throw new Error(result.error || `Failed to persist document: ${document.name}`);
+      }
+
+      return {
+        ...document,
+        dbDocumentId: result.document.id,
+        persistedVisitId: visitId,
+      };
+    })
+  );
+
+  return persistedDocuments;
+}
 
 interface NewVisitFormProps {
   patientId: string;
@@ -53,8 +112,8 @@ interface NewVisitFormProps {
   onStartRecording?: () => void;
   onStopRecording?: () => void;
   hideAICapture?: boolean;
-  initialParsedData?: any;
-  onParseReadyRef?: React.MutableRefObject<((parsed: any) => void) | null>;
+  initialParsedData?: ParsedVisitData;
+  onParseReadyRef?: React.MutableRefObject<((parsed: ParsedVisitData) => void) | null>;
   onSaveReadyRef?: React.MutableRefObject<(() => Promise<void>) | null>;
   isInVideoCall?: boolean; // Flag to indicate if form is in video call context
   visitAppointmentType?: string | null; // Appointment type for virtual visit detection
@@ -70,11 +129,8 @@ export function NewVisitForm({
   existingVisitId,
   existingVisitData,
   isRecording = false,
-  onStartRecording,
-  onStopRecording,
   hideAICapture = false,
   initialParsedData,
-  onParseReadyRef,
   onSaveReadyRef,
   isInVideoCall = false,
   visitAppointmentType,
@@ -89,8 +145,8 @@ export function NewVisitForm({
   const [medicalPanelOpen, setMedicalPanelOpen] = React.useState(false);
   const [medicalPanelSection, setMedicalPanelSection] = React.useState<string | null>(null);
   const [isOnline, setIsOnline] = React.useState(navigator.onLine);
-  const [pendingCount, setPendingCount] = React.useState(0);
-  const [isSyncing, setIsSyncing] = React.useState(false);
+  const pendingCount = 0;
+  const isSyncing = false;
   const [isSaving, setIsSaving] = React.useState(false);
   const [visitIdRemote, setVisitIdRemote] = React.useState<string | null>(existingVisitId || null);
   const [draftLoaded, setDraftLoaded] = React.useState(false);
@@ -138,10 +194,10 @@ export function NewVisitForm({
 
   const [showPostSaveModal, setShowPostSaveModal] = React.useState(false);
   const [isProcessingAction, setIsProcessingAction] = React.useState(false);
-  const appliedParsedDataRef = React.useRef<any>(null);
+  const appliedParsedDataRef = React.useRef<string | null>(null);
 
-  const form = useForm({
-    resolver: zodResolver(visitNoteSchema),
+  const form = useForm<VisitNote>({
+    resolver: zodResolver(visitNoteSchema) as Resolver<VisitNote>,
     defaultValues: createEmptyVisitNote(),
   });
 
@@ -280,10 +336,10 @@ export function NewVisitForm({
             // Use parseVisitNote which handles migration
             const parsedData = parseVisitNote(existingVisitData);
             form.reset(parsedData);
-            // Continue-note / edit path: do not block Save on section-review gate (audit P0).
-            // User can still step through sections; all are treated as reviewed for this visit.
+            // Reset reviewed sections - user must view each section to mark it as reviewed
+            setReviewedSections(new Set());
+            // Expand all sections for easier navigation when editing
             const sectionsForRole = getSectionsForRole(userRole);
-            setReviewedSections(new Set(sectionsForRole.map((s) => s.id)));
             setExpandedSections(new Set(sectionsForRole.map(s => s.id)));
             setVisitIdRemote(existingVisitId);
             setDraftLoaded(true);
@@ -386,7 +442,6 @@ export function NewVisitForm({
     const handleOnline = () => {
       setIsOnline(true);
       // Start sync engine when online
-      const { getSyncEngine } = require("@/app/_lib/offline/sync-engine");
       const syncEngine = getSyncEngine();
       syncEngine.start();
     };
@@ -394,7 +449,6 @@ export function NewVisitForm({
 
     // Initialize sync engine
     if (navigator.onLine) {
-      const { getSyncEngine } = require("@/app/_lib/offline/sync-engine");
       const syncEngine = getSyncEngine();
       syncEngine.start();
     }
@@ -406,7 +460,6 @@ export function NewVisitForm({
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
       // Stop sync engine on unmount
-      const { getSyncEngine } = require("@/app/_lib/offline/sync-engine");
       const syncEngine = getSyncEngine();
       syncEngine.stop();
     };
@@ -463,6 +516,22 @@ export function NewVisitForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reviewedSections.size, patientId, userId, userRole, draftLoaded]);
 
+  React.useEffect(() => {
+    if (!draftLoaded || !currentSection) {
+      return;
+    }
+
+    setReviewedSections((prev) => {
+      if (prev.has(currentSection)) {
+        return prev;
+      }
+
+      const updated = new Set(prev);
+      updated.add(currentSection);
+      return updated;
+    });
+  }, [currentSection, draftLoaded]);
+
   // Check if all visible sections (based on role) are reviewed
   const allSectionsReviewed = roleSections.every((s) => reviewedSections.has(s.id));
 
@@ -470,7 +539,7 @@ export function NewVisitForm({
 
 
 
-  const handleFinalize = async () => {
+  const handleFinalize = React.useCallback(async () => {
     if (!allSectionsReviewed) {
       toast.error("Please review all sections before finalizing");
       return;
@@ -479,8 +548,9 @@ export function NewVisitForm({
     setIsSaving(true);
     try {
       const formData = form.getValues() as VisitNote;
+      let effectiveVisitId = visitIdRemote;
 
-      if (!visitIdRemote) {
+      if (!effectiveVisitId) {
         // Load draft to get transcript if available
         const draft = await loadDraft(patientId, userId, userRole);
 
@@ -490,13 +560,14 @@ export function NewVisitForm({
           notesJson: formData,
           transcript: draft.transcript || undefined,
         });
+        effectiveVisitId = result.visitId;
         setVisitIdRemote(result.visitId);
 
         // Save any transcripts from draft to database
         if (draft.transcript) {
           try {
             await saveTranscriptAction({
-              visitId: result.visitId,
+              visitId: effectiveVisitId,
               text: draft.transcript,
               rawText: draft.transcript,
             });
@@ -506,36 +577,23 @@ export function NewVisitForm({
         }
       } else {
         // Update visit
-        await updateVisitDraftAction(visitIdRemote, {
+        await updateVisitDraftAction(effectiveVisitId, {
           notesJson: formData,
         });
       }
 
       // Save documents to database
       const documents = formData.docs?.uploadedDocuments || [];
-      if (documents.length > 0 && visitIdRemote) {
-        const documentPromises = documents.map(async (doc: any) => {
-          // Only save if it doesn't already have a DB record (check if it has storageUrl)
-          // Documents uploaded during the form already have storageUrl from the upload endpoint
-          if (doc.storageUrl) {
-            return createDocumentAction({
-              patientId,
-              visitId: visitIdRemote,
-              filename: doc.name,
-              mimeType: doc.type,
-              size: doc.size.toString(),
-              storageUrl: doc.storageUrl,
-            });
-          }
-          return null;
-        });
+      if (documents.length > 0 && effectiveVisitId) {
+        const persistedDocuments = await persistDocumentsForVisit(
+          patientId,
+          effectiveVisitId,
+          documents
+        );
 
-        const results = await Promise.allSettled(documentPromises);
-        const failures = results.filter((r) => r.status === "rejected");
-        if (failures.length > 0) {
-          console.warn("Some documents failed to save:", failures);
-          // Don't block finalization if document save fails
-        }
+        form.setValue("docs", {
+          uploadedDocuments: persistedDocuments,
+        });
       }
 
       // Don't finalize yet - keep as "In Progress" unless user clicks "Sign Note"
@@ -554,7 +612,14 @@ export function NewVisitForm({
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [
+    allSectionsReviewed,
+    form,
+    patientId,
+    userId,
+    userRole,
+    visitIdRemote,
+  ]);
 
   // Expose save function via ref
   React.useEffect(() => {
@@ -738,37 +803,37 @@ export function NewVisitForm({
             <div className="md:col-span-2 space-y-4">
               <Label className="text-base font-semibold">Physical Examination</Label>
               <div className="grid gap-4 md:grid-cols-2">
-                {[
-                  { key: "general", label: "General" },
-                  { key: "heent", label: "HEENT" },
-                  { key: "neck", label: "Neck" },
-                  { key: "cardiovascular", label: "Cardiovascular" },
-                  { key: "lungs", label: "Lungs" },
-                  { key: "abdomen", label: "Abdomen" },
-                  { key: "musculoskeletal", label: "Musculoskeletal" },
-                  { key: "neurologic", label: "Neurologic" },
-                  { key: "skin", label: "Skin" },
-                  { key: "psychological", label: "Psychological" },
-                ].map((category) => (
-                  <div key={category.key} className="space-y-2">
-                    <Label className="text-sm font-medium">{category.label}</Label>
-                    <Textarea
-                      {...form.register(`objective.examFindings.${category.key}` as any)}
-                      rows={3}
-                      className="min-h-[80px] resize-none"
-                      placeholder={`${category.label} examination findings...`}
+                  {([
+                    { key: "general", label: "General" },
+                    { key: "heent", label: "HEENT" },
+                    { key: "neck", label: "Neck" },
+                    { key: "cardiovascular", label: "Cardiovascular" },
+                    { key: "lungs", label: "Lungs" },
+                    { key: "abdomen", label: "Abdomen" },
+                    { key: "musculoskeletal", label: "Musculoskeletal" },
+                    { key: "neurologic", label: "Neurologic" },
+                    { key: "skin", label: "Skin" },
+                    { key: "psychological", label: "Psychological" },
+                  ] as Array<{ key: ExamFindingKey; label: string }>).map((category) => (
+                    <div key={category.key} className="space-y-2">
+                      <Label className="text-sm font-medium">{category.label}</Label>
+                      <Textarea
+                        {...form.register(`objective.examFindings.${category.key}`)}
+                        rows={3}
+                        className="min-h-[80px] resize-none"
+                        placeholder={`${category.label} examination findings...`}
                     />
                   </div>
                 ))}
               </div>
             </div>
             {/* Vision fields */}
-            {["visionOd", "visionOs", "visionOu", "visionCorrection", "visionBlurry", "visionFloaters", "visionPain", "visionLastExamDate"].map((field) => (
+            {(["visionOd", "visionOs", "visionOu", "visionCorrection", "visionBlurry", "visionFloaters", "visionPain", "visionLastExamDate"] as VisionFieldKey[]).map((field) => (
               <div key={field} className="space-y-2">
                 <Label>{field === "visionOd" ? "Vision OD" : field === "visionOs" ? "Vision OS" : field === "visionOu" ? "Vision OU" : field === "visionCorrection" ? "Vision Correction" : field === "visionBlurry" ? "Vision Blurry" : field === "visionFloaters" ? "Vision Floaters" : field === "visionPain" ? "Vision Pain" : "Last Exam Date"}</Label>
                 <Input
                   type={field === "visionLastExamDate" ? "date" : "text"}
-                  {...form.register(`objective.${field}` as any)}
+                  {...form.register(`objective.${field}`)}
                 />
               </div>
             ))}
@@ -782,11 +847,11 @@ export function NewVisitForm({
               <h3 className="text-lg font-semibold text-foreground border-b pb-2">Diabetes</h3>
               <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 min-w-0">
                 {/* Row 1 */}
-                {["fastingGlucose", "randomGlucose"].map((field) => (
+                {(["fastingGlucose", "randomGlucose"] as DiabetesFieldKey[]).map((field) => (
                   <div key={field} className="space-y-3 min-w-0">
                     <Label className="text-base">{field === "fastingGlucose" ? "Fasting Blood Glucose" : "Random Blood Glucose"}</Label>
                     <Input
-                      {...form.register(`pointOfCare.diabetes.${field}` as any)}
+                      {...form.register(`pointOfCare.diabetes.${field}`)}
                       placeholder="mg/dL"
                     />
                   </div>
@@ -810,7 +875,7 @@ export function NewVisitForm({
                 </div>
 
                 {/* Row 2 */}
-                {["homeMonitoring", "averageReadings", "hypoglycemiaEpisodes"].map((field) => (
+                {(["homeMonitoring", "averageReadings", "hypoglycemiaEpisodes"] as DiabetesFieldKey[]).map((field) => (
                   <div key={field} className="space-y-3 min-w-0">
                     <Label className="text-base">
                       {field === "homeMonitoring" ? "Home Glucose Monitoring" : field === "averageReadings" ? "Average Readings" : "Hypoglycemia Episodes"}
@@ -831,7 +896,7 @@ export function NewVisitForm({
                       </Select>
                     ) : (
                       <Input
-                        {...form.register(`pointOfCare.diabetes.${field}` as any)}
+                        {...form.register(`pointOfCare.diabetes.${field}`)}
                         placeholder={field === "averageReadings" ? "mg/dL" : "Frequency / notes"}
                       />
                     )}
@@ -839,7 +904,7 @@ export function NewVisitForm({
                 ))}
 
                 {/* Row 3 */}
-                {["hyperglycemiaSymptoms", "footExam", "eyeExamDue"].map((field) => (
+                {(["hyperglycemiaSymptoms", "footExam", "eyeExamDue"] as DiabetesFieldKey[]).map((field) => (
                   <div key={field} className="space-y-3 min-w-0">
                     <Label className="text-base">
                       {field === "hyperglycemiaSymptoms" ? "Hyperglycemia Symptoms" : field === "footExam" ? "Foot Exam Performed" : "Eye Exam Due"}
@@ -870,7 +935,7 @@ export function NewVisitForm({
                       </Select>
                     ) : (
                       <Input
-                        {...form.register(`pointOfCare.diabetes.${field}` as any)}
+                        {...form.register(`pointOfCare.diabetes.${field}`)}
                         placeholder="Symptoms noted"
                       />
                     )}
@@ -958,14 +1023,14 @@ export function NewVisitForm({
         return (
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-4">
-              {["tobaccoUse", "alcoholUse", "housingStatus"].map((field) => (
+              {(["tobaccoUse", "alcoholUse", "housingStatus"] as RiskFlagKey[]).map((field) => (
                 <div key={field} className="space-y-2">
                   <Label>
                     {field === "tobaccoUse" ? "Tobacco Use" : field === "alcoholUse" ? "Alcohol Use" : "Housing Status"}
                   </Label>
                   <Select
-                    value={(form.watch(`riskFlags.${field}` as any) as string) || ""}
-                    onValueChange={(value) => form.setValue(`riskFlags.${field}` as any, value)}
+                    value={form.watch(`riskFlags.${field}`) || ""}
+                    onValueChange={(value) => form.setValue(`riskFlags.${field}`, value)}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select..." />
@@ -1002,13 +1067,13 @@ export function NewVisitForm({
               ))}
             </div>
             <div className="space-y-4">
-              {["tobaccoAmount", "alcoholFrequency", "occupation"].map((field) => (
+              {(["tobaccoAmount", "alcoholFrequency", "occupation"] as RiskFlagKey[]).map((field) => (
                 <div key={field} className="space-y-2">
                   <Label>
                     {field === "tobaccoAmount" ? "Amount" : field === "alcoholFrequency" ? "Frequency" : "Occupation"}
                   </Label>
                   <Input
-                    {...form.register(`riskFlags.${field}` as any)}
+                    {...form.register(`riskFlags.${field}`)}
                     placeholder={field === "tobaccoAmount" ? "e.g., 10 cigs / day" : field === "alcoholFrequency" ? "e.g., 2-3 drinks / week" : "e.g., Logistics Manager"}
                   />
                 </div>
@@ -1056,9 +1121,7 @@ export function NewVisitForm({
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-3xl font-bold text-foreground">
-              {existingVisitId ? "Continue Visit" : "New Visit"}
-            </h1>
+            <h1 className="text-3xl font-bold text-foreground">New Visit</h1>
             {isRecording && (
               <Badge variant="destructive" className="gap-2 animate-pulse">
                 <div className="w-2 h-2 bg-white rounded-full" />
@@ -1274,13 +1337,14 @@ export function NewVisitForm({
 }
 
 // Medications Section Component - matches patient medications page structure
-function MedicationsSection({ form }: { form: any }) {
+function MedicationsSection({ form }: { form: VisitSectionFormApi }) {
   const medicationsValue = form.watch("medications");
   // Handle migration from old format to new format
   const medications = React.useMemo(() => {
     if (Array.isArray(medicationsValue)) {
       // Filter out any old format medications (with 'name' instead of 'brandName'/'genericName')
-      return medicationsValue.map((med: any) => {
+      return medicationsValue.map(
+        (med: MedicationEntry & { name?: string; sideEffectsNotes?: string }) => {
         // If it's old format (has 'name' field), try to migrate
         if (med.name && !med.brandName) {
           return {
@@ -1355,7 +1419,8 @@ function MedicationsSection({ form }: { form: any }) {
   const getMedicationsArray = () => {
     const value = form.getValues("medications");
     if (Array.isArray(value)) {
-      return value.map((med: any) => ({
+      return value.map(
+        (med: MedicationEntry & { name?: string; sideEffectsNotes?: string }) => ({
         id: med.id || undefined,
         brandName: med.brandName || "",
         strength: med.strength || "",
@@ -1365,12 +1430,13 @@ function MedicationsSection({ form }: { form: any }) {
         status: med.status || ("Active" as const),
         notes: med.notes || "",
         createdAt: med.createdAt || undefined,
-      }));
+        })
+      );
     }
     return [];
   };
 
-  const getMedicationDisplayName = (med: any) => {
+  const getMedicationDisplayName = (med: MedicationEntry) => {
     return med.brandName || "Unnamed Medication";
   };
 
@@ -1627,7 +1693,7 @@ function MedicationsSection({ form }: { form: any }) {
 }
 
 // Vaccines Section Component
-function VaccinesSection({ form }: { form: any }) {
+function VaccinesSection({ form }: { form: VisitSectionFormApi }) {
   const vaccinesValue = form.watch("vaccines");
   // Ensure vaccines is always an array
   const vaccines = React.useMemo(() => {
@@ -1911,7 +1977,7 @@ function VaccinesSection({ form }: { form: any }) {
 }
 
 // Family History Section Component
-function FamilyHistorySection({ form }: { form: any }) {
+function FamilyHistorySection({ form }: { form: VisitSectionFormApi }) {
   const familyHistoryValue = form.watch("familyHistory");
   // Ensure familyHistory is always an array
   const familyHistory = React.useMemo(() => {
@@ -2154,7 +2220,7 @@ function FamilyHistorySection({ form }: { form: any }) {
 }
 
 // Surgical History Section Component
-function SurgicalHistorySection({ form }: { form: any }) {
+function SurgicalHistorySection({ form }: { form: VisitSectionFormApi }) {
   const surgicalHistoryValue = form.watch("surgicalHistory");
   // Ensure surgicalHistory is always an array
   const surgicalHistory = React.useMemo(() => {
@@ -2431,7 +2497,7 @@ function SurgicalHistorySection({ form }: { form: any }) {
 }
 
 // Past Medical History Section Component
-function PastMedicalHistorySection({ form }: { form: any }) {
+function PastMedicalHistorySection({ form }: { form: VisitSectionFormApi }) {
   const pastMedicalHistoryValue = form.watch("pastMedicalHistory");
   // Ensure pastMedicalHistory is always an array
   const pastMedicalHistory = React.useMemo(() => {
@@ -2720,7 +2786,7 @@ function PastMedicalHistorySection({ form }: { form: any }) {
 }
 
 // Orders Section Component
-function OrdersSection({ form }: { form: any }) {
+function OrdersSection({ form }: { form: VisitSectionFormApi }) {
   const ordersValue = form.watch("orders");
   // Ensure orders is always an array
   const orders = React.useMemo(() => {
@@ -2993,7 +3059,7 @@ function OrdersSection({ form }: { form: any }) {
 }
 
 // Assessment & Plan Section Component
-function AssessmentPlanSection({ form }: { form: any }) {
+function AssessmentPlanSection({ form }: { form: VisitSectionFormApi }) {
   const assessmentPlanValue = form.watch("assessmentPlan");
   // Ensure assessmentPlan is always an array
   const assessmentPlans = React.useMemo(() => {
@@ -3185,7 +3251,7 @@ function AssessmentPlanSection({ form }: { form: any }) {
         </div>
       ) : (
         <div className="space-y-3">
-          {assessmentPlans.map((item: any, index: number) => (
+          {assessmentPlans.map((item: AssessmentPlanEntry, index: number) => (
             <div
               key={index}
               className="border rounded-lg p-4 space-y-3 bg-card"
@@ -3368,7 +3434,7 @@ function AssessmentPlanSection({ form }: { form: any }) {
                         <div>
                           <div className="font-medium text-sm text-muted-foreground mb-1">Medications:</div>
                           <div className="text-sm space-y-1">
-                            {item.medications.map((med: any, medIndex: number) => (
+                            {item.medications.map((med: AssessmentPlanEntry["medications"][number], medIndex: number) => (
                               <div key={medIndex} className="pl-2">
                                 {med.brandName} {med.dosage && med.dosage} {med.frequency && med.frequency}
                               </div>
@@ -3380,7 +3446,7 @@ function AssessmentPlanSection({ form }: { form: any }) {
                         <div>
                           <div className="font-medium text-sm text-muted-foreground mb-1">Orders:</div>
                           <div className="text-sm space-y-1">
-                            {item.orders.map((order: any, orderIndex: number) => (
+                            {item.orders.map((order: AssessmentPlanEntry["orders"][number], orderIndex: number) => (
                               <div key={orderIndex} className="pl-2">
                                 {order.details || "None"}
                               </div>
@@ -3447,7 +3513,7 @@ function AssessmentPlanSection({ form }: { form: any }) {
 }
 
 // Documents Section Component
-function DocumentsSection({ form, patientId, visitId }: { form: any; patientId: string; visitId: string | null }) {
+function DocumentsSection({ form, patientId, visitId }: { form: VisitSectionFormApi; patientId: string; visitId: string | null }) {
   const docsValue = form.watch("docs");
   const uploadedDocuments = docsValue?.uploadedDocuments || [];
 
@@ -3455,7 +3521,6 @@ function DocumentsSection({ form, patientId, visitId }: { form: any; patientId: 
   const [isCapturing, setIsCapturing] = React.useState(false);
   const [isProcessing, setIsProcessing] = React.useState(false);
   const [stream, setStream] = React.useState<MediaStream | null>(null);
-  const [capturedImage, setCapturedImage] = React.useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
@@ -3526,7 +3591,7 @@ function DocumentsSection({ form, patientId, visitId }: { form: any; patientId: 
         const uploadData = await uploadResponse.json();
 
         // Add to local state with storageUrl for later DB save
-        newDocuments.push({
+        const nextDocument: UploadedDocument = {
           id: crypto.randomUUID(),
           name: file.name,
           type: file.type,
@@ -3534,7 +3599,7 @@ function DocumentsSection({ form, patientId, visitId }: { form: any; patientId: 
           uploadedAt: new Date().toISOString(),
           dataUrl,
           storageUrl: uploadData.storageUrl, // Store for later DB save
-        });
+        };
 
         // Save document metadata to DB if visitId exists
         if (visitId) {
@@ -3550,8 +3615,13 @@ function DocumentsSection({ form, patientId, visitId }: { form: any; patientId: 
           if (!result.success) {
             console.error("Failed to save document metadata:", result.error);
             // Continue anyway - file is uploaded, metadata can be saved later
+          } else if (result.document?.id) {
+            nextDocument.dbDocumentId = result.document.id;
+            nextDocument.persistedVisitId = visitId;
           }
         }
+
+        newDocuments.push(nextDocument);
       }
 
       // Update form state
@@ -3572,7 +3642,24 @@ function DocumentsSection({ form, patientId, visitId }: { form: any; patientId: 
     }
   };
 
-  const handleRemove = (index: number) => {
+  const handleRemove = async (index: number) => {
+    const documentToRemove = uploadedDocuments[index];
+
+    if (
+      documentToRemove?.dbDocumentId &&
+      documentToRemove.storageUrl
+    ) {
+      const result = await deleteDocumentAction(
+        documentToRemove.dbDocumentId,
+        documentToRemove.storageUrl
+      );
+
+      if (!result.success) {
+        toast.error(result.error || "Failed to remove document");
+        return;
+      }
+    }
+
     const newDocuments = uploadedDocuments.filter((_doc: unknown, i: number) => i !== index);
     form.setValue("docs", {
       uploadedDocuments: newDocuments,
@@ -3590,8 +3677,6 @@ function DocumentsSection({ form, patientId, visitId }: { form: any; patientId: 
       });
       setStream(mediaStream);
       setIsCapturing(true);
-      setCapturedImage(null);
-
       // Use setTimeout to ensure video element is rendered
       setTimeout(() => {
         if (videoRef.current) {
@@ -3614,7 +3699,6 @@ function DocumentsSection({ form, patientId, visitId }: { form: any; patientId: 
       setStream(null);
     }
     setIsCapturing(false);
-    setCapturedImage(null);
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
@@ -3747,7 +3831,7 @@ function DocumentsSection({ form, patientId, visitId }: { form: any; patientId: 
       const uploadData = await uploadResponse.json();
 
       // Add to local state with storageUrl for later DB save
-      newDocuments.push({
+      const nextDocument: UploadedDocument = {
         id: crypto.randomUUID(),
         name: file.name,
         type: file.type,
@@ -3755,7 +3839,7 @@ function DocumentsSection({ form, patientId, visitId }: { form: any; patientId: 
         uploadedAt: new Date().toISOString(),
         dataUrl,
         storageUrl: uploadData.storageUrl, // Store for later DB save
-      });
+      };
 
       // Save document metadata to DB if visitId exists
       if (visitId) {
@@ -3771,8 +3855,13 @@ function DocumentsSection({ form, patientId, visitId }: { form: any; patientId: 
         if (!result.success) {
           console.error("Failed to save document metadata:", result.error);
           // Continue anyway - file is uploaded, metadata can be saved later
+        } else if (result.document?.id) {
+          nextDocument.dbDocumentId = result.document.id;
+          nextDocument.persistedVisitId = visitId;
         }
       }
+
+      newDocuments.push(nextDocument);
 
       // Update form state
       form.setValue("docs", {
@@ -3938,7 +4027,7 @@ function DocumentsSection({ form, patientId, visitId }: { form: any; patientId: 
         </div>
       ) : (
         <div className="space-y-2">
-          {uploadedDocuments.map((doc: { id?: string; name: string; type: string; size: number; uploadedAt: string; dataUrl?: string; storageUrl?: string }, index: number) => (
+          {uploadedDocuments.map((doc: UploadedDocument, index: number) => (
             <div
               key={doc.id || index}
               className="border rounded-lg p-4 bg-card flex items-start justify-between gap-4"
@@ -3952,9 +4041,12 @@ function DocumentsSection({ form, patientId, visitId }: { form: any; patientId: 
                 </div>
                 {doc.dataUrl && (
                   <div className="mt-2">
-                    <img
+                    <Image
                       src={doc.dataUrl}
                       alt={doc.name}
+                      width={320}
+                      height={128}
+                      unoptimized
                       className="max-w-xs max-h-32 rounded border"
                     />
                   </div>

@@ -1,6 +1,6 @@
 import { db } from "../index";
 import { documents } from "../schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, isNull } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
 
 export interface CreateDocumentParams {
@@ -31,6 +31,26 @@ export async function createDocument(params: CreateDocumentParams) {
     .returning();
 
   return result[0];
+}
+
+export async function getDocumentByStorageUrl(
+  patientId: string,
+  storageUrl: string,
+  visitId?: string
+) {
+  const filters = [
+    eq(documents.patientId, patientId),
+    eq(documents.storageUrl, storageUrl),
+    visitId ? eq(documents.visitId, visitId) : isNull(documents.visitId),
+  ];
+
+  const result = await db
+    .select()
+    .from(documents)
+    .where(and(...filters))
+    .limit(1);
+
+  return result[0] ?? null;
 }
 
 /**
