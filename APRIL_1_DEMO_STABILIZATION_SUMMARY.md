@@ -78,6 +78,10 @@
 
 Core chart/visit/finalize **authorization** and patient list **React correctness** are improved; session and nav fixes from the prior pass remain the backbone. Full **DEMO READY** would require a recorded dry run on production-like env (Twilio + storage + auth) with no surprises.
 
+## Batch 2 Addendum
+
+On April 3, 2026, the patient-routing continuity lane was tightened further on `fix/demo-batch-2-routing`. Demo-critical CTAs on patient chart, visit history, and open notes were converted to valid link/button composition, and remaining patient-route date output was made more deterministic where it still directly touched those screens. Local seeded-session smoke on that branch now passes patient chart -> visit history, visit history -> existing visit, chart/history -> `Log New Visit`, and `Open Notes -> Continue Note`; waiting-room assign and deployed persistence proof still remain outside this addendum’s closure.
+
 ---
 
 _See [APRIL_1_DEMO_STABILIZATION_TRACKER.md](./APRIL_1_DEMO_STABILIZATION_TRACKER.md) for per-issue detail._
