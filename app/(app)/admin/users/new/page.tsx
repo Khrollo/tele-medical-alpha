@@ -6,6 +6,7 @@ import { SideNav } from "@/components/side-nav";
 import { PasswordCheckWrapper } from "./password-check-wrapper";
 
 const PASSWORD_COOKIE_NAME = "new_user_access_granted";
+export const dynamic = "force-dynamic";
 
 export default async function CreateUserPage() {
   const session = await getServerSession();

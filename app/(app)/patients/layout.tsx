@@ -1,6 +1,8 @@
 import { getServerSession } from "@/app/_lib/supabase/server";
 import { RouteWrapper } from "./route-wrapper";
 
+export const dynamic = "force-dynamic";
+
 export default async function PatientsLayout({
     children,
 }: {

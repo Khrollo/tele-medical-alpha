@@ -1,6 +1,8 @@
 import { OpenNotesShell } from "./open-notes-shell";
 import { getServerSession } from "@/app/_lib/supabase/server";
 
+export const dynamic = "force-dynamic";
+
 export default async function OpenNotesLayout({
     children,
 }: {
