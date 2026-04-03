@@ -261,7 +261,7 @@ export function WaitingRoomList({ patients: initialPatients }: WaitingRoomListPr
             size="sm"
             onClick={handleRefresh}
             disabled={isRefreshing}
-            className="rounded-full px-4 hover:bg-white dark:hover:bg-slate-800 shadow-sm transition-all"
+            className="rounded-full px-4 hover:bg-white dark:hover:bg-slate-800 border border-slate-200 transition-all"
           >
             <RefreshCw className={`h-4 w-4 mr-2 text-slate-500 ${isRefreshing ? "animate-spin" : ""}`} />
             <span className="text-xs font-bold text-slate-600 uppercase tracking-widest">{isRefreshing ? "Syncing..." : "Sync"}</span>
@@ -269,7 +269,7 @@ export function WaitingRoomList({ patients: initialPatients }: WaitingRoomListPr
           <div className="h-8 w-[1px] bg-slate-200 dark:bg-slate-800 hidden sm:block" />
           <div className="flex items-center gap-2">
             <Select value={sortField} onValueChange={(value) => handleSortChange(value as SortField)}>
-              <SelectTrigger className="w-[160px] h-9 rounded-full bg-white dark:bg-slate-900 border-none shadow-sm text-xs font-bold uppercase tracking-widest">
+              <SelectTrigger className="w-[160px] h-9 rounded-full bg-white dark:bg-slate-900 border border-slate-100 text-xs font-bold uppercase tracking-widest">
                 <SelectValue placeholder="Sort by" />
               </SelectTrigger>
               <SelectContent className="rounded-xl">
@@ -282,7 +282,7 @@ export function WaitingRoomList({ patients: initialPatients }: WaitingRoomListPr
             <Button
               variant="outline"
               size="icon"
-              className="h-9 w-9 rounded-full border-none bg-white dark:bg-slate-900 shadow-sm"
+              className="h-9 w-9 rounded-full border border-slate-100 bg-white dark:bg-slate-900"
               onClick={() => setSortDirection(sortDirection === "asc" ? "desc" : "asc")}
             >
               <ArrowUpDown className="h-4 w-4 text-slate-600" />
@@ -303,8 +303,8 @@ export function WaitingRoomList({ patients: initialPatients }: WaitingRoomListPr
             <Card
               key={patient.id}
               className={cn(
-                "group relative rounded-[2.5rem] border-none shadow-[0_8px_30px_rgb(0,0,0,0.03)] bg-white dark:bg-slate-900 overflow-hidden transition-all hover:translate-y-[-4px] hover:shadow-[0_20px_40px_rgb(0,0,0,0.06)]",
-                isUrgent && "ring-2 ring-red-500/10 shadow-[0_8px_30px_rgba(239,68,68,0.05)]"
+                "group relative rounded-[2.5rem] border-none bg-white dark:bg-slate-900 overflow-hidden transition-all hover:translate-y-[-4px]",
+                isUrgent && "ring-2 ring-red-500/10"
               )}
             >
               {isUrgent && (
@@ -369,7 +369,7 @@ export function WaitingRoomList({ patients: initialPatients }: WaitingRoomListPr
                   ) : (
                     <Button
                       onClick={(e) => handleAssignToMe(patient.id, patient.visit?.id ?? null, e)}
-                      className="w-full rounded-2xl h-12 font-bold shadow-sm"
+                      className="w-full"
                       variant={isUrgent ? "default" : "secondary"}
                       disabled={loadingPatientId === patient.id}
                     >
@@ -387,7 +387,7 @@ export function WaitingRoomList({ patients: initialPatients }: WaitingRoomListPr
         <Card className="rounded-[2rem] border-dashed border-2 bg-transparent shadow-none">
           <CardContent className="flex items-center justify-center py-24">
             <div className="text-center">
-              <div className="h-16 w-16 bg-white dark:bg-slate-900 rounded-full shadow-sm flex items-center justify-center mx-auto mb-4">
+              <div className="h-16 w-16 bg-white dark:bg-slate-900 rounded-full border border-slate-100 flex items-center justify-center mx-auto mb-4">
                  <RefreshCw className="h-8 w-8 text-slate-300" />
               </div>
               <p className="text-slate-500 font-medium">No patients currently in the waiting room.</p>

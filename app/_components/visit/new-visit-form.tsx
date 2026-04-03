@@ -4,6 +4,7 @@ import * as React from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { toast } from "sonner";
 import { Save, CheckCircle2, ChevronLeft, ChevronRight, Plus, Pencil, Trash2, CheckCircle, AlertCircle, XCircle, Camera, X, Loader2, User, Clock, FileSignature, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -1050,58 +1051,53 @@ export function NewVisitForm({
     return <div>Loading...</div>;
   }
 
+  // Section descriptions for contextual guidance
+  const sectionDescriptions: Record<string, string> = {
+    subjective: "Document the patient's reported symptoms and history of present illness.",
+    objective: "Record vitals, physical examination findings, and vision assessment.",
+    pointOfCare: "Capture point-of-care test results for diabetes, HIV, and syphilis.",
+    vaccines: "Review and document vaccine administration records.",
+    familyHistory: "Record relevant family medical history and conditions.",
+    riskFlags: "Assess social determinants, substance use, and risk factors.",
+    surgicalHistory: "Document past surgical procedures and outcomes.",
+    pastMedicalHistory: "Record known medical conditions and their current status.",
+    documents: "Upload and manage visit-related documents and images.",
+    medications: "Review, add, or update the patient's medication list.",
+    orders: "Place and manage lab, imaging, and procedure orders.",
+    assessmentPlan: "Formulate diagnoses, treatment plans, and follow-up instructions.",
+  };
+
+  const CurrentIcon = roleSections.find(s => s.id === currentSection)?.icon;
+
   return (
-    <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-3xl font-bold text-foreground">
-              {existingVisitId ? "Continue Visit" : "New Visit"}
-            </h1>
-            {isRecording && (
-              <Badge variant="destructive" className="gap-2 animate-pulse">
-                <div className="w-2 h-2 bg-white rounded-full" />
-                <span>Recording</span>
-              </Badge>
-            )}
-            {/* {onStartRecording && onStopRecording && (
-              <>
-                {isRecording ? (
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={onStopRecording}
-                    className="gap-2"
-                  >
-                    <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
-                    <span>Stop Recording</span>
-                  </Button>
-                ) : (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={onStartRecording}
-                  >
-                    Start Recording
-                  </Button>
-                )}
-              </>
-            )} */}
+    <div className="flex flex-col min-h-full pb-0">
+      {/* Compact top bar: back + patient info + status */}
+      <div className="flex items-center justify-between px-4 md:px-6 py-3 border-b border-slate-200/60 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur-sm">
+        <div className="flex items-center gap-3">
+          <Link href={`/patients/${patientId}`}>
+            <Button variant="ghost" size="sm" className="rounded-full h-8 w-8 p-0">
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+          </Link>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-foreground">{patientBasics.fullName}</span>
+            <span className="text-xs text-muted-foreground">DOB: {patientBasics.dob || "N/A"}</span>
           </div>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {patientBasics.fullName} • DOB: {patientBasics.dob || "N/A"}
-          </p>
+          {isRecording && (
+            <Badge variant="destructive" className="gap-1.5 animate-pulse text-xs">
+              <div className="w-1.5 h-1.5 bg-white rounded-full" />
+              Recording
+            </Badge>
+          )}
         </div>
         <div className="flex items-center gap-2">
-          {/* Join Call button for virtual visits */}
           {visitAppointmentType?.toLowerCase() === "virtual" && visitTwilioRoomName && existingVisitId && (
             <Button
               onClick={() => router.push(`/visit/${existingVisitId}/call`)}
-              variant="default"
-              className="bg-purple-600 hover:bg-purple-700"
+              size="sm"
+              className="bg-purple-600 hover:bg-purple-700 text-xs"
             >
-              <Video className="h-4 w-4 mr-2" />
+              <Video className="h-3.5 w-3.5 mr-1.5" />
               Join Call
             </Button>
           )}
@@ -1113,94 +1109,91 @@ export function NewVisitForm({
         </div>
       </div>
 
-      {/* Top Horizontal Stepper */}
-      <div className="mb-6 bg-card rounded-lg shadow-sm border bg-white dark:bg-card">
-        <SectionStepper
-          currentSection={currentSection}
-          reviewedSections={reviewedSections}
-          onSectionClick={handleSectionChange}
-          userRole={userRole}
-        />
-      </div>
-
-      {/* Layout: Stacked on tablet in video call, side-by-side otherwise */}
-      <div className={cn(
-        "grid gap-8",
-        isInVideoCall
-          ? "grid-cols-1" // Stacked vertically on tablet in video call
-          : "grid-cols-1 md:grid-cols-3 lg:grid-cols-4"  // Normal layout: side-by-side on tablet/desktop
-      )}>
-        {/* Left sidebar - Medical Info Panel, AI Capture, and Stepper */}
-        <div className={cn(
-          "space-y-4",
-          isInVideoCall ? "" : "md:col-span-1 lg:col-span-1"
-        )}>
-          {/* Medical Info Panel - appears at top of left sidebar when open */}
-          {medicalPanelOpen && medicalPanelSection && (
-            <MedicalInfoPanel
-              patientBasics={patientBasics}
-              sectionId={medicalPanelSection}
-              onClose={() => {
-                setMedicalPanelOpen(false);
-                setMedicalPanelSection(null);
-              }}
-            />
-          )}
-
+      {/* Medical Info Panel - renders as overlay drawer when open */}
+      {medicalPanelOpen && medicalPanelSection && (
+        <div className="fixed inset-y-0 left-0 z-40 w-80 bg-white dark:bg-slate-950 shadow-2xl border-r border-slate-200 dark:border-slate-800 overflow-y-auto">
+          <MedicalInfoPanel
+            patientBasics={patientBasics}
+            sectionId={medicalPanelSection}
+            onClose={() => {
+              setMedicalPanelOpen(false);
+              setMedicalPanelSection(null);
+            }}
+          />
         </div>
+      )}
 
-        {/* Main form area */}
-        <div className={cn(
-          "space-y-4",
-          isInVideoCall ? "" : "md:col-span-2 lg:col-span-3"
-        )}>
-          <Card>
-            <CardHeader className="pb-4">
-              <CardTitle>
-                {visitSections.find((s) => s.id === currentSection)?.label}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-8">{renderSection()}</CardContent>
+      {/* Centered content area */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-3xl mx-auto w-full px-4 md:px-6 py-6 space-y-6">
+
+          {/* Section stepper - contextual progress above the form */}
+          <SectionStepper
+            currentSection={currentSection}
+            reviewedSections={reviewedSections}
+            onSectionClick={handleSectionChange}
+            userRole={userRole}
+            className="pb-0 pt-0"
+          />
+
+          {/* Section header with icon, title, and description */}
+          <div className="text-center space-y-1">
+            <div className="flex items-center justify-center gap-3">
+              {CurrentIcon && <CurrentIcon className="h-5 w-5 text-slate-400" />}
+              <h1 className="text-2xl font-bold text-foreground">
+                {roleSections.find(s => s.id === currentSection)?.label}
+              </h1>
+            </div>
+            <p className="text-sm text-muted-foreground max-w-md mx-auto">
+              {sectionDescriptions[currentSection] || ""}
+            </p>
+            <p className="text-xs text-muted-foreground/60">
+              Step {currentSectionIndex + 1} of {roleSections.length}
+            </p>
+          </div>
+
+          {/* Form card - focused, centered content */}
+          <Card className="shadow-sm">
+            <CardContent className="p-6 md:p-8">{renderSection()}</CardContent>
           </Card>
 
-          {/* Navigation */}
-          <div className="flex items-center justify-between">
+          {/* Inline navigation - prev / next below the form */}
+          <div className="flex items-center justify-between pb-6">
             <Button
               variant="outline"
+              className="h-11 px-5 text-sm font-medium gap-2"
               onClick={goToPrev}
               disabled={!canGoPrev}
             >
-              <ChevronLeft className="h-4 w-4 mr-2" />
-              Previous
+              <ChevronLeft className="h-4 w-4" />
+              {canGoPrev ? roleSections[currentSectionIndex - 1]?.label : "Previous"}
             </Button>
-            <Button
-              variant="outline"
-              onClick={goToNext}
-              disabled={!canGoNext}
-            >
-              Next
-              <ChevronRight className="h-4 w-4 ml-2" />
-            </Button>
-          </div>
-        </div>
-      </div>
 
-      {/* Footer */}
-      <div className="sticky bottom-0 border-t bg-background p-4 flex items-center justify-between">
-        <div className="text-sm text-muted-foreground flex items-center">
-          {reviewedSections.size} of {roleSections.length} sections reviewed
-          <span className="ml-4 text-green-600 flex items-center text-xs bg-green-50 px-2 py-1 rounded-md">
-            <CheckCircle2 className="h-3 w-3 mr-1" /> All changes autosaved
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            onClick={handleFinalize}
-            disabled={isSaving || !allSectionsReviewed || !isOnline}
-            className="px-8"
-          >
-            Complete Visit
-          </Button>
+            {canGoNext ? (
+              <Button
+                className="h-11 px-5 text-sm font-medium gap-2"
+                onClick={goToNext}
+              >
+                {roleSections[currentSectionIndex + 1]?.label}
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            ) : (
+              <Button
+                onClick={handleFinalize}
+                disabled={isSaving || !allSectionsReviewed || !isOnline}
+                className="h-11 px-6 text-sm font-semibold"
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Saving...
+                  </>
+                ) : (
+                  "Complete Visit"
+                )}
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1274,6 +1267,7 @@ export function NewVisitForm({
           )}
         </DialogContent>
       </Dialog>
+
     </div>
   );
 }

@@ -7,7 +7,12 @@ import { useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Copy, Check, Video, ArrowUpRight, Target, Activity, Droplets, CalendarDays, ActivitySquare, Pill, Image as ImageIcon, HeartPulse } from "lucide-react";
+import { 
+  Copy, Check, Video, ArrowUpRight, Target, Activity, Droplets, 
+  CalendarDays, ActivitySquare, Pill, Image as ImageIcon, HeartPulse,
+  Info, User, History, AlertCircle, Syringe, Users, Speech, 
+  Stethoscope, FileText, ClipboardList, Folder, BookOpen
+} from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 import { cn } from "@/app/_lib/utils/cn";
@@ -132,7 +137,7 @@ export function PatientOverviewCards({
       
       {/* Top Banner Toggles (Visual) */}
       <div className="flex items-center gap-3">
-         <div className="bg-slate-900 text-white rounded-full px-6 py-2.5 text-sm font-semibold shadow-md">
+         <div className="bg-slate-900 text-white rounded-full px-6 py-2.5 text-sm font-semibold border border-slate-800">
             Health indicators
          </div>
          <div className="bg-white text-slate-600 rounded-full px-6 py-2.5 text-sm font-semibold border border-slate-200">
@@ -147,7 +152,7 @@ export function PatientOverviewCards({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 
                 {/* BP / Cells Widget */}
-                <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-6 shadow-sm border border-slate-100 dark:border-slate-800 flex flex-col relative h-[240px]">
+                <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-6 border border-slate-100 dark:border-slate-800 flex flex-col relative h-[240px]">
                   <div className="absolute top-6 right-6 h-8 w-8 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors">
                     <ArrowUpRight className="h-4 w-4 text-slate-400" />
                   </div>
@@ -177,7 +182,7 @@ export function PatientOverviewCards({
                 </div>
 
                 {/* Temp Gauge Visual Widget */}
-                <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-6 shadow-sm border border-slate-100 dark:border-slate-800 flex flex-col relative h-[240px]">
+                <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-6 border border-slate-100 dark:border-slate-800 flex flex-col relative h-[240px]">
                   <div className="absolute top-6 right-6 h-8 w-8 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors">
                     <ArrowUpRight className="h-4 w-4 text-slate-400" />
                   </div>
@@ -212,7 +217,7 @@ export function PatientOverviewCards({
                 </div>
 
                 {/* Heart Rate EKG Widget */}
-                <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-6 shadow-sm border border-slate-100 dark:border-slate-800 flex flex-col relative h-[240px]">
+                <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-6 border border-slate-100 dark:border-slate-800 flex flex-col relative h-[240px]">
                   <div className="absolute top-6 right-6 h-8 w-8 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors">
                     <ArrowUpRight className="h-4 w-4 text-slate-400" />
                   </div>
@@ -247,7 +252,7 @@ export function PatientOverviewCards({
 
         {/* Right Col - Appointments Timeline */}
         <div className="lg:col-span-4">
-            <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-8 shadow-sm border border-slate-100 dark:border-slate-800 h-full min-h-[400px]">
+            <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-8 border border-slate-100 dark:border-slate-800 h-full min-h-[400px]">
               <div className="flex items-center justify-between mb-8">
                 <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-slate-800 to-slate-500">Appointments</h2>
                 <div className="h-10 w-10 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center">
@@ -297,8 +302,6 @@ export function PatientOverviewCards({
               </div>
             </div>
         </div>
-
-        {/* Bottom Row - Disease History */}
         <div className="col-span-full mt-4">
             <h2 className="text-2xl font-bold mb-6 tracking-tight text-slate-900 dark:text-white">Disease history</h2>
             
@@ -310,12 +313,12 @@ export function PatientOverviewCards({
                  const hasMed = medications.length > idx;
                  
                  return (
-                  <div key={idx} className="bg-white dark:bg-slate-900 rounded-[2rem] p-5 shadow-[0_4px_24px_rgba(0,0,0,0.03)] border border-slate-100 dark:border-slate-800 min-w-[340px] flex gap-5 snap-start shrink-0 hover:-translate-y-1 transition-transform relative">
+                  <div key={idx} className="bg-white dark:bg-slate-900 rounded-[2rem] p-5 border border-slate-100 dark:border-slate-800 min-w-[340px] flex gap-5 snap-start shrink-0 hover:-translate-y-1 transition-transform relative">
                     
                     {/* Visual Preview Left Block */}
                     <div className="w-[100px] h-[120px] bg-slate-50 dark:bg-slate-800 rounded-[1.5rem] flex flex-col items-center justify-center shrink-0 overflow-hidden relative border border-slate-100">
                        {iconPick}
-                       <div className="absolute top-2 left-2 h-6 w-6 rounded-full bg-white shadow-sm flex items-center justify-center">
+                       <div className="absolute top-2 left-2 h-6 w-6 rounded-full bg-white border border-slate-100 flex items-center justify-center">
                           <Activity className="h-3 w-3 text-slate-600" />
                        </div>
                     </div>
@@ -339,14 +342,14 @@ export function PatientOverviewCards({
                         <div className="flex items-center gap-1.5 flex-wrap">
                            {hasMed ? (
                              <>
-                               <div className="bg-slate-50 dark:bg-slate-800 border border-slate-100 shadow-sm rounded-full pl-1.5 pr-3 py-1 flex items-center gap-2">
-                                  <div className="h-5 w-5 rounded-full bg-white flex items-center justify-center shadow-sm">
+                               <div className="bg-slate-50 dark:bg-slate-800 border border-slate-100 rounded-full pl-1.5 pr-3 py-1 flex items-center gap-2">
+                                  <div className="h-5 w-5 rounded-full bg-white border border-slate-50 flex items-center justify-center">
                                     <Pill className="h-3.5 w-3.5 text-blue-500" />
                                   </div>
                                   <span className="text-[11px] font-bold text-slate-600">{medications[idx].brandName || medications[idx].name || "Med"}</span>
                                </div>
                                {medications.length > idx + 1 && (
-                                  <div className="h-7 w-7 rounded-full bg-slate-800 text-white flex items-center justify-center text-[10px] font-bold shadow-md">
+                                  <div className="h-7 w-7 rounded-full bg-slate-800 text-white flex items-center justify-center text-[10px] font-bold">
                                      +{medications.length - (idx + 1)}
                                   </div>
                                )}
@@ -360,7 +363,7 @@ export function PatientOverviewCards({
                   </div>
                 )
               }) : (
-                 <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-8 shadow-sm border border-slate-100 text-slate-500 text-sm font-medium w-full flex items-center justify-center">
+                 <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-8 border border-slate-100 text-slate-500 text-sm font-medium w-full flex items-center justify-center">
                     No documented disease history.
                  </div>
               )}

@@ -182,7 +182,7 @@ export function VitalsContent({
             Historical health trends for {patientName}
           </p>
         </div>
-        <Button onClick={() => setShowAddModal(true)} className="rounded-full px-6 shadow-md">
+        <Button onClick={() => setShowAddModal(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Add Vital Entry
         </Button>
@@ -191,7 +191,7 @@ export function VitalsContent({
       {/* Trend Charts Section */}
       {vitals.length > 1 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card className="rounded-[2rem] border-none shadow-[0_8px_30px_rgb(0,0,0,0.02)] bg-white dark:bg-slate-900 overflow-hidden">
+          <Card className="rounded-[2rem] bg-white dark:bg-slate-900 overflow-hidden">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-bold text-slate-500 flex items-center gap-2 uppercase tracking-wider">
                 <Heart className="h-4 w-4" />
@@ -214,7 +214,7 @@ export function VitalsContent({
                   />
                   <YAxis hide />
                   <Tooltip 
-                    contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                    contentStyle={{ borderRadius: '1rem', border: '1px solid #f1f5f9', boxShadow: 'none' }}
                   />
                   <Area type="monotone" dataKey="hr" stroke="#ef4444" fillOpacity={1} fill="url(#colorHr)" strokeWidth={3} />
                 </AreaChart>
@@ -222,7 +222,7 @@ export function VitalsContent({
             </CardContent>
           </Card>
 
-          <Card className="rounded-[2rem] border-none shadow-[0_8px_30px_rgb(0,0,0,0.02)] bg-white dark:bg-slate-900 overflow-hidden">
+          <Card className="rounded-[2rem] bg-white dark:bg-slate-900 overflow-hidden">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-bold text-slate-500 flex items-center gap-2 uppercase tracking-wider">
                 <Scale className="h-4 w-4" />
@@ -236,7 +236,7 @@ export function VitalsContent({
                   <XAxis dataKey="date" hide />
                   <YAxis hide domain={['auto', 'auto']} />
                   <Tooltip 
-                    contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                    contentStyle={{ borderRadius: '1rem', border: '1px solid #f1f5f9', boxShadow: 'none' }}
                   />
                   <Line type="monotone" dataKey="weight" stroke="#3b82f6" strokeWidth={3} dot={{ r: 4, fill: '#3b82f6', strokeWidth: 2, stroke: '#fff' }} />
                 </LineChart>
@@ -265,7 +265,7 @@ export function VitalsContent({
       ) : (
         <div className="grid gap-6 sm:grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
           {vitals.map((vital) => (
-            <Card key={vital.id} className="rounded-[2rem] border-none shadow-[0_8px_30px_rgb(0,0,0,0.03)] bg-white dark:bg-slate-900 transition-transform hover:-translate-y-1">
+            <Card key={vital.id} className="rounded-[2rem] border border-slate-50 dark:border-slate-800 bg-white dark:bg-slate-900 transition-transform hover:-translate-y-1">
               <CardHeader className="pb-3 border-b border-slate-50 dark:border-slate-800/50">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">

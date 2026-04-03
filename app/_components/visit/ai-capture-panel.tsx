@@ -200,7 +200,7 @@ export function AICapturePanel({
     return (
         <div className="fixed bottom-24 right-8 z-[100] group">
             {/* Tooltip */}
-            <div className="absolute bottom-full right-0 mb-4 px-4 py-2 bg-slate-800 text-white text-sm rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none md:origin-bottom-right drop-shadow-xl font-medium">
+            <div className="absolute bottom-full right-0 mb-4 px-4 py-2 bg-slate-800 text-white text-sm rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none md:origin-bottom-right border border-slate-700 font-medium">
                 AI Clinical Scribe
                 <div className="absolute -bottom-2 right-6 w-0 h-0 border-l-[6px] border-l-transparent border-t-[8px] border-t-slate-800 border-r-[6px] border-r-transparent"></div>
             </div>
@@ -215,12 +215,12 @@ export function AICapturePanel({
                 disabled={isProcessing}
                 size="icon"
                 className={cn(
-                    "relative h-14 w-14 rounded-full shadow-2xl overflow-hidden transition-all duration-300",
+                    "relative h-14 w-14 rounded-full border-4 border-white dark:border-slate-800 overflow-hidden transition-all duration-300",
                     state === "recording" 
                         ? "bg-red-500 hover:bg-red-600 scale-105" 
                         : isProcessing 
                             ? "bg-slate-700 opacity-90 cursor-wait"
-                            : "bg-primary hover:bg-primary/90 hover:scale-105"
+                            : "bg-slate-900 hover:bg-slate-800 hover:scale-105"
                 )}
             >
                 {state === "recording" ? (

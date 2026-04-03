@@ -192,14 +192,14 @@ export function VisitHistoryContent({
           </p>
         </div>
         <Link href={getNewVisitPath()}>
-          <Button className="rounded-full px-6 shadow-md">
+          <Button>
             Log New Visit
           </Button>
         </Link>
       </div>
 
       {/* Filters Row */}
-      <Card className="rounded-[1.5rem] border-none shadow-sm bg-white dark:bg-slate-900/50">
+      <Card className="rounded-[1.5rem] border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900/50">
         <CardContent className="p-6">
           <div className="flex flex-col gap-6">
             {/* Search and Status Row */}
@@ -305,7 +305,7 @@ export function VisitHistoryContent({
                   href={`/patients/${patientId}/visit-history/${visit.id}`}
                   className="block"
                 >
-                  <Card className="rounded-[2rem] border-none shadow-[0_8px_30px_rgb(0,0,0,0.03)] bg-white dark:bg-slate-900 transition-all hover:translate-x-1 hover:shadow-[0_12px_40px_rgb(0,0,0,0.06)] group cursor-pointer">
+                  <Card className="rounded-[2rem] border border-slate-50 dark:border-slate-800 bg-white dark:bg-slate-900 transition-all hover:translate-x-1 group cursor-pointer">
                     <CardContent className="p-6">
                       <div className="flex flex-col gap-6 lg:flex-row lg:items-center">
                         {/* Time & Icon */}
@@ -393,7 +393,7 @@ export function VisitHistoryContent({
                 >
                   Prev
                 </Button>
-                <div className="h-8 w-8 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs font-bold shadow-md">
+                <div className="h-8 w-8 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs font-bold">
                    {data.page}
                 </div>
                 <Button

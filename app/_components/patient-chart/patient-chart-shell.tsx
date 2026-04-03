@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { SideNav } from "@/components/side-nav";
 import { cn } from "@/app/_lib/utils/cn";
-import { Menu, ChevronRight, Home } from "lucide-react";
+import { Menu, ChevronRight, Home, Activity, Pill, AlertCircle, Syringe, History, Folder, BookOpen, User, ClipboardList, MessageSquare, FileText, Users, Speech, Stethoscope } from "lucide-react";
 
 interface PatientChartShellProps {
     children: React.ReactNode;
@@ -101,13 +101,68 @@ export function PatientChartShell({
                                 Begin Intake
                             </Button>
                         )} */}
-                        <Link href={getNewVisitPath()}>
-                            <Button size="default">
-                                Log New Visit
-                            </Button>
-                        </Link>
+                        {pathname.split("/").pop() !== "new-visit" && (
+                          <Link href={getNewVisitPath()}>
+                              <Button size="default">
+                                  Log New Visit
+                              </Button>
+                          </Link>
+                        )}
                     </div>
                 </div>
+
+                {/* Patient Dashboard Sub Navigation (Hidden for New Visit) */}
+                {pathname.split("/").pop() !== "new-visit" && (
+                  <div className="bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800">
+                    <nav className="flex items-center justify-start gap-8 px-8 overflow-x-auto thin-scrollbar no-scrollbar scroll-smooth">
+                      {[
+                        { label: "Overview", icon: Home, href: `/patients/${patientId}` },
+                        { label: "Info", icon: User, href: `/patients/${patientId}/personal-details` },
+                        { label: "Vitals", icon: Activity, href: `/patients/${patientId}/vitals` },
+                        { label: "Meds", icon: Pill, href: `/patients/${patientId}/medications` },
+                        { label: "Allergies", icon: AlertCircle, href: `/patients/${patientId}/allergies` },
+                        { label: "Vaccines", icon: Syringe, href: `/patients/${patientId}/vaccines` },
+                        { label: "Visits", icon: History, href: `/patients/${patientId}/visit-history` },
+                        { label: "Family", icon: Users, href: `/patients/${patientId}/family-history` },
+                        { label: "Social", icon: Speech, href: `/patients/${patientId}/social-history` },
+                        { label: "Surgical", icon: Stethoscope, href: `/patients/${patientId}/surgical-history` },
+                        { label: "Medical", icon: FileText, href: `/patients/${patientId}/past-medical-history` },
+                        { label: "Orders", icon: ClipboardList, href: `/patients/${patientId}/orders` },
+                        { label: "Documents", icon: Folder, href: `/patients/${patientId}/documents` },
+                        { label: "Messages", icon: MessageSquare, href: `/patients/${patientId}/messages` },
+                        { label: "Visit Log", icon: BookOpen, href: `/patients/${patientId}/visit-log` },
+                      ].map((item) => {
+                        const isActive = pathname === item.href || (item.label === "Overview" && pathname === `/patients/${patientId}`);
+                        return (
+                          <Link
+                            key={item.label}
+                            href={item.href}
+                            className={cn(
+                              "flex flex-col items-center gap-1.5 pt-4 pb-3 transition-all relative group",
+                              isActive ? "text-slate-900 dark:text-white" : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
+                            )}
+                          >
+                            <item.icon className={cn(
+                              "h-5 w-5 stroke-[1.5]",
+                              isActive ? "text-slate-900 dark:text-white" : "text-slate-400 dark:text-slate-500"
+                            )} />
+                            <span className={cn(
+                              "text-xs font-bold tracking-tight",
+                              isActive ? "opacity-100" : "opacity-80 group-hover:opacity-100"
+                            )}>
+                              {item.label}
+                            </span>
+                            
+                            {/* Active Indicator Line */}
+                            {isActive && (
+                              <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-pink-500 to-rose-500 rounded-t-full" />
+                            )}
+                          </Link>
+                        );
+                      })}
+                    </nav>
+                  </div>
+                )}
 
                 {/* Page Content */}
                 <div className="flex-1 overflow-y-auto bg-background">

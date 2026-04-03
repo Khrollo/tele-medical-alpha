@@ -191,7 +191,7 @@ export function MedicationsContent({
             Active prescriptions and medical therapy for {patientName}
           </p>
         </div>
-        <Button onClick={() => setShowAddModal(true)} className="rounded-full px-6 shadow-md">
+        <Button onClick={() => setShowAddModal(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Add Medication
         </Button>
@@ -219,7 +219,7 @@ export function MedicationsContent({
             const statusBadge = getStatusBadge(medication.status);
 
             return (
-              <Card key={medication.id} className="rounded-[2rem] border-none shadow-[0_8px_30px_rgb(0,0,0,0.03)] bg-white dark:bg-slate-900 transition-transform hover:-translate-y-1">
+              <Card key={medication.id} className="rounded-[2rem] border border-slate-50 dark:border-slate-800 bg-white dark:bg-slate-900 transition-transform hover:-translate-y-1">
                 <CardHeader className="pb-3 border-b border-slate-50 dark:border-slate-800/50">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">

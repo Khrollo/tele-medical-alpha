@@ -220,7 +220,7 @@ export function PatientsList({ patients, userRole }: PatientsListProps) {
           <h2 className="text-2xl font-bold text-slate-900 dark:text-white mt-1">Patient Directory</h2>
         </div>
         <Link href="/patients/new">
-          <Button className="rounded-full px-6 shadow-md shadow-slate-200 dark:shadow-none">
+          <Button>
             <Plus className="mr-2 h-4 w-4" />
             Add New Patient
           </Button>
@@ -254,7 +254,7 @@ export function PatientsList({ patients, userRole }: PatientsListProps) {
 
               return (
                 <Link key={patient.id} href={`/patients/${patient.id}`} className="block group">
-                  <Card className="h-full rounded-[2.5rem] border-none shadow-[0_8px_30px_rgb(0,0,0,0.03)] bg-white dark:bg-slate-900 overflow-hidden transition-all hover:translate-y-[-4px] hover:shadow-[0_20px_40px_rgb(0,0,0,0.06)]">
+                  <Card className="h-full rounded-[2.5rem] border-none bg-white dark:bg-slate-900 overflow-hidden transition-all hover:translate-y-[-4px]">
                     <CardContent className="p-8">
                       <div className="flex justify-between items-start mb-6">
                         <div className="h-14 w-14 rounded-2xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-400 group-hover:bg-slate-900 group-hover:text-white transition-all">
@@ -369,7 +369,7 @@ export function PatientsList({ patients, userRole }: PatientsListProps) {
                   <ChevronLeft className="h-4 w-4 mr-1" />
                   Prev
                 </Button>
-                <div className="h-9 w-9 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs font-bold shadow-md">
+                <div className="h-9 w-9 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs font-bold">
                    {currentPage}
                 </div>
                 <Button
