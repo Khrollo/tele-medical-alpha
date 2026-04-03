@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -19,7 +20,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import {
   addVitalAction,
   updateVitalAction,
@@ -53,11 +53,16 @@ export function VitalsContent({
   patientName,
   vitals: initialVitals,
 }: VitalsContentProps) {
+  const router = useRouter();
   const [vitals, setVitals] = React.useState<VitalEntry[]>(initialVitals);
   const [showAddModal, setShowAddModal] = React.useState(false);
   const [editingVital, setEditingVital] = React.useState<VitalEntry | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    setVitals(initialVitals);
+  }, [initialVitals]);
 
   const form = useForm<VitalFormData>({
     resolver: zodResolver(vitalSchema),
@@ -114,8 +119,7 @@ export function VitalsContent({
         toast.success("Vital entry added successfully");
       }
       
-      // Refresh the page to get updated data
-      window.location.reload();
+      router.refresh();
     } catch (error) {
       console.error("Error saving vital:", error);
       toast.error(
@@ -139,8 +143,8 @@ export function VitalsContent({
     try {
       await deleteVitalAction(patientId, vitalId);
       toast.success("Vital entry deleted successfully");
-      // Refresh the page to get updated data
-      window.location.reload();
+      setVitals((current) => current.filter((vital) => vital.id !== vitalId));
+      router.refresh();
     } catch (error) {
       console.error("Error deleting vital:", error);
       toast.error(
@@ -460,4 +464,3 @@ export function VitalsContent({
     </div>
   );
 }
-

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -80,6 +81,7 @@ export function FamilyHistoryContent({
   patientName,
   familyHistory: initialFamilyHistory,
 }: FamilyHistoryContentProps) {
+  const router = useRouter();
   const [familyHistory, setFamilyHistory] = React.useState<FamilyHistoryEntry[]>(
     initialFamilyHistory
   );
@@ -90,6 +92,10 @@ export function FamilyHistoryContent({
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
   const [searchQuery, setSearchQuery] = React.useState("");
   const [customConditions, setCustomConditions] = React.useState<string[]>([]);
+
+  React.useEffect(() => {
+    setFamilyHistory(initialFamilyHistory);
+  }, [initialFamilyHistory]);
 
   const form = useForm<FamilyHistoryFormData>({
     resolver: zodResolver(familyHistorySchema),
@@ -134,7 +140,7 @@ export function FamilyHistoryContent({
         toast.success("Family history added successfully");
       }
 
-      window.location.reload();
+      router.refresh();
     } catch (error) {
       console.error("Error saving family history:", error);
       toast.error(
@@ -158,7 +164,8 @@ export function FamilyHistoryContent({
     try {
       await deleteFamilyHistoryAction(patientId, entryId);
       toast.success("Family history deleted successfully");
-      window.location.reload();
+      setFamilyHistory((current) => current.filter((entry) => entry.id !== entryId));
+      router.refresh();
     } catch (error) {
       console.error("Error deleting family history:", error);
       toast.error(
@@ -522,4 +529,3 @@ export function FamilyHistoryContent({
     </div>
   );
 }
-

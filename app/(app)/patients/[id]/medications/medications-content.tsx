@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -33,7 +34,6 @@ import {
   deleteMedicationAction,
 } from "@/app/_actions/medications";
 import type { Medication } from "@/app/_lib/db/drizzle/queries/medications";
-import { cn } from "@/app/_lib/utils/cn";
 
 const medicationSchema = z.object({
   brandName: z.string().optional(),
@@ -59,11 +59,16 @@ export function MedicationsContent({
   patientName,
   medications: initialMedications,
 }: MedicationsContentProps) {
+  const router = useRouter();
   const [medications, setMedications] = React.useState<Medication[]>(initialMedications);
   const [showAddModal, setShowAddModal] = React.useState(false);
   const [editingMedication, setEditingMedication] = React.useState<Medication | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    setMedications(initialMedications);
+  }, [initialMedications]);
 
   const form = useForm<MedicationFormData>({
     resolver: zodResolver(medicationSchema),
@@ -117,8 +122,7 @@ export function MedicationsContent({
         toast.success("Medication added successfully");
       }
       
-      // Refresh the page to get updated data
-      window.location.reload();
+      router.refresh();
     } catch (error) {
       console.error("Error saving medication:", error);
       toast.error(
@@ -142,8 +146,8 @@ export function MedicationsContent({
     try {
       await deleteMedicationAction(patientId, medicationId);
       toast.success("Medication deleted successfully");
-      // Refresh the page to get updated data
-      window.location.reload();
+      setMedications((current) => current.filter((medication) => medication.id !== medicationId));
+      router.refresh();
     } catch (error) {
       console.error("Error deleting medication:", error);
       toast.error(
@@ -418,4 +422,3 @@ export function MedicationsContent({
     </div>
   );
 }
-
