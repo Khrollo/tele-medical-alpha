@@ -86,8 +86,8 @@ export function NewVisitForm({
   const [currentSection, setCurrentSection] = React.useState(roleSections[0].id);
   const [reviewedSections, setReviewedSections] = React.useState<Set<string>>(new Set());
   const [expandedSections, setExpandedSections] = React.useState<Set<string>>(new Set());
-  const [medicalPanelOpen, setMedicalPanelOpen] = React.useState(false);
-  const [medicalPanelSection, setMedicalPanelSection] = React.useState<string | null>(null);
+  const [medicalPanelOpen, setMedicalPanelOpen] = React.useState(true);
+  const [medicalPanelSection, setMedicalPanelSection] = React.useState<string | null>("overview");
   const [isOnline, setIsOnline] = React.useState(navigator.onLine);
   const [pendingCount, setPendingCount] = React.useState(0);
   const [isSyncing, setIsSyncing] = React.useState(false);
@@ -626,14 +626,14 @@ export function NewVisitForm({
       case "subjective":
         return (
           <div className="space-y-8">
-            <div className="space-y-3">
+            <div className="space-y-6">
               <Label className="text-base">Chief Complaint</Label>
               <Textarea
                 {...form.register("subjective.chiefComplaint")}
                 className="min-h-[100px]"
               />
             </div>
-            <div className="space-y-3">
+            <div className="space-y-6">
               <Label className="text-base">History of Present Illness (HPI)</Label>
               <Textarea
                 {...form.register("subjective.hpi")}
@@ -646,7 +646,7 @@ export function NewVisitForm({
       case "objective":
         return (
           <div className="grid gap-6 md:grid-cols-2">
-            <div className="space-y-3">
+            <div className="space-y-6">
               <div className="flex items-center gap-2">
                 <Label className="text-base">Blood Pressure</Label>
               </div>
@@ -654,13 +654,13 @@ export function NewVisitForm({
                 {...form.register("objective.bp")}
               />
             </div>
-            <div className="space-y-3">
+            <div className="space-y-6">
               <Label className="text-base">Heart Rate</Label>
               <Input
                 {...form.register("objective.hr")}
               />
             </div>
-            <div className="space-y-3">
+            <div className="space-y-6">
               <Label className="text-base">Temperature</Label>
               <Input
                 {...form.register("objective.temp")}
@@ -680,7 +680,7 @@ export function NewVisitForm({
                 </p>
               )}
             </div>
-            <div className="space-y-3">
+            <div className="space-y-6">
               <Label className="text-base">Weight (lbs)</Label>
               <Input
                 {...form.register("objective.weight")}
@@ -700,7 +700,7 @@ export function NewVisitForm({
                 </p>
               )}
             </div>
-            <div className="space-y-3">
+            <div className="space-y-6">
               <Label className="text-base">Height (cm)</Label>
               <Input
                 {...form.register("objective.height")}
@@ -726,7 +726,7 @@ export function NewVisitForm({
                 </p>
               )}
             </div>
-            <div className="space-y-3">
+            <div className="space-y-6">
               <Label className="text-base">BMI</Label>
               <Input
                 {...form.register("objective.bmi")}
@@ -883,7 +883,7 @@ export function NewVisitForm({
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-foreground border-b pb-2">HIV</h3>
               <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 min-w-0">
-                <div className="space-y-3">
+                <div className="space-y-6">
                   <Label className="text-base">HIV Result</Label>
                   <Select
                     value={form.watch("pointOfCare.hiv") || "Unknown"}
@@ -906,7 +906,7 @@ export function NewVisitForm({
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-foreground border-b pb-2">Syphilis</h3>
               <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 min-w-0">
-                <div className="space-y-3">
+                <div className="space-y-6">
                   <Label className="text-base">Result</Label>
                   <Select
                     value={form.watch("pointOfCare.syphilis.result") || "Unknown"}
@@ -922,7 +922,7 @@ export function NewVisitForm({
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-3">
+                <div className="space-y-6">
                   <Label className="text-base">Reactivity</Label>
                   <Select
                     value={form.watch("pointOfCare.syphilis.reactivity") || "Unknown"}
@@ -1113,17 +1113,27 @@ export function NewVisitForm({
         </div>
       </div>
 
+      {/* Top Horizontal Stepper */}
+      <div className="mb-6 bg-card rounded-lg shadow-sm border bg-white dark:bg-card">
+        <SectionStepper
+          currentSection={currentSection}
+          reviewedSections={reviewedSections}
+          onSectionClick={handleSectionChange}
+          userRole={userRole}
+        />
+      </div>
+
       {/* Layout: Stacked on tablet in video call, side-by-side otherwise */}
       <div className={cn(
         "grid gap-8",
         isInVideoCall
           ? "grid-cols-1" // Stacked vertically on tablet in video call
-          : "grid-cols-1 lg:grid-cols-4"  // Normal layout: side-by-side on desktop
+          : "grid-cols-1 md:grid-cols-3 lg:grid-cols-4"  // Normal layout: side-by-side on tablet/desktop
       )}>
         {/* Left sidebar - Medical Info Panel, AI Capture, and Stepper */}
         <div className={cn(
           "space-y-4",
-          isInVideoCall ? "" : "lg:col-span-1"
+          isInVideoCall ? "" : "md:col-span-1 lg:col-span-1"
         )}>
           {/* Medical Info Panel - appears at top of left sidebar when open */}
           {medicalPanelOpen && medicalPanelSection && (
@@ -1137,29 +1147,12 @@ export function NewVisitForm({
             />
           )}
 
-          {!hideAICapture && (
-            <AICapturePanel
-              patientId={patientId}
-              onTranscriptReady={handleTranscriptReady}
-              onParseReady={handleParseReady}
-            />
-          )}
-          <Card>
-            <CardContent className="p-4">
-              <SectionStepper
-                currentSection={currentSection}
-                reviewedSections={reviewedSections}
-                onSectionClick={handleSectionChange}
-                userRole={userRole}
-              />
-            </CardContent>
-          </Card>
         </div>
 
         {/* Main form area */}
         <div className={cn(
           "space-y-4",
-          isInVideoCall ? "" : "lg:col-span-3"
+          isInVideoCall ? "" : "md:col-span-2 lg:col-span-3"
         )}>
           <Card>
             <CardHeader className="pb-4">
@@ -1194,19 +1187,31 @@ export function NewVisitForm({
 
       {/* Footer */}
       <div className="sticky bottom-0 border-t bg-background p-4 flex items-center justify-between">
-        <div className="text-sm text-muted-foreground">
+        <div className="text-sm text-muted-foreground flex items-center">
           {reviewedSections.size} of {roleSections.length} sections reviewed
+          <span className="ml-4 text-green-600 flex items-center text-xs bg-green-50 px-2 py-1 rounded-md">
+            <CheckCircle2 className="h-3 w-3 mr-1" /> All changes autosaved
+          </span>
         </div>
         <div className="flex items-center gap-2">
           <Button
             onClick={handleFinalize}
             disabled={isSaving || !allSectionsReviewed || !isOnline}
+            className="px-8"
           >
-            <CheckCircle2 className="h-4 w-4 mr-2" />
-            Save Visit
+            Complete Visit
           </Button>
         </div>
       </div>
+
+      {/* Floating AI Capture Panel */}
+      {!hideAICapture && (
+        <AICapturePanel
+          patientId={patientId}
+          onTranscriptReady={handleTranscriptReady}
+          onParseReady={handleParseReady}
+        />
+      )}
 
       {/* Post-Save Modal */}
       <Dialog open={showPostSaveModal} onOpenChange={setShowPostSaveModal}>
@@ -1464,7 +1469,7 @@ function MedicationsSection({ form }: { form: any }) {
           No medications added yet
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-6">
           {medications.map((med, index) => (
             <div
               key={med.id || index}
@@ -1733,7 +1738,7 @@ function VaccinesSection({ form }: { form: any }) {
           No vaccines added yet
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-6">
           {vaccines.map((vaccine, index) => (
             <div
               key={index}
@@ -2025,7 +2030,7 @@ function FamilyHistorySection({ form }: { form: any }) {
           No family history entries added yet
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-6">
           {familyHistory.map((entry, index) => (
             <div
               key={index}
@@ -2283,7 +2288,7 @@ function SurgicalHistorySection({ form }: { form: any }) {
           No surgical history entries added yet
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-6">
           {surgicalHistory.map((entry, index) => (
             <div
               key={index}
@@ -2560,7 +2565,7 @@ function PastMedicalHistorySection({ form }: { form: any }) {
           No past medical history entries added yet
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-6">
           {pastMedicalHistory.map((entry, index) => (
             <div
               key={index}
@@ -2844,7 +2849,7 @@ function OrdersSection({ form }: { form: any }) {
           No orders added yet
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-6">
           {orders.map((order, index) => (
             <div
               key={index}
@@ -3184,7 +3189,7 @@ function AssessmentPlanSection({ form }: { form: any }) {
           No assessment & plan entries yet
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-6">
           {assessmentPlans.map((item: any, index: number) => (
             <div
               key={index}
