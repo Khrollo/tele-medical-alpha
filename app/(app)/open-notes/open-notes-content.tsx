@@ -226,16 +226,15 @@ export function OpenNotesContent({ visits }: OpenNotesContentProps) {
                   {canShowVirtualLink && visit.patientJoinToken && (
                     <VirtualAppointmentActions
                       visitId={visit.id}
-                      patientJoinToken={visit.patientJoinToken}
                     />
                   )}
 
-                  <Link href={`/patients/${visit.patientId}/new-visit?visitId=${visit.id}`}>
-                    <Button className="w-full" variant="default">
+                  <Button asChild className="w-full" variant="default">
+                    <Link href={`/patients/${visit.patientId}/new-visit?visitId=${visit.id}`}>
                       <FileText className="h-4 w-4 mr-2" />
                       Continue Note
-                    </Button>
-                  </Link>
+                    </Link>
+                  </Button>
                 </CardContent>
               </Card>
             );
@@ -249,10 +248,8 @@ export function OpenNotesContent({ visits }: OpenNotesContentProps) {
 // Virtual Appointment Actions Component
 function VirtualAppointmentActions({
   visitId,
-  patientJoinToken,
 }: {
   visitId: string;
-  patientJoinToken: string;
 }) {
   const router = useRouter();
   const [showQR, setShowQR] = useState(false);
@@ -269,7 +266,7 @@ function VirtualAppointmentActions({
       setCopied(true);
       toast.success("Link copied to clipboard");
       setTimeout(() => setCopied(false), 2000);
-    } catch (error) {
+    } catch {
       toast.error("Failed to copy link");
     }
   };

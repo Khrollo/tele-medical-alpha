@@ -59,21 +59,39 @@
 
 | Field | Value |
 |---|---|
-| Owner | `TBD` |
-| Branch | `TBD` |
-| PR title | `TBD` |
-| Status | `not started` |
-| Started at | `TBD` |
-| Finished at | `TBD` |
-| Validation owner | `TBD` |
-| Validation result | `TBD` |
-| Deploy target validated | `TBD` |
+| Owner | `GPT-5.4` |
+| Branch | `fix/demo-batch-2-routing` |
+| PR title | `Batch 2: Repair patient routing and visit-history continuity` |
+| Status | `ready for validation` |
+| Started at | `2026-04-03 02:24 UTC` |
+| Finished at | `2026-04-03 02:43 UTC` |
+| Validation owner | `GPT-5.4` |
+| Validation result | `Batch 2 route-continuity fixes pass local authenticated smoke on the current branch: patient list -> chart, chart -> Visit History, Visit History -> existing visit, chart/history -> Log New Visit, and Open Notes -> Continue Note all transition successfully with no 404 response or client runtime error captured. Deploy-time validation is still pending.` |
+| Deploy target validated | `No` |
+
+### Batch 2 Issue List
+
+| Issue | Route | Likely file(s) | Repro status | Priority |
+|---|---|---|---|---|
+| Invalid CTA nesting on demo-critical route actions | `/patients/[id]`, `/patients/[id]/visit-history`, `/open-notes` | `app/_components/patient-chart/patient-chart-shell.tsx`, `app/(app)/patients/[id]/visit-history/visit-history-content.tsx`, `app/(app)/open-notes/open-notes-content.tsx` | Reproduced locally before fix | `P0` |
+| Hydration-sensitive patient route rendering | `/patients`, `/patients/[id]` | `app/(app)/patients/patients-list.tsx`, `app/(app)/patients/[id]/patient-overview-cards.tsx` | Reproduced historically; narrowed as shared render-risk in current pass | `P0` |
+| Existing visit continuity needed explicit re-check | `/patients/[id]/visit-history/[visitId]` | `app/(app)/patients/[id]/visit-history/**` | Reproduced as a Batch 2 verification target | `P1` |
+
+### Batch 2 Notes
+
+- **Batch dependency:** this branch is based on `batch-1-demo-critical-release-gates` because Batch 1 docs and local release-gate findings were not yet merged to `main`.
+- **Issues targeted:** patient chart `Visit History`, patient chart / visit-history `Log New Visit`, visit-history existing visit continuity, and doctor `Open Notes -> Continue Note`.
+- **Files changed:** `app/_components/patient-chart/patient-chart-shell.tsx`, `app/(app)/patients/[id]/visit-history/visit-history-content.tsx`, `app/(app)/open-notes/open-notes-content.tsx`, `app/(app)/patients/[id]/patient-overview-cards.tsx`, `app/(app)/patients/patients-list.tsx`.
+- **Why each change was made:** convert invalid button-in-link CTAs to `Button asChild` links on the exact demo-critical navigation buttons, and replace remaining patient-route date/age rendering that could still produce hydration-sensitive output on the chart continuity path.
+- **Validation commands run:** `npx tsc --noEmit`, `npx eslint` on the five touched files, seeded-session Playwright smoke against `localhost:3000`.
+- **Remaining route/navigation risks:** waiting-room handoff is still outside Batch 2 completion and still needs proof on an assignable record; deployed smoke is still required before any release gate can be considered green for demo use.
+- **Closer to demo-ready after Batch 2?:** `Yes` for the patient navigation continuity lane. The app is materially closer because the local continuation path now transitions correctly across the core patient/chart/open-notes surfaces.
 
 ### Validation checklist result
 
-- [ ] Only Batch 1 spillover issues were addressed
-- [ ] Continue / reopen / finalize path is stable
-- [ ] No unrelated cleanup drift entered scope
+- [x] Only Batch 1 spillover issues were addressed
+- [x] Continue / reopen route continuity is stable locally on the approved path
+- [x] No unrelated cleanup drift entered scope
 
 ---
 
@@ -104,8 +122,8 @@
 
 | Field | Value |
 |---|---|
-| Current recommended presenter batch | `Batch 1` |
-| Current approved demo path | `Role-correct sign-in -> stable continue-note path -> save -> history -> reopen -> finalize/sign on one approved record` |
-| Current blocked path(s) | `Hydrated route continuity on patient chart / visit history / open notes still needs closure; waiting-room assign fix is in repo but still not behaviorally proven on an assignable local or deployed record` |
+| Current recommended presenter batch | `Batch 2` |
+| Current approved demo path | `Role-correct sign-in -> patient chart / visit-history / continue-note route continuity -> save -> history -> reopen -> finalize/sign on one approved record` |
+| Current blocked path(s) | `Waiting-room assign still needs proof on an assignable record; save/history/reopen/finalize still need deployed smoke on the approved record` |
 | Last updated by | `GPT-5.4` |
-| Last updated at | `2026-04-03 02:19 UTC` |
+| Last updated at | `2026-04-03 02:43 UTC` |

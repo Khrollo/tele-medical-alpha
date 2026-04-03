@@ -5,7 +5,6 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SideNav } from "@/components/side-nav";
-import { cn } from "@/app/_lib/utils/cn";
 import { Menu } from "lucide-react";
 
 interface PatientChartShellProps {
@@ -23,7 +22,6 @@ export function PatientChartShell({
     userRole,
     userName,
 }: PatientChartShellProps) {
-    const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
     const openSidebarRef = React.useRef<(() => void) | null>(null);
     const getNewVisitPath = () => {
         return `/patients/${patientId}/new-visit`;
@@ -37,7 +35,6 @@ export function PatientChartShell({
                 userName={userName}
                 patientId={patientId}
                 patientName={patientName}
-                onMobileStateChange={setIsSidebarOpen}
                 openMenuRef={openSidebarRef}
             />
 
@@ -69,11 +66,11 @@ export function PatientChartShell({
                                 Begin Intake
                             </Button>
                         )} */}
-                        <Link href={getNewVisitPath()}>
-                            <Button size="default">
+                        <Button asChild size="default">
+                            <Link href={getNewVisitPath()}>
                                 Log New Visit
-                            </Button>
-                        </Link>
+                            </Link>
+                        </Button>
                     </div>
                 </div>
 
