@@ -1,7 +1,8 @@
-import { eq, desc, or, isNull, and, inArray } from "drizzle-orm";
+import { eq, desc, or, isNull, and, inArray, count } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
 import { db } from "../index";
-import { patients, visits, users, notes } from "../schema";
+import { patients, visits, users, notes, documents } from "../schema";
+import type { VisitNote } from "@/app/_lib/visit-note/schema";
 
 /**
  * Find existing patients by phone or email
@@ -284,6 +285,7 @@ export async function getPatientOverview(patientId: string) {
       familyHistory: patients.familyHistory,
       socialHistory: patients.socialHistory,
       pastMedicalHistory: patients.pastMedicalHistory,
+      surgicalHistory: patients.surgicalHistory,
     })
     .from(patients)
     .where(eq(patients.id, patientId))
@@ -312,6 +314,33 @@ export async function getPatientOverview(patientId: string) {
 
   const latestVisit = latestVisitResult[0] || null;
 
+  // Count orders from notes across all visits for this patient.
+  // Orders are stored inside the JSONB `note` column, so we still need
+  // to read the note payload, but we join directly to visits to avoid an
+  // extra round-trip for visit IDs.
+  const patientNotes = await db
+    .select({
+      note: notes.note,
+    })
+    .from(notes)
+    .innerJoin(visits, eq(notes.visitId, visits.id))
+    .where(eq(visits.patientId, patientId));
+
+  const ordersCount = patientNotes.reduce((total, entry) => {
+    if (!entry.note || typeof entry.note !== "object") {
+      return total;
+    }
+
+    const visitNote = entry.note as VisitNote;
+    return total + (Array.isArray(visitNote.orders) ? visitNote.orders.length : 0);
+  }, 0);
+
+  // Use SQL COUNT instead of fetching all document rows
+  const documentsCountResult = await db
+    .select({ count: count() })
+    .from(documents)
+    .where(eq(documents.patientId, patientId));
+
   // Get latest note for the latest visit to extract chief complaint
   let chiefComplaint: string | null = null;
   if (latestVisit) {
@@ -338,6 +367,10 @@ export async function getPatientOverview(patientId: string) {
 
       return {
         patient: patient[0],
+        stats: {
+          ordersCount,
+          documentsCount: documentsCountResult[0]?.count ?? 0,
+        },
         latestVisit: latestVisit
           ? {
               ...latestVisit,

@@ -90,7 +90,8 @@ The `tele-medical` app is a **Next.js 16 (App Router)** clinician-facing EMR: **
 | `OPENROUTER_API_KEY` | Audio parse ([`parse-audio-openrouter/route.ts`](app/api/ai/parse-audio-openrouter/route.ts)) |
 | `TWILIO_*`, `JWT_SECRET` / `NEXTAUTH_SECRET` | Video tokens ([`video.ts`](app/_lib/twilio/video.ts)) |
 | `NEXT_PUBLIC_APP_URL` | Join links, Twilio callbacks |
-| `STORAGE_BUCKET` | Audio/visits buckets (defaults in upload/recording routes) |
+| `STORAGE_BUCKET` | Audio storage bucket (default `telehealth_audio`, via `getAudioStorageBucket()` in [`storage/config.ts`](app/_lib/storage/config.ts)) |
+| `DOCUMENTS_STORAGE_BUCKET` | Document storage bucket (default `tele-med-docs`, via `getDocumentsStorageBucket()` in [`storage/config.ts`](app/_lib/storage/config.ts)) |
 | `NEW_USER_PWD` | Admin password gate ([`admin/verify-new-user-password/route.ts`](app/api/admin/verify-new-user-password/route.ts)) |
 
 **Run**
