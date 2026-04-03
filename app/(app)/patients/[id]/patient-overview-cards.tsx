@@ -48,11 +48,31 @@ interface PatientOverviewCardsProps {
   userRole: string;
 }
 
+type OverviewAllergy = {
+  name?: string;
+  type?: string;
+};
+
+type OverviewMedication = {
+  id?: string;
+  brandName?: string;
+  genericName?: string;
+  name?: string;
+  medication?: string;
+  dosage?: string;
+  frequency?: string;
+  status?: string;
+};
+
 /**
  * Normalize JSONB data to array format
  */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim() !== "";
 }
 
 function normalizeList(data: unknown): Record<string, unknown>[] {
@@ -71,21 +91,32 @@ function normalizeList(data: unknown): Record<string, unknown>[] {
   return Object.values(data).filter(isRecord);
 }
 
-function normalizeAllergies(data: unknown) {
-  return normalizeList(data) as Array<{ name?: string; type?: string }>;
+function normalizeAllergies(data: unknown): OverviewAllergy[] {
+  if (Array.isArray(data)) {
+    if (data.every(isRecord)) {
+      return data as OverviewAllergy[];
+    }
+
+    return data
+      .filter(isNonEmptyString)
+      .map<OverviewAllergy>((entry) => ({ name: entry.trim() }));
+  }
+
+  return normalizeList(data) as OverviewAllergy[];
 }
 
-function normalizeMedications(data: unknown) {
-  return normalizeList(data) as Array<{
-    id?: string;
-    brandName?: string;
-    genericName?: string;
-    name?: string;
-    medication?: string;
-    dosage?: string;
-    frequency?: string;
-    status?: string;
-  }>;
+function normalizeMedications(data: unknown): OverviewMedication[] {
+  if (Array.isArray(data)) {
+    if (data.every(isRecord)) {
+      return data as OverviewMedication[];
+    }
+
+    return data
+      .filter(isNonEmptyString)
+      .map<OverviewMedication>((entry) => ({ name: entry.trim() }));
+  }
+
+  return normalizeList(data) as OverviewMedication[];
 }
 
 function normalizeVitals(data: unknown) {
