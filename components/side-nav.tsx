@@ -3,8 +3,9 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Menu, X, LogOut, Clock, Users, FileText, UserPlus, ChevronLeft, ChevronRight, Info, User, Pill, Syringe, History, Stethoscope, AlertCircle, Activity, FolderOpen } from "lucide-react";
+import { Menu, X, LogOut, Clock, Users, FileText, UserPlus, ChevronLeft, ChevronRight, Info, User, Pill, Syringe, History, Stethoscope, AlertCircle, Activity, FolderOpen, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ThemeToggle } from "./theme-toggle";
 import { cn } from "@/app/_lib/utils/cn";
 import { createSupabaseBrowserClient } from "@/app/_lib/supabase/client";
@@ -102,6 +103,11 @@ export function SideNav({ userRole, userName, patientId, patientName, onMobileSt
 
         if (userRole === "doctor") {
             items.push({
+                href: "/patients",
+                label: "Patients",
+                icon: <Users className="h-4 w-4" />,
+            });
+            items.push({
                 href: "/waiting-room",
                 label: "Waiting Room",
                 icon: <Clock className="h-4 w-4" />,
@@ -123,15 +129,6 @@ export function SideNav({ userRole, userName, patientId, patientName, onMobileSt
                 href: "/waiting-room",
                 label: "Waiting Room",
                 icon: <Clock className="h-4 w-4" />,
-            });
-        }
-
-        // Both doctors and nurses can create patients
-        if (userRole === "doctor" || userRole === "nurse") {
-            items.push({
-                href: "/patients/new",
-                label: "Create Patient",
-                icon: <UserPlus className="h-4 w-4" />,
             });
         }
 
@@ -229,6 +226,20 @@ export function SideNav({ userRole, userName, patientId, patientName, onMobileSt
                 "flex-1 space-y-1 overflow-y-auto transition-[padding] duration-300 ease-in-out thin-scrollbar",
                 shouldCenter ? "p-2" : "p-4"
             )}>
+                {/* Search Bar */}
+                <div className={cn("mb-4", shouldCenter && "hidden")}>
+                    {showLabels && (
+                        <div className="relative animate-in fade-in duration-300">
+                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                            <Input
+                                type="search"
+                                placeholder="Search patients..."
+                                className="pl-9 h-9 w-full bg-accent/50 border-none text-sm"
+                            />
+                        </div>
+                    )}
+                </div>
+
                 {/* NAVIGATION Section */}
                 <div className={cn("mb-4", shouldCenter && "mb-2")}>
                     {showLabels && (

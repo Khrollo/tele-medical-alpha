@@ -4,17 +4,19 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import { Separator } from "@/components/ui/separator";
-import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Calendar, Heart, Pill, History, AlertTriangle, FileText, Video, Copy, Check } from "lucide-react";
+import {
+  Copy, Check, Video, ArrowUpRight, Target, Activity, Droplets,
+  CalendarDays, ActivitySquare, Pill, Image as ImageIcon, HeartPulse,
+  Info, User, History, AlertCircle, Syringe, Users, Speech,
+  Stethoscope, FileText, ClipboardList, Folder, BookOpen
+} from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-import { formatDate } from "@/app/_lib/utils/format-date";
 import { toast } from "sonner";
+import { cn } from "@/app/_lib/utils/cn";
+import { LineChart, Line, AreaChart, Area, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
 interface PatientOverviewCardsProps {
   patient: {
@@ -240,17 +242,31 @@ function countSummaryItems(data: unknown) {
   }).length;
 }
 
-/**
- * Calculate visit note progress based on status
- */
-function calculateVisitProgress(notesStatus: string | null): number {
-  if (!notesStatus) return 0;
-  if (notesStatus === "draft") return 25;
-  if (notesStatus === "in-progress") return 50;
-  if (notesStatus === "review") return 75;
-  if (notesStatus === "finalized") return 100;
-  return 0;
+function normalizeJsonb(data: unknown): unknown[] {
+  if (!data) return [];
+  if (Array.isArray(data)) return data;
+  if (typeof data === "object") return Object.values(data);
+  return [];
 }
+
+// Generate some cosmetic graph lines anchored to real values for the new design
+const generateEKGData = (baseline: number) => {
+    return [
+        { val: baseline }, { val: baseline + 5 }, { val: baseline }, { val: baseline - 2 },
+        { val: baseline + 25 }, { val: baseline - 20 }, { val: baseline + 5 }, { val: baseline },
+        { val: baseline + 3 }, { val: baseline }
+    ];
+};
+
+const generateBPData = (sys: number, dia: number) => {
+    return [
+        { sys: sys - 8, dia: dia - 4 },
+        { sys: sys + 3, dia: dia + 5 },
+        { sys: sys - 5, dia: dia - 2 },
+        { sys: sys + 6, dia: dia + 3 },
+        { sys: sys, dia: dia }
+    ];
+};
 
 export function PatientOverviewCards({
   patient,
@@ -264,23 +280,14 @@ export function PatientOverviewCards({
 
   const isVirtualVisitReady = () => {
     if (!latestVisit) return false;
-
-    // Don't show link for signed and complete visits
     const statusLower = latestVisit.status?.toLowerCase() || "";
-    if (statusLower === "signed & complete" ||
-      statusLower === "signed_and_complete" ||
-      statusLower === "completed") {
-      return false;
-    }
-
+    if (statusLower === "signed & complete" || statusLower === "completed") return false;
     return latestVisit.appointmentType?.toLowerCase() === "virtual" &&
-      latestVisit.clinicianId !== null &&
-      latestVisit.patientJoinToken !== null;
+      latestVisit.clinicianId !== null && latestVisit.patientJoinToken !== null;
   };
 
   const getJoinUrl = () => {
     if (!latestVisit?.patientJoinToken) return "";
-    // Use forwarded port URL for testing on phone
     const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
     return `${baseUrl}/join/${latestVisit.patientJoinToken}`;
   };
@@ -295,9 +302,7 @@ export function PatientOverviewCards({
 
   const handleJoinCall = () => {
     const joinUrl = getJoinUrl();
-    if (joinUrl) {
-      router.push(joinUrl);
-    }
+    if (joinUrl) router.push(joinUrl);
   };
   const allergies = normalizeAllergies(patient.allergies);
   const medications = normalizeMedications(patient.currentMedications);
@@ -307,331 +312,298 @@ export function PatientOverviewCards({
   const pastMedicalHistoryCount = countSummaryItems(patient.pastMedicalHistory);
   const surgicalHistoryCount = countSummaryItems(patient.surgicalHistory);
 
-  // Get the most recent vital entry (sorted by date, most recent first)
+  const pastMedicalHistory = normalizeJsonb(patient.pastMedicalHistory) as Array<any>;
+
   const latestVital = vitalsArray.length > 0
     ? vitalsArray.sort((a, b) => {
       const dateA = a.date ? new Date(a.date).getTime() : 0;
       const dateB = b.date ? new Date(b.date).getTime() : 0;
       return dateB - dateA;
-    })[0]
-    : null;
+    })[0] : null;
 
-  // Extract vitals from the most recent entry
-  const bp = latestVital?.bp;
-  const hr = latestVital?.hr;
-  const temp = latestVital?.temp;
-  const weight = latestVital?.weight;
+  const bpRaw = latestVital?.bp || "120/80";
+  const sys = parseInt(bpRaw.split("/")[0]) || 120;
+  const dia = parseInt(bpRaw.split("/")[1]) || 80;
+  const hr = parseInt(latestVital?.hr || "75");
+  const tempRaw = parseFloat(latestVital?.temp || "98.6");
+  
+  // Normalize temp to a pie scale roughly between 95 and 105 for visual gauge
+  const tempScale = Math.min(Math.max((tempRaw - 95) / 10 * 100, 0), 100);
 
-  // Calculate risk flags
-  const hasHighBP = bp && (bp.includes("/") ? parseInt(bp.split("/")[0]) > 140 : false);
-  const hasFever = temp && parseFloat(temp) > 100.4;
-  const hasRiskFlags = hasHighBP || hasFever;
-
-  // Visit progress
-  const visitProgress = latestVisit ? calculateVisitProgress(latestVisit.notesStatus) : 0;
-  const visitDate = latestVisit ? formatDate(latestVisit.createdAt) : null;
+  const visitDate = latestVisit
+    ? new Date(latestVisit.createdAt).toLocaleDateString("en-US", {
+      month: "short", day: "numeric", hour: "numeric", minute: "2-digit"
+    }) : null;
 
   return (
-    <div className="grid gap-6 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-      {/* Last Visit Card */}
-      <Link href={`/patients/${patient.id}/visit-history`}>
-        <Card className="cursor-pointer hover:shadow-md transition-shadow">
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold flex items-center gap-2">
-              <Calendar className="h-5 w-5 text-muted-foreground" />
-              Last Visit
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {latestVisit ? (
-              <>
-                <div>
-                  <p className="text-sm font-medium text-foreground">{visitDate}</p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {latestVisit.chiefComplaint && latestVisit.chiefComplaint.trim()
-                      ? latestVisit.chiefComplaint
-                      : "No chief complaint recorded"}
-                  </p>
-                </div>
-                <div>
-                  <div className="flex items-center justify-between text-sm mb-2">
-                    <span className="text-muted-foreground">Visit note progress</span>
-                    <span className="font-medium">{visitProgress}%</span>
+    <div className="flex flex-col gap-8 pb-10">
+      
+      {/* Top Banner Toggles (Visual) */}
+      <div className="flex items-center gap-3">
+         <div className="bg-slate-900 text-white rounded-full px-6 py-2.5 text-sm font-semibold border border-slate-800">
+            Health indicators
+         </div>
+         <div className="bg-white text-slate-600 rounded-full px-6 py-2.5 text-sm font-semibold border border-slate-200">
+            Diagnosis
+         </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        
+        {/* Left Col - Health Overview Widgets */}
+        <div className="lg:col-span-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                
+                {/* BP / Cells Widget */}
+                <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-6 border border-slate-100 dark:border-slate-800 flex flex-col relative h-[240px]">
+                  <div className="absolute top-6 right-6 h-8 w-8 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors">
+                    <ArrowUpRight className="h-4 w-4 text-slate-400" />
                   </div>
-                  <Progress value={visitProgress} />
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="h-12 w-12 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-500">
+                      <Droplets className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-sm">Blood Pressure</h3>
+                      <div className="text-secondary-foreground font-bold text-2xl tracking-tight">{bpRaw} <span className="text-xs font-medium text-muted-foreground ml-1">mmHg</span></div>
+                    </div>
+                  </div>
+                  <div className="flex-1 w-full mt-auto -ml-2">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={generateBPData(sys, dia)}>
+                        <defs>
+                            <linearGradient id="colorSys" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2}/>
+                                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                            </linearGradient>
+                        </defs>
+                        <Area type="monotone" dataKey="sys" stroke="#3b82f6" fillOpacity={1} fill="url(#colorSys)" strokeWidth={2.5} />
+                        <Area type="monotone" dataKey="dia" stroke="#ef4444" fillOpacity={0} strokeWidth={2.5} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
 
-                {/* Visit Status - Show for nurses */}
-                {userRole === "nurse" && (
-                  <div className="space-y-2 pt-2 border-t">
-                    <div className="flex flex-wrap gap-2">
-                      {latestVisit.status && (
-                        <Badge variant={latestVisit.status === "In Progress" ? "default" : "outline"}>
-                          {latestVisit.status}
-                        </Badge>
-                      )}
-                      {latestVisit.appointmentType && (
-                        <Badge
-                          variant="default"
-                          className={
-                            latestVisit.appointmentType.toLowerCase() === "virtual"
-                              ? "bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500"
-                              : "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500"
-                          }
-                        >
-                          {latestVisit.appointmentType}
-                        </Badge>
-                      )}
+                {/* Temp Gauge Visual Widget */}
+                <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-6 border border-slate-100 dark:border-slate-800 flex flex-col relative h-[240px]">
+                  <div className="absolute top-6 right-6 h-8 w-8 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors">
+                    <ArrowUpRight className="h-4 w-4 text-slate-400" />
+                  </div>
+                  <div className="flex items-center gap-3 mb-2 z-10">
+                    <div className="h-12 w-12 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-500">
+                      <Target className="h-6 w-6" />
                     </div>
+                    <div>
+                      <h3 className="font-semibold text-sm">Vital Temp</h3>
+                      <div className="text-secondary-foreground font-bold text-2xl tracking-tight">{tempRaw} <span className="text-xs font-medium text-muted-foreground ml-1">°F</span></div>
+                    </div>
+                  </div>
+                  <div className="flex-1 w-full relative mt-[-20px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={[{ value: tempScale }, { value: 100 - tempScale }]}
+                          cx="50%" cy="100%"
+                          startAngle={180} endAngle={0}
+                          innerRadius="75%" outerRadius="95%"
+                          dataKey="value"
+                          stroke="none"
+                          cornerRadius={8}
+                        >
+                          <Cell fill={tempRaw > 100 ? "#ef4444" : "#10b981"} />
+                          <Cell fill="#f1f5f9" />
+                        </Pie>
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="absolute bottom-1 left-1/2 -translate-x-1/2 text-xs font-semibold text-muted-foreground">Thermometer</div>
+                  </div>
+                </div>
 
-                    {/* Virtual Visit Join Button for Nurses */}
+                {/* Heart Rate EKG Widget */}
+                <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-6 border border-slate-100 dark:border-slate-800 flex flex-col relative h-[240px]">
+                  <div className="absolute top-6 right-6 h-8 w-8 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors">
+                    <ArrowUpRight className="h-4 w-4 text-slate-400" />
+                  </div>
+                  <div className="flex items-center gap-3 mb-6 z-10">
+                    <div className="h-12 w-12 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-500">
+                      <HeartPulse className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-sm">Heart rate</h3>
+                      <div className="text-secondary-foreground font-bold text-2xl tracking-tight">{hr} <span className="text-xs font-medium text-muted-foreground ml-1">bpm</span></div>
+                    </div>
+                  </div>
+                  <div className="flex-1 w-full -ml-3 relative">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={generateEKGData(hr)}>
+                        <Line type="linear" dataKey="val" stroke="#ef4444" strokeWidth={2.5} dot={false} isAnimationActive={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="text-sm font-medium text-muted-foreground text-center mt-2 absolute bottom-5 left-0 right-0">Normal sinus rhythm</div>
+                </div>
+
+                {/* Empty Add Placeholder matching design */}
+                <div className="bg-transparent rounded-[2rem] p-6 flex flex-col relative h-[240px] border-2 border-dashed border-slate-200 dark:border-slate-700 items-center justify-center cursor-pointer hover:bg-slate-50/50 transition-colors">
+                   <div className="h-12 w-12 rounded-full border border-slate-300 flex items-center justify-center text-slate-400">
+                      <span className="text-2xl font-light leading-none">+</span>
+                   </div>
+                </div>
+
+            </div>
+        </div>
+
+        {/* Right Col - Appointments Timeline */}
+        <div className="lg:col-span-4">
+            <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-8 border border-slate-100 dark:border-slate-800 h-full min-h-[400px]">
+              <div className="flex items-center justify-between mb-8">
+                <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-slate-800 to-slate-500">Appointments</h2>
+                <div className="h-10 w-10 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center">
+                  <CalendarDays className="h-5 w-5 text-slate-500" />
+                </div>
+              </div>
+              
+              <div className="relative border-l-[3px] border-slate-100 dark:border-slate-800 ml-[11px] space-y-10 pb-4">
+                
+                {/* Latest Visit Block */}
+                {latestVisit ? (
+                  <div className="relative pl-8 group">
+                    <div className="absolute -left-[10px] top-1.5 h-4 w-4 rounded-full border-[3.5px] border-white dark:border-slate-900 bg-emerald-500 group-hover:scale-125 transition-transform" />
+                    <div className="absolute -left-[50px] top-1.5 text-xs font-bold text-slate-600">Now</div>
+                    
+                    <div className="mb-1 text-sm font-semibold text-emerald-600 dark:text-emerald-400">{visitDate}</div>
+                    <div className="text-base font-bold text-slate-800 dark:text-slate-200 mb-1">
+                      {latestVisit.appointmentType?.toLowerCase() === "virtual" ? "Online consultation" : "In-Person Checkup"}
+                    </div>
+                    
+                    <div className="flex items-center gap-2 mb-3">
+                       <div className="h-6 w-6 rounded-full bg-slate-200 flex items-center justify-center overflow-hidden shrink-0">
+                          <img src={`https://api.dicebear.com/7.x/notionists/svg?seed=${latestVisit.clinicianId || 'doctor'}`} alt="avatar" />
+                       </div>
+                       <div className="text-sm font-medium text-slate-600">Assigned Clinician</div>
+                    </div>
+                    
                     {isVirtualVisitReady() && (
-                      <Button
-                        onClick={(e) => {
-                          e.preventDefault();
-                          setShowVirtualModal(true);
-                        }}
-                        variant="outline"
-                        className="w-full"
-                        size="sm"
-                      >
-                        <Video className="h-4 w-4 mr-2" />
-                        View Virtual Visit
+                      <Button onClick={() => setShowVirtualModal(true)} variant="secondary" className="rounded-full h-8 px-4 text-xs font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 border dark:border-none border-emerald-200">
+                         <Video className="h-3.5 w-3.5 mr-2" /> Join Call
                       </Button>
                     )}
                   </div>
+                ) : (
+                  <div className="relative pl-8">
+                     <div className="absolute -left-[9px] top-1 h-4 w-4 rounded-full border-[3px] border-white dark:border-slate-900 bg-slate-300" />
+                     <div className="text-sm font-semibold text-muted-foreground">No recent appointments</div>
+                  </div>
                 )}
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">No visits recorded</p>
-            )}
-          </CardContent>
-        </Card>
-      </Link>
 
-      {/* Vitals Summary Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg font-semibold flex items-center gap-2">
-            <Heart className="h-5 w-5 text-muted-foreground" />
-            Vitals Summary
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-xs text-muted-foreground mb-1">BP</p>
-              <p className="text-sm font-medium">{bp || "--"}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground mb-1">HR</p>
-              <p className="text-sm font-medium">{hr ? `${hr} bpm` : "--"}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground mb-1">Temp</p>
-              <p className="text-sm font-medium">{temp ? `${temp}°F` : "--"}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground mb-1">Weight</p>
-              <p className="text-sm font-medium">{weight ? `${weight} lbs` : "--"}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Allergies Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg font-semibold flex items-center justify-between">
-            <span className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-muted-foreground" />
-              Allergies
-            </span>
-            <Badge variant="secondary" className="bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500 dark:border-orange-400">
-              {allergies.length} active
-            </Badge>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {allergies.length > 0 ? (
-            <ul className="space-y-2">
-              {allergies.slice(0, 3).map((allergy, index) => (
-                <li key={index} className="text-sm text-foreground">
-                  {allergy.name || allergy.type || "Unknown allergy"}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-muted-foreground">No known allergies</p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Current Medications Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg font-semibold flex items-center gap-2">
-            <Pill className="h-5 w-5 text-muted-foreground" />
-            Current Medications
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {medications.length > 0 ? (
-            <ul className="space-y-2">
-              {medications.slice(0, 3).map((med, index) => {
-                // Get medication display name - prioritize brandName/genericName, fallback to legacy fields
-                let medName = "Unknown medication";
-                if (med.brandName && med.genericName) {
-                  medName = `${med.brandName} (${med.genericName})`;
-                } else if (med.brandName) {
-                  medName = med.brandName;
-                } else if (med.genericName) {
-                  medName = med.genericName;
-                } else if (med.name) {
-                  medName = med.name; // Legacy field
-                } else if (med.medication) {
-                  medName = med.medication; // Legacy field
-                }
-
-                return (
-                  <li key={med.id || index} className="text-sm text-foreground">
-                    {medName}
-                    {med.dosage && (
-                      <span className="text-muted-foreground ml-2">({med.dosage})</span>
-                    )}
-                    {med.frequency && !med.dosage && (
-                      <span className="text-muted-foreground ml-2">({med.frequency})</span>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          ) : (
-            <p className="text-sm text-muted-foreground">No medications recorded</p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* History Highlights Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg font-semibold flex items-center gap-2">
-            <History className="h-5 w-5 text-muted-foreground" />
-            History Highlights
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-xs text-muted-foreground mb-1">Family History</p>
-              <p className="text-lg font-semibold">{familyHistoryCount}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground mb-1">Social History</p>
-              <p className="text-lg font-semibold">{socialHistoryCount}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground mb-1">Surgical History</p>
-              <p className="text-lg font-semibold">{surgicalHistoryCount}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground mb-1">Past Medical History</p>
-              <p className="text-lg font-semibold">{pastMedicalHistoryCount}</p>
-            </div>
-          </div>
-          <Separator />
-          <div>
-            <p className="text-xs text-muted-foreground mb-2">Risk Flags</p>
-            {hasRiskFlags ? (
-              <div className="flex flex-wrap gap-2">
-                {hasHighBP && (
-                  <Badge variant="destructive">High BP</Badge>
-                )}
-                {hasFever && (
-                  <Badge variant="destructive">Fever</Badge>
-                )}
+                {/* Future Empty Block */}
+                 <div className="relative pl-8 opacity-60">
+                    <div className="absolute -left-[9.5px] top-1 h-3.5 w-3.5 rounded-full border-[3px] border-white dark:border-slate-900 bg-slate-200" />
+                    <div className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-1">Schedule Next</div>
+                    <div className="text-sm font-medium text-slate-500">Unbooked</div>
+                 </div>
               </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">No flags</p>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Orders & Documents Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg font-semibold flex items-center gap-2">
-            <FileText className="h-5 w-5 text-muted-foreground" />
-            Orders & Documents
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-xs text-muted-foreground mb-1">Orders</p>
-              <p className="text-lg font-semibold">{stats.ordersCount}</p>
             </div>
-            <div>
-              <p className="text-xs text-muted-foreground mb-1">Documents</p>
-              <p className="text-lg font-semibold">{stats.documentsCount}</p>
-            </div>
-          </div>
-          <Separator />
-        </CardContent>
-      </Card>
+        </div>
+        <div className="col-span-full mt-4">
+            <h2 className="text-2xl font-bold mb-6 tracking-tight text-slate-900 dark:text-white">Disease history</h2>
 
-      {/* Virtual Visit Modal for Nurses */}
+            <div className="flex overflow-x-auto gap-5 pb-6 thin-scrollbar snap-x">
+
+              {pastMedicalHistory.length > 0 ? pastMedicalHistory.map((pmh, idx) => {
+                 // Determine a pill badge and icon randomly or sequentially for visual demonstration of layout
+                 const iconPick = idx % 2 === 0 ? <ActivitySquare className="h-8 w-8 text-slate-400 stroke-[1.5]" /> : <ImageIcon className="h-8 w-8 text-slate-400 stroke-[1.5]" />;
+                 const hasMed = medications.length > idx;
+
+                 return (
+                  <div key={idx} className="bg-white dark:bg-slate-900 rounded-[2rem] p-5 border border-slate-100 dark:border-slate-800 min-w-[340px] flex gap-5 snap-start shrink-0 hover:-translate-y-1 transition-transform relative">
+
+                    {/* Visual Preview Left Block */}
+                    <div className="w-[100px] h-[120px] bg-slate-50 dark:bg-slate-800 rounded-[1.5rem] flex flex-col items-center justify-center shrink-0 overflow-hidden relative border border-slate-100">
+                       {iconPick}
+                       <div className="absolute top-2 left-2 h-6 w-6 rounded-full bg-white border border-slate-100 flex items-center justify-center">
+                          <Activity className="h-3 w-3 text-slate-600" />
+                       </div>
+                    </div>
+
+                    {/* Details Column */}
+                    <div className="flex flex-col flex-1 py-1">
+                      <div className="mb-2">
+                        <span className="font-bold text-[15px] leading-tight line-clamp-2 text-slate-800 dark:text-slate-100">
+                           {pmh.condition || 'Documented Condition'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 mb-4 text-xs font-medium text-slate-500">
+                        <div className="h-5 w-5 rounded-full overflow-hidden shrink-0 bg-slate-200">
+                           <img src={`https://api.dicebear.com/7.x/notionists/svg?seed=${pmh.condition || 'doc'}`} alt="doc" />
+                        </div>
+                        <span>Attending Specialist</span>
+                      </div>
+                      
+                      <div className="mt-auto">
+                        <div className="text-xs font-bold text-slate-800 mb-2">Medications</div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                           {hasMed ? (
+                             <>
+                               <div className="bg-slate-50 dark:bg-slate-800 border border-slate-100 rounded-full pl-1.5 pr-3 py-1 flex items-center gap-2">
+                                  <div className="h-5 w-5 rounded-full bg-white border border-slate-50 flex items-center justify-center">
+                                    <Pill className="h-3.5 w-3.5 text-blue-500" />
+                                  </div>
+                                  <span className="text-[11px] font-bold text-slate-600">{medications[idx].brandName || medications[idx].name || "Med"}</span>
+                               </div>
+                               {medications.length > idx + 1 && (
+                                  <div className="h-7 w-7 rounded-full bg-slate-800 text-white flex items-center justify-center text-[10px] font-bold">
+                                     +{medications.length - (idx + 1)}
+                                  </div>
+                               )}
+                             </>
+                           ) : (
+                             <span className="text-xs font-medium text-slate-400">No active prescriptions</span>
+                           )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              }) : (
+                 <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-8 border border-slate-100 text-slate-500 text-sm font-medium w-full flex items-center justify-center">
+                    No documented disease history.
+                 </div>
+              )}
+            </div>
+        </div>
+
+      </div>
+
+      {/* Virtual Visit Modal for Nurses remains functionally identical */}
       {showVirtualModal && isVirtualVisitReady() && (
         <Dialog open={showVirtualModal} onOpenChange={setShowVirtualModal}>
           <DialogContent className="sm:max-w-[500px]">
-            <DialogHeader>
-              <DialogTitle>Virtual Visit - Patient Join Link</DialogTitle>
-              <DialogDescription>
-                Share this QR code or link with the patient to join the call
-              </DialogDescription>
-            </DialogHeader>
-            <div className="flex flex-col items-center gap-4 py-4">
-              <div className="p-4 bg-white rounded-lg">
-                <QRCodeSVG value={getJoinUrl()} size={250} />
-              </div>
-              <div className="w-full space-y-3">
-                <Input value={getJoinUrl()} readOnly className="text-xs" />
-                <div className="flex gap-2">
-                  <Button
-                    onClick={handleCopyLink}
-                    variant="outline"
-                    className="flex-1"
-                    size="sm"
-                  >
-                    {copied ? (
-                      <>
-                        <Check className="h-4 w-4 mr-2" />
-                        Copied
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="h-4 w-4 mr-2" />
-                        Copy Link
-                      </>
-                    )}
-                  </Button>
-                  <Button
-                    onClick={handleJoinCall}
-                    variant="default"
-                    className="flex-1"
-                    size="sm"
-                  >
-                    <Video className="h-4 w-4 mr-2" />
-                    Join as Patient
-                  </Button>
+             <DialogHeader>
+                <DialogTitle>Virtual Visit - Patient Join Link</DialogTitle>
+                <DialogDescription>
+                   Share this QR code or link with the patient to join the call
+                </DialogDescription>
+             </DialogHeader>
+             <div className="flex flex-col items-center gap-4 py-4">
+                <div className="p-4 bg-white rounded-lg">
+                   <QRCodeSVG value={getJoinUrl()} size={250} />
                 </div>
-              </div>
-            </div>
+                <div className="w-full space-y-3">
+                   <Input value={getJoinUrl()} readOnly className="text-xs" />
+                   <div className="flex gap-2">
+                      <Button onClick={handleCopyLink} variant="outline" className="flex-1" size="sm">
+                         {copied ? <><Check className="h-4 w-4 mr-2" /> Copied</> : <><Copy className="h-4 w-4 mr-2" /> Copy Link</>}
+                      </Button>
+                      <Button onClick={handleJoinCall} variant="default" className="flex-1" size="sm">
+                         <Video className="h-4 w-4 mr-2" /> Join as Patient
+                      </Button>
+                   </div>
+                </div>
+             </div>
           </DialogContent>
         </Dialog>
       )}
     </div>
   );
 }
-

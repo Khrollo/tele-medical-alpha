@@ -6,7 +6,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { toast } from "sonner";
-import { Plus, Trash2, Pencil, Activity, Heart, Thermometer, Scale, Ruler, Wind } from "lucide-react";
+import { Plus, Trash2, Pencil, Activity, Heart, Thermometer, Scale, Ruler, Wind, CalendarDays } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,6 +27,7 @@ import {
 } from "@/app/_actions/vitals";
 import type { VitalEntry } from "@/app/_lib/db/drizzle/queries/vitals";
 import { cn } from "@/app/_lib/utils/cn";
+import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 const vitalSchema = z.object({
   date: z.string().min(1, "Date is required"),
@@ -176,13 +177,13 @@ export function VitalsContent({
   };
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
+    <div className="flex flex-1 flex-col gap-8 p-4 md:p-8 bg-slate-50/30 dark:bg-transparent">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Vital Signs</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Manage vital signs for {patientName}
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Vital Signs</h1>
+          <p className="mt-1 text-sm font-medium text-slate-500">
+            Historical health trends for {patientName}
           </p>
         </div>
         <Button onClick={() => setShowAddModal(true)}>
@@ -191,13 +192,74 @@ export function VitalsContent({
         </Button>
       </div>
 
+      {/* Trend Charts Section */}
+      {vitals.length > 1 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card className="rounded-[2rem] bg-white dark:bg-slate-900 overflow-hidden">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-bold text-slate-500 flex items-center gap-2 uppercase tracking-wider">
+                <Heart className="h-4 w-4" />
+                Heart Rate & BP Trends
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="h-[250px] pt-4">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={[...vitals].reverse()}>
+                  <defs>
+                    <linearGradient id="colorHr" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#ef4444" stopOpacity={0.1}/>
+                      <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis 
+                    dataKey="date" 
+                    hide 
+                  />
+                  <YAxis hide />
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '1rem', border: '1px solid #f1f5f9', boxShadow: 'none' }}
+                  />
+                  <Area type="monotone" dataKey="hr" stroke="#ef4444" fillOpacity={1} fill="url(#colorHr)" strokeWidth={3} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-[2rem] bg-white dark:bg-slate-900 overflow-hidden">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-bold text-slate-500 flex items-center gap-2 uppercase tracking-wider">
+                <Scale className="h-4 w-4" />
+                Weight (lbs)
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="h-[250px] pt-4">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={[...vitals].reverse()}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="date" hide />
+                  <YAxis hide domain={['auto', 'auto']} />
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '1rem', border: '1px solid #f1f5f9', boxShadow: 'none' }}
+                  />
+                  <Line type="monotone" dataKey="weight" stroke="#3b82f6" strokeWidth={3} dot={{ r: 4, fill: '#3b82f6', strokeWidth: 2, stroke: '#fff' }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* Vitals List */}
       {vitals.length === 0 ? (
-        <Card>
-          <CardContent className="flex items-center justify-center py-12">
+        <Card className="rounded-[2rem] border-dashed border-2 bg-transparent shadow-none">
+          <CardContent className="flex items-center justify-center py-20">
             <div className="text-center">
-              <p className="text-muted-foreground mb-4">No vital signs recorded</p>
-              <Button onClick={() => setShowAddModal(true)} variant="outline">
+              <div className="h-16 w-16 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Activity className="h-8 w-8 text-slate-400" />
+              </div>
+              <p className="text-slate-500 font-medium mb-6">No vital signs recorded yet</p>
+              <Button onClick={() => setShowAddModal(true)} variant="outline" className="rounded-full">
                 <Plus className="h-4 w-4 mr-2" />
                 Add First Vital Entry
               </Button>
@@ -205,29 +267,32 @@ export function VitalsContent({
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-4">
+        <div className="grid gap-6 sm:grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
           {vitals.map((vital) => (
-            <Card key={vital.id} className="relative">
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <CardTitle className="text-lg font-semibold">
+            <Card key={vital.id} className="rounded-[2rem] border border-slate-50 dark:border-slate-800 bg-white dark:bg-slate-900 transition-transform hover:-translate-y-1">
+              <CardHeader className="pb-3 border-b border-slate-50 dark:border-slate-800/50">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-500">
+                      <CalendarDays className="h-5 w-5" />
+                    </div>
+                    <CardTitle className="text-base font-bold text-slate-800 dark:text-slate-100">
                       {formatDate(vital.date)}
                     </CardTitle>
                   </div>
                   <div className="flex gap-1">
                     <Button
                       variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
+                      size="sm"
+                      className="h-8 w-8 rounded-full"
                       onClick={() => handleEdit(vital)}
                     >
-                      <Pencil className="h-4 w-4" />
+                      <Pencil className="h-4 w-4 text-slate-400" />
                     </Button>
                     <Button
                       variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-destructive hover:text-destructive"
+                      size="sm"
+                      className="h-8 w-8 rounded-full text-destructive hover:text-destructive hover:bg-destructive/5"
                       onClick={() => handleDelete(vital.id)}
                       disabled={deletingId === vital.id}
                     >
@@ -236,42 +301,42 @@ export function VitalsContent({
                   </div>
                 </div>
               </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <CardContent className="pt-6">
+                <div className="grid grid-cols-2 gap-y-6 gap-x-4">
                   {vital.bp && (
                     <div className="space-y-1">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                         <Activity className="h-3 w-3" />
                         Blood Pressure
                       </div>
-                      <p className="text-sm font-semibold">{vital.bp}</p>
+                      <p className="text-lg font-bold text-slate-700 dark:text-slate-300">{vital.bp} <span className="text-xs font-medium text-slate-400 ml-0.5">mmHg</span></p>
                     </div>
                   )}
                   {vital.hr && (
                     <div className="space-y-1">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                         <Heart className="h-3 w-3" />
                         Heart Rate
                       </div>
-                      <p className="text-sm font-semibold">{vital.hr} bpm</p>
+                      <p className="text-lg font-bold text-slate-700 dark:text-slate-300">{vital.hr} <span className="text-xs font-medium text-slate-400 ml-0.5">bpm</span></p>
                     </div>
                   )}
                   {vital.temp && (
                     <div className="space-y-1">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                         <Thermometer className="h-3 w-3" />
                         Temperature
                       </div>
-                      <p className="text-sm font-semibold">{vital.temp} °F</p>
+                      <p className="text-lg font-bold text-slate-700 dark:text-slate-300">{vital.temp} <span className="text-xs font-medium text-slate-400 ml-0.5">°F</span></p>
                     </div>
                   )}
                   {vital.weight && (
                     <div className="space-y-1">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                         <Scale className="h-3 w-3" />
                         Weight
                       </div>
-                      <p className="text-sm font-semibold">{vital.weight} lbs</p>
+                      <p className="text-lg font-bold text-slate-700 dark:text-slate-300">{vital.weight} <span className="text-xs font-medium text-slate-400 ml-0.5">lbs</span></p>
                     </div>
                   )}
                   {vital.height && (
