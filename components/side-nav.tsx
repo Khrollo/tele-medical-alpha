@@ -226,19 +226,7 @@ export function SideNav({ userRole, userName, patientId, patientName, onMobileSt
                 "flex-1 space-y-1 overflow-y-auto transition-[padding] duration-300 ease-in-out thin-scrollbar",
                 shouldCenter ? "p-2" : "p-4"
             )}>
-                {/* Search Bar */}
-                <div className={cn("mb-4", shouldCenter && "hidden")}>
-                    {showLabels && (
-                        <div className="relative animate-in fade-in duration-300">
-                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                            <Input
-                                type="search"
-                                placeholder="Search patients..."
-                                className="pl-9 h-9 w-full bg-white border-none text-sm"
-                            />
-                        </div>
-                    )}
-                </div>
+                {/* Search Bar - hidden for now */}
 
                 {/* NAVIGATION Section */}
                 <div className={cn("mb-4", shouldCenter && "mb-2")}>
