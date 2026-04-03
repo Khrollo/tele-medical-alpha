@@ -1,4 +1,4 @@
-import { eq, desc, or, isNull, and, inArray } from "drizzle-orm";
+import { eq, desc, or, isNull, and, inArray, count } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
 import { db } from "../index";
 import { patients, visits, users, notes, documents } from "../schema";
@@ -314,38 +314,30 @@ export async function getPatientOverview(patientId: string) {
 
   const latestVisit = latestVisitResult[0] || null;
 
-  const patientVisits = await db
+  // Count orders from notes across all visits for this patient.
+  // Orders are stored inside the JSONB `note` column, so we still need
+  // to read the note payload, but we join directly to visits to avoid an
+  // extra round-trip for visit IDs.
+  const patientNotes = await db
     .select({
-      id: visits.id,
+      note: notes.note,
     })
-    .from(visits)
+    .from(notes)
+    .innerJoin(visits, eq(notes.visitId, visits.id))
     .where(eq(visits.patientId, patientId));
 
-  const visitIds = patientVisits.map((visit) => visit.id);
+  const ordersCount = patientNotes.reduce((total, entry) => {
+    if (!entry.note || typeof entry.note !== "object") {
+      return total;
+    }
 
-  let ordersCount = 0;
-  if (visitIds.length > 0) {
-    const patientNotes = await db
-      .select({
-        note: notes.note,
-      })
-      .from(notes)
-      .where(inArray(notes.visitId, visitIds));
+    const visitNote = entry.note as VisitNote;
+    return total + (Array.isArray(visitNote.orders) ? visitNote.orders.length : 0);
+  }, 0);
 
-    ordersCount = patientNotes.reduce((total, entry) => {
-      if (!entry.note || typeof entry.note !== "object") {
-        return total;
-      }
-
-      const visitNote = entry.note as VisitNote;
-      return total + (Array.isArray(visitNote.orders) ? visitNote.orders.length : 0);
-    }, 0);
-  }
-
-  const patientDocuments = await db
-    .select({
-      id: documents.id,
-    })
+  // Use SQL COUNT instead of fetching all document rows
+  const documentsCountResult = await db
+    .select({ count: count() })
     .from(documents)
     .where(eq(documents.patientId, patientId));
 
@@ -377,7 +369,7 @@ export async function getPatientOverview(patientId: string) {
         patient: patient[0],
         stats: {
           ordersCount,
-          documentsCount: patientDocuments.length,
+          documentsCount: documentsCountResult[0]?.count ?? 0,
         },
         latestVisit: latestVisit
           ? {
