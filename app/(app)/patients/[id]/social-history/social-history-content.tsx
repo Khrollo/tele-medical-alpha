@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -147,6 +148,7 @@ export function SocialHistoryContent({
   patientName,
   socialHistory: initialSocialHistory,
 }: SocialHistoryContentProps) {
+  const router = useRouter();
   const [socialHistory, setSocialHistory] = React.useState<SocialHistory | null>(
     initialSocialHistory
   );
@@ -175,6 +177,10 @@ export function SocialHistoryContent({
       clinicianNotes: initialSocialHistory?.clinicianNotes || "",
     },
   });
+
+  React.useEffect(() => {
+    setSocialHistory(initialSocialHistory);
+  }, [initialSocialHistory]);
 
   React.useEffect(() => {
     if (showUpdateModal && initialSocialHistory) {
@@ -256,6 +262,7 @@ export function SocialHistoryContent({
         ...updates,
         lastUpdated: new Date().toISOString(),
       });
+      router.refresh();
       setShowUpdateModal(false);
       toast.success("Social history updated successfully");
     } catch (error) {
