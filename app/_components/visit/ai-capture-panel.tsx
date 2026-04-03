@@ -105,28 +105,39 @@ export function AICapturePanel({
             const file = new File([processedBlob], `recording-${Date.now()}.${fileExtension}`, {
                 type: mimeType,
             });
-            const fileId = await storeFile(file);
+
+            let fileId: string | null = null;
+            try {
+                fileId = await storeFile(file);
+            } catch (storeError) {
+                console.warn("Failed to store file locally (IndexedDB issue), continuing with upload:", storeError);
+            }
 
             if (!navigator.onLine) {
-                const { getOfflineDB } = await import("@/app/_lib/offline/db");
-                const db = getOfflineDB();
-                const draft = await db.draftVisits.where("patientId").equals(patientId).first();
+                try {
+                    const { getOfflineDB } = await import("@/app/_lib/offline/db");
+                    const db = getOfflineDB();
+                    const draft = await db.draftVisits.where("patientId").equals(patientId).first();
 
-                if (draft) {
-                    await db.draftVisits.update(draft.draftId, {
-                        pendingParsing: JSON.stringify({
-                            audioFileId: fileId,
-                            previousTranscripts: previousTranscripts.length > 0 ? previousTranscripts : undefined,
-                            patientId,
-                        }),
-                    });
+                    if (draft && fileId) {
+                        await db.draftVisits.update(draft.draftId, {
+                            pendingParsing: JSON.stringify({
+                                audioFileId: fileId,
+                                previousTranscripts: previousTranscripts.length > 0 ? previousTranscripts : undefined,
+                                patientId,
+                            }),
+                        });
+                    }
+                } catch (offlineError) {
+                    console.warn("Failed to save offline draft:", offlineError);
                 }
                 toast.warning("Connection lost. Audio saved locally.");
                 setState("idle");
                 return;
             }
 
-            const path = `visits/${patientId}/${fileId}/${Date.now()}.${fileExtension}`;
+            const fallbackId = fileId || `rec-${Date.now()}`;
+            const path = `visits/${patientId}/${fallbackId}/${Date.now()}.${fileExtension}`;
             let audioPath: string | null = null;
 
             try {

@@ -96,12 +96,12 @@ export function SectionStepper({
                 >
                   <div
                     className={cn(
-                      "h-8 w-8 rounded-full flex items-center justify-center transition-all duration-200 border-2",
+                      "h-8 w-8 rounded-full flex items-center justify-center transition-all duration-200 border",
                       isCurrent
                         ? "bg-slate-900 border-slate-900 text-white shadow-lg dark:bg-white dark:border-white dark:text-slate-900"
                         : isReviewed
                           ? "bg-green-50 border-green-500 text-green-600 dark:bg-green-950 dark:border-green-500"
-                          : "bg-slate-50 border-slate-200 text-slate-300 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-600"
+                          : "bg-white border-slate-900 text-slate-900 dark:bg-slate-900 dark:border-white dark:text-white"
                     )}
                   >
                     {isReviewed && !isCurrent ? (
@@ -117,7 +117,7 @@ export function SectionStepper({
                       ? "text-slate-900 dark:text-white"
                       : isReviewed
                         ? "text-green-600 dark:text-green-400"
-                        : "text-slate-400 group-hover:text-slate-600"
+                        : "text-slate-900 dark:text-white group-hover:text-slate-600"
                   )}>
                     {section.label}
                   </span>

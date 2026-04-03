@@ -91,9 +91,9 @@ export function NewVisitForm({
   const [currentSection, setCurrentSection] = React.useState(roleSections[0].id);
   const [reviewedSections, setReviewedSections] = React.useState<Set<string>>(new Set());
   const [expandedSections, setExpandedSections] = React.useState<Set<string>>(new Set());
-  const [medicalPanelOpen, setMedicalPanelOpen] = React.useState(true);
-  const [medicalPanelSection, setMedicalPanelSection] = React.useState<string | null>("overview");
-  const [isOnline, setIsOnline] = React.useState(navigator.onLine);
+  const [medicalPanelOpen, setMedicalPanelOpen] = React.useState(false);
+  const [medicalPanelSection, setMedicalPanelSection] = React.useState<string | null>(null);
+  const [isOnline, setIsOnline] = React.useState(typeof navigator !== "undefined" ? navigator.onLine : true);
   const [pendingCount, setPendingCount] = React.useState(0);
   const [isSyncing, setIsSyncing] = React.useState(false);
   const [isSaving, setIsSaving] = React.useState(false);
@@ -339,7 +339,24 @@ export function NewVisitForm({
         }
         setDraftLoaded(true);
       } catch (error) {
-        console.error("Error loading draft:", error);
+        console.error("Error loading draft (IndexedDB may be unavailable):", error);
+        // Still initialize the form properly — mark first section reviewed
+        const sectionsForRole = getSectionsForRole(userRole);
+        setReviewedSections(new Set([sectionsForRole[0].id]));
+
+        // If editing existing visit, load from visit data even if draft failed
+        if (existingVisitId && existingVisitData) {
+          try {
+            const parsedData = parseVisitNote(existingVisitData);
+            form.reset(parsedData);
+            setReviewedSections(new Set(sectionsForRole.map((s) => s.id)));
+            setExpandedSections(new Set(sectionsForRole.map(s => s.id)));
+            setVisitIdRemote(existingVisitId);
+          } catch (parseError) {
+            console.error("Error parsing existing visit data:", parseError);
+          }
+        }
+
         setDraftLoaded(true);
       }
     };
@@ -446,8 +463,12 @@ export function NewVisitForm({
   }, []);
 
   const handleTranscriptReady = async (transcript: string) => {
-    // Store transcript in draft
-    await saveDraft(patientId, userId, { transcript, role: userRole });
+    // Store transcript in draft (non-critical — IndexedDB may be unavailable)
+    try {
+      await saveDraft(patientId, userId, { transcript, role: userRole });
+    } catch (draftError) {
+      console.warn("Failed to save transcript to draft:", draftError);
+    }
 
     // Save transcript to database immediately if visit exists
     if (visitIdRemote) {
@@ -515,8 +536,13 @@ export function NewVisitForm({
       let savedVisitId = visitIdRemote;
 
       if (!savedVisitId) {
-        // Load draft to get transcript if available
-        const draft = await loadDraft(patientId, userId, userRole);
+        // Load draft to get transcript if available (non-critical — IndexedDB may be unavailable)
+        let draft: { transcript?: string } = {};
+        try {
+          draft = await loadDraft(patientId, userId, userRole);
+        } catch (draftError) {
+          console.warn("Failed to load draft from IndexedDB, proceeding without it:", draftError);
+        }
 
         // Create visit first
         const result = await createVisitDraftAction({
@@ -587,15 +613,20 @@ export function NewVisitForm({
         );
       }
 
-      // Clear draft
-      await clearDraft(patientId, userId);
+      // Clear draft (non-critical — IndexedDB may be unavailable)
+      try {
+        await clearDraft(patientId, userId);
+      } catch (clearError) {
+        console.warn("Failed to clear draft from IndexedDB:", clearError);
+      }
 
       // Show post-save modal instead of redirecting
       setShowPostSaveModal(true);
       toast.success("Visit saved successfully");
     } catch (error) {
       console.error("Error finalizing visit:", error);
-      toast.error("Failed to save visit");
+      const message = error instanceof Error ? error.message : "Unknown error";
+      toast.error(`Failed to save visit: ${message}`);
     } finally {
       setIsSaving(false);
     }
@@ -1169,9 +1200,8 @@ export function NewVisitForm({
 
       {/* Centered content area */}
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-3xl mx-auto w-full px-4 md:px-6 py-6 space-y-6">
-
-          {/* Section stepper - contextual progress above the form */}
+        {/* Section stepper - full width bar with centered items */}
+        <div className="w-full border-b border-slate-200/60 dark:border-slate-800 py-4">
           <SectionStepper
             currentSection={currentSection}
             reviewedSections={reviewedSections}
@@ -1179,6 +1209,9 @@ export function NewVisitForm({
             userRole={userRole}
             className="pb-0 pt-0"
           />
+        </div>
+
+        <div className="max-w-3xl mx-auto w-full px-4 md:px-6 py-6 space-y-6">
 
           {/* Section header with icon, title, and description */}
           <div className="text-center space-y-1">
