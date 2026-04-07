@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/app/_lib/auth/get-current-user";
 import { transcribeAudio } from "@/app/_lib/ai/transcribe";
+import { getOpenRouterTextModel } from "@/app/_lib/ai/parse-visit";
 
 /**
  * Parse audio file using Replicate Whisper for transcription, then OpenRouter with OpenAI GPT-O1-120B
@@ -362,7 +363,7 @@ Schema:
     const combinedUserPrompt = `${basePrompt}\n\nTRANSCRIPT:\n${transcript}\n\nNow extract the structured visit note data from the transcript above. Extract ONLY information that is EXPLICITLY stated in the transcript. Do NOT infer, assume, or guess. If something is not mentioned, use empty string "", false, or empty array []. Only extract what is actually written - nothing more, nothing less.`;
 
     const openRouterRequest = {
-      model: "openai/gpt-oss-120b",
+      model: getOpenRouterTextModel(),
       messages: [
         {
           role: "system",
