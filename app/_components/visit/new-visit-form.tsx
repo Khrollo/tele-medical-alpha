@@ -4,7 +4,6 @@ import * as React from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { toast } from "sonner";
 import { Save, CheckCircle2, ChevronLeft, ChevronRight, Plus, Pencil, Trash2, CheckCircle, AlertCircle, XCircle, Camera, X, Loader2, User, Clock, FileSignature, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -93,7 +92,7 @@ export function NewVisitForm({
   const [expandedSections, setExpandedSections] = React.useState<Set<string>>(new Set());
   const [medicalPanelOpen, setMedicalPanelOpen] = React.useState(false);
   const [medicalPanelSection, setMedicalPanelSection] = React.useState<string | null>(null);
-  const [isOnline, setIsOnline] = React.useState(typeof navigator !== "undefined" ? navigator.onLine : true);
+  const [isOnline, setIsOnline] = React.useState(navigator.onLine);
   const [pendingCount, setPendingCount] = React.useState(0);
   const [isSyncing, setIsSyncing] = React.useState(false);
   const [isSaving, setIsSaving] = React.useState(false);
@@ -339,24 +338,7 @@ export function NewVisitForm({
         }
         setDraftLoaded(true);
       } catch (error) {
-        console.error("Error loading draft (IndexedDB may be unavailable):", error);
-        // Still initialize the form properly — mark first section reviewed
-        const sectionsForRole = getSectionsForRole(userRole);
-        setReviewedSections(new Set([sectionsForRole[0].id]));
-
-        // If editing existing visit, load from visit data even if draft failed
-        if (existingVisitId && existingVisitData) {
-          try {
-            const parsedData = parseVisitNote(existingVisitData);
-            form.reset(parsedData);
-            setReviewedSections(new Set(sectionsForRole.map((s) => s.id)));
-            setExpandedSections(new Set(sectionsForRole.map(s => s.id)));
-            setVisitIdRemote(existingVisitId);
-          } catch (parseError) {
-            console.error("Error parsing existing visit data:", parseError);
-          }
-        }
-
+        console.error("Error loading draft:", error);
         setDraftLoaded(true);
       }
     };
@@ -463,12 +445,8 @@ export function NewVisitForm({
   }, []);
 
   const handleTranscriptReady = async (transcript: string) => {
-    // Store transcript in draft (non-critical — IndexedDB may be unavailable)
-    try {
-      await saveDraft(patientId, userId, { transcript, role: userRole });
-    } catch (draftError) {
-      console.warn("Failed to save transcript to draft:", draftError);
-    }
+    // Store transcript in draft
+    await saveDraft(patientId, userId, { transcript, role: userRole });
 
     // Save transcript to database immediately if visit exists
     if (visitIdRemote) {
@@ -536,13 +514,8 @@ export function NewVisitForm({
       let savedVisitId = visitIdRemote;
 
       if (!savedVisitId) {
-        // Load draft to get transcript if available (non-critical — IndexedDB may be unavailable)
-        let draft: { transcript?: string } = {};
-        try {
-          draft = await loadDraft(patientId, userId, userRole);
-        } catch (draftError) {
-          console.warn("Failed to load draft from IndexedDB, proceeding without it:", draftError);
-        }
+        // Load draft to get transcript if available
+        const draft = await loadDraft(patientId, userId, userRole);
 
         // Create visit first
         const result = await createVisitDraftAction({
@@ -613,20 +586,15 @@ export function NewVisitForm({
         );
       }
 
-      // Clear draft (non-critical — IndexedDB may be unavailable)
-      try {
-        await clearDraft(patientId, userId);
-      } catch (clearError) {
-        console.warn("Failed to clear draft from IndexedDB:", clearError);
-      }
+      // Clear draft
+      await clearDraft(patientId, userId);
 
       // Show post-save modal instead of redirecting
       setShowPostSaveModal(true);
       toast.success("Visit saved successfully");
     } catch (error) {
       console.error("Error finalizing visit:", error);
-      const message = error instanceof Error ? error.message : "Unknown error";
-      toast.error(`Failed to save visit: ${message}`);
+      toast.error("Failed to save visit");
     } finally {
       setIsSaving(false);
     }
@@ -702,14 +670,14 @@ export function NewVisitForm({
       case "subjective":
         return (
           <div className="space-y-8">
-            <div className="space-y-6">
+            <div className="space-y-3">
               <Label className="text-base">Chief Complaint</Label>
               <Textarea
                 {...form.register("subjective.chiefComplaint")}
                 className="min-h-[100px]"
               />
             </div>
-            <div className="space-y-6">
+            <div className="space-y-3">
               <Label className="text-base">History of Present Illness (HPI)</Label>
               <Textarea
                 {...form.register("subjective.hpi")}
@@ -722,7 +690,7 @@ export function NewVisitForm({
       case "objective":
         return (
           <div className="grid gap-6 md:grid-cols-2">
-            <div className="space-y-6">
+            <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <Label className="text-base">Blood Pressure</Label>
               </div>
@@ -730,13 +698,13 @@ export function NewVisitForm({
                 {...form.register("objective.bp")}
               />
             </div>
-            <div className="space-y-6">
+            <div className="space-y-3">
               <Label className="text-base">Heart Rate</Label>
               <Input
                 {...form.register("objective.hr")}
               />
             </div>
-            <div className="space-y-6">
+            <div className="space-y-3">
               <Label className="text-base">Temperature</Label>
               <Input
                 {...form.register("objective.temp")}
@@ -756,7 +724,7 @@ export function NewVisitForm({
                 </p>
               )}
             </div>
-            <div className="space-y-6">
+            <div className="space-y-3">
               <Label className="text-base">Weight (lbs)</Label>
               <Input
                 {...form.register("objective.weight")}
@@ -776,7 +744,7 @@ export function NewVisitForm({
                 </p>
               )}
             </div>
-            <div className="space-y-6">
+            <div className="space-y-3">
               <Label className="text-base">Height (cm)</Label>
               <Input
                 {...form.register("objective.height")}
@@ -802,7 +770,7 @@ export function NewVisitForm({
                 </p>
               )}
             </div>
-            <div className="space-y-6">
+            <div className="space-y-3">
               <Label className="text-base">BMI</Label>
               <Input
                 {...form.register("objective.bmi")}
@@ -959,7 +927,7 @@ export function NewVisitForm({
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-foreground border-b pb-2">HIV</h3>
               <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 min-w-0">
-                <div className="space-y-6">
+                <div className="space-y-3">
                   <Label className="text-base">HIV Result</Label>
                   <Select
                     value={form.watch("pointOfCare.hiv") || "Unknown"}
@@ -982,7 +950,7 @@ export function NewVisitForm({
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-foreground border-b pb-2">Syphilis</h3>
               <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 min-w-0">
-                <div className="space-y-6">
+                <div className="space-y-3">
                   <Label className="text-base">Result</Label>
                   <Select
                     value={form.watch("pointOfCare.syphilis.result") || "Unknown"}
@@ -998,7 +966,7 @@ export function NewVisitForm({
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-6">
+                <div className="space-y-3">
                   <Label className="text-base">Reactivity</Label>
                   <Select
                     value={form.watch("pointOfCare.syphilis.reactivity") || "Unknown"}
@@ -1126,53 +1094,58 @@ export function NewVisitForm({
     return <div>Loading...</div>;
   }
 
-  // Section descriptions for contextual guidance
-  const sectionDescriptions: Record<string, string> = {
-    subjective: "Document the patient's reported symptoms and history of present illness.",
-    objective: "Record vitals, physical examination findings, and vision assessment.",
-    pointOfCare: "Capture point-of-care test results for diabetes, HIV, and syphilis.",
-    vaccines: "Review and document vaccine administration records.",
-    familyHistory: "Record relevant family medical history and conditions.",
-    riskFlags: "Assess social determinants, substance use, and risk factors.",
-    surgicalHistory: "Document past surgical procedures and outcomes.",
-    pastMedicalHistory: "Record known medical conditions and their current status.",
-    documents: "Upload and manage visit-related documents and images.",
-    medications: "Review, add, or update the patient's medication list.",
-    orders: "Place and manage lab, imaging, and procedure orders.",
-    assessmentPlan: "Formulate diagnoses, treatment plans, and follow-up instructions.",
-  };
-
-  const CurrentIcon = roleSections.find(s => s.id === currentSection)?.icon;
-
   return (
-    <div className="flex flex-col min-h-full pb-0">
-      {/* Compact top bar: back + patient info + status */}
-      <div className="flex items-center justify-between px-4 md:px-6 py-3 border-b border-slate-200/60 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur-sm">
-        <div className="flex items-center gap-3">
-          <Link href={`/patients/${patientId}`}>
-            <Button variant="ghost" size="sm" className="rounded-full h-8 w-8 p-0">
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-          </Link>
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-foreground">{patientBasics.fullName}</span>
-            <span className="text-xs text-muted-foreground">DOB: {patientBasics.dob || "N/A"}</span>
+    <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-3xl font-bold text-foreground">
+              {existingVisitId ? "Continue Visit" : "New Visit"}
+            </h1>
+            {isRecording && (
+              <Badge variant="destructive" className="gap-2 animate-pulse">
+                <div className="w-2 h-2 bg-white rounded-full" />
+                <span>Recording</span>
+              </Badge>
+            )}
+            {/* {onStartRecording && onStopRecording && (
+              <>
+                {isRecording ? (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={onStopRecording}
+                    className="gap-2"
+                  >
+                    <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                    <span>Stop Recording</span>
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={onStartRecording}
+                  >
+                    Start Recording
+                  </Button>
+                )}
+              </>
+            )} */}
           </div>
-          {isRecording && (
-            <Badge variant="destructive" className="gap-1.5 animate-pulse text-xs">
-              <div className="w-1.5 h-1.5 bg-white rounded-full" />
-              Recording
-            </Badge>
-          )}
+          <p className="mt-2 text-sm text-muted-foreground">
+            {patientBasics.fullName} • DOB: {patientBasics.dob || "N/A"}
+          </p>
         </div>
         <div className="flex items-center gap-2">
+          {/* Join Call button for virtual visits */}
           {visitAppointmentType?.toLowerCase() === "virtual" && visitTwilioRoomName && existingVisitId && (
             <Button
               onClick={() => router.push(`/visit/${existingVisitId}/call`)}
-              size="sm"
-              className="bg-purple-600 hover:bg-purple-700 text-xs"
+              variant="default"
+              className="bg-purple-600 hover:bg-purple-700"
             >
-              <Video className="h-3.5 w-3.5 mr-1.5" />
+              <Video className="h-4 w-4 mr-2" />
               Join Call
             </Button>
           )}
@@ -1184,104 +1157,100 @@ export function NewVisitForm({
         </div>
       </div>
 
-      {/* Medical Info Panel - renders as overlay drawer when open */}
-      {medicalPanelOpen && medicalPanelSection && (
-        <div className="fixed inset-y-0 left-0 z-40 w-80 bg-white dark:bg-slate-950 shadow-2xl border-r border-slate-200 dark:border-slate-800 overflow-y-auto">
-          <MedicalInfoPanel
-            patientBasics={patientBasics}
-            sectionId={medicalPanelSection}
-            onClose={() => {
-              setMedicalPanelOpen(false);
-              setMedicalPanelSection(null);
-            }}
-          />
+      {/* Layout: Stacked on tablet in video call, side-by-side otherwise */}
+      <div className={cn(
+        "grid gap-8",
+        isInVideoCall
+          ? "grid-cols-1" // Stacked vertically on tablet in video call
+          : "grid-cols-1 lg:grid-cols-4"  // Normal layout: side-by-side on desktop
+      )}>
+        {/* Left sidebar - Medical Info Panel, AI Capture, and Stepper */}
+        <div className={cn(
+          "space-y-4",
+          isInVideoCall ? "" : "lg:col-span-1"
+        )}>
+          {/* Medical Info Panel - appears at top of left sidebar when open */}
+          {medicalPanelOpen && medicalPanelSection && (
+            <MedicalInfoPanel
+              patientBasics={patientBasics}
+              sectionId={medicalPanelSection}
+              onClose={() => {
+                setMedicalPanelOpen(false);
+                setMedicalPanelSection(null);
+              }}
+            />
+          )}
+
+          {!hideAICapture && (
+            <AICapturePanel
+              patientId={patientId}
+              onTranscriptReady={handleTranscriptReady}
+              onParseReady={handleParseReady}
+            />
+          )}
+          <Card>
+            <CardContent className="p-4">
+              <SectionStepper
+                currentSection={currentSection}
+                reviewedSections={reviewedSections}
+                onSectionClick={handleSectionChange}
+                userRole={userRole}
+              />
+            </CardContent>
+          </Card>
         </div>
-      )}
 
-      {/* Centered content area */}
-      <div className="flex-1 overflow-y-auto">
-        {/* Section stepper - full width bar with centered items */}
-        <div className="w-full border-b border-slate-200/60 dark:border-slate-800 py-4">
-          <SectionStepper
-            currentSection={currentSection}
-            reviewedSections={reviewedSections}
-            onSectionClick={handleSectionChange}
-            userRole={userRole}
-            className="pb-0 pt-0"
-          />
-        </div>
-
-        <div className="max-w-3xl mx-auto w-full px-4 md:px-6 py-6 space-y-6">
-
-          {/* Section header with icon, title, and description */}
-          <div className="text-center space-y-1">
-            <div className="flex items-center justify-center gap-3">
-              {CurrentIcon && <CurrentIcon className="h-5 w-5 text-slate-400" />}
-              <h1 className="text-2xl font-bold text-foreground">
-                {roleSections.find(s => s.id === currentSection)?.label}
-              </h1>
-            </div>
-            <p className="text-sm text-muted-foreground max-w-md mx-auto">
-              {sectionDescriptions[currentSection] || ""}
-            </p>
-            <p className="text-xs text-muted-foreground/60">
-              Step {currentSectionIndex + 1} of {roleSections.length}
-            </p>
-          </div>
-
-          {/* Form card - focused, centered content */}
-          <Card className="shadow-sm">
-            <CardContent className="p-6 md:p-8">{renderSection()}</CardContent>
+        {/* Main form area */}
+        <div className={cn(
+          "space-y-4",
+          isInVideoCall ? "" : "lg:col-span-3"
+        )}>
+          <Card>
+            <CardHeader className="pb-4">
+              <CardTitle>
+                {visitSections.find((s) => s.id === currentSection)?.label}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-8">{renderSection()}</CardContent>
           </Card>
 
-          {/* Inline navigation - prev / next below the form */}
-          <div className="flex items-center justify-between pb-6">
+          {/* Navigation */}
+          <div className="flex items-center justify-between">
             <Button
               variant="outline"
-              className="h-11 px-5 text-sm font-medium gap-2"
               onClick={goToPrev}
               disabled={!canGoPrev}
             >
-              <ChevronLeft className="h-4 w-4" />
-              {canGoPrev ? roleSections[currentSectionIndex - 1]?.label : "Previous"}
+              <ChevronLeft className="h-4 w-4 mr-2" />
+              Previous
             </Button>
-
-            {canGoNext ? (
-              <Button
-                className="h-11 px-5 text-sm font-medium gap-2"
-                onClick={goToNext}
-              >
-                {roleSections[currentSectionIndex + 1]?.label}
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            ) : (
-              <Button
-                onClick={handleFinalize}
-                disabled={isSaving || !allSectionsReviewed || !isOnline}
-                className="h-11 px-6 text-sm font-semibold"
-              >
-                {isSaving ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    Saving...
-                  </>
-                ) : (
-                  "Complete Visit"
-                )}
-              </Button>
-            )}
+            <Button
+              variant="outline"
+              onClick={goToNext}
+              disabled={!canGoNext}
+            >
+              Next
+              <ChevronRight className="h-4 w-4 ml-2" />
+            </Button>
           </div>
         </div>
       </div>
 
-      {/* Floating AI Capture Panel */}
-      {!hideAICapture && (
-        <AICapturePanel
-          patientId={patientId}
-          onTranscriptReady={handleTranscriptReady}
-          onParseReady={handleParseReady}
-        />
-      )}
+      {/* Footer */}
+      <div className="sticky bottom-0 border-t bg-background p-4 flex items-center justify-between">
+        <div className="text-sm text-muted-foreground">
+          {reviewedSections.size} of {roleSections.length} sections reviewed
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={handleFinalize}
+            disabled={isSaving || !allSectionsReviewed || !isOnline}
+          >
+            <CheckCircle2 className="h-4 w-4 mr-2" />
+            Save Visit
+          </Button>
+        </div>
+      </div>
 
       {/* Post-Save Modal */}
       <Dialog open={showPostSaveModal} onOpenChange={setShowPostSaveModal}>
@@ -1344,7 +1313,6 @@ export function NewVisitForm({
           )}
         </DialogContent>
       </Dialog>
-
     </div>
   );
 }
@@ -1540,7 +1508,7 @@ function MedicationsSection({ form }: { form: any }) {
           No medications added yet
         </div>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-3">
           {medications.map((med, index) => (
             <div
               key={med.id || index}
@@ -1809,7 +1777,7 @@ function VaccinesSection({ form }: { form: any }) {
           No vaccines added yet
         </div>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-3">
           {vaccines.map((vaccine, index) => (
             <div
               key={index}
@@ -2101,7 +2069,7 @@ function FamilyHistorySection({ form }: { form: any }) {
           No family history entries added yet
         </div>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-3">
           {familyHistory.map((entry, index) => (
             <div
               key={index}
@@ -2359,7 +2327,7 @@ function SurgicalHistorySection({ form }: { form: any }) {
           No surgical history entries added yet
         </div>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-3">
           {surgicalHistory.map((entry, index) => (
             <div
               key={index}
@@ -2636,7 +2604,7 @@ function PastMedicalHistorySection({ form }: { form: any }) {
           No past medical history entries added yet
         </div>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-3">
           {pastMedicalHistory.map((entry, index) => (
             <div
               key={index}
@@ -2920,7 +2888,7 @@ function OrdersSection({ form }: { form: any }) {
           No orders added yet
         </div>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-3">
           {orders.map((order, index) => (
             <div
               key={index}
@@ -3260,7 +3228,7 @@ function AssessmentPlanSection({ form }: { form: any }) {
           No assessment & plan entries yet
         </div>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-3">
           {assessmentPlans.map((item: any, index: number) => (
             <div
               key={index}

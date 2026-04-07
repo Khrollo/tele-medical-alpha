@@ -202,13 +202,17 @@ export function useWaitingRoomRealtime({
       clearInterval(pollingIntervalRef.current);
     }
 
-    // Don't poll immediately on mount — trust the server-rendered initial data.
-    // Start polling after the first interval to pick up changes.
+    // Poll immediately on mount
+    if (fetchAllPatientsRef.current) {
+      fetchAllPatientsRef.current();
+    }
+
+    // Set up polling interval (every 3 seconds)
     pollingIntervalRef.current = setInterval(() => {
       if (fetchAllPatientsRef.current) {
         fetchAllPatientsRef.current();
       }
-    }, 5000);
+    }, 3000);
 
     // Cleanup on unmount
     return () => {

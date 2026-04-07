@@ -2,41 +2,26 @@
 
 import * as React from "react";
 import { cn } from "@/app/_lib/utils/cn";
-import { 
-  MessageSquare, 
-  Activity, 
-  Target, 
-  Syringe, 
-  Users, 
-  AlertTriangle, 
-  Stethoscope, 
-  History, 
-  FileText, 
-  Pill, 
-  ClipboardList, 
-  CheckSquare,
-  CheckCircle2
-} from "lucide-react";
+import { Check, Circle } from "lucide-react";
 
 export interface VisitSection {
   id: string;
   label: string;
-  icon: React.ElementType;
 }
 
 const allSections: VisitSection[] = [
-  { id: "subjective", label: "Subjective", icon: MessageSquare },
-  { id: "objective", label: "Objective", icon: Activity },
-  { id: "pointOfCare", label: "Point of Care", icon: Target },
-  { id: "vaccines", label: "Vaccines", icon: Syringe },
-  { id: "familyHistory", label: "Family", icon: Users },
-  { id: "riskFlags", label: "Risks", icon: AlertTriangle },
-  { id: "surgicalHistory", label: "Surgical", icon: Stethoscope },
-  { id: "pastMedicalHistory", label: "Past Med", icon: History },
-  { id: "documents", label: "Docs", icon: FileText },
-  { id: "medications", label: "Meds", icon: Pill },
-  { id: "orders", label: "Orders", icon: ClipboardList },
-  { id: "assessmentPlan", label: "A&P", icon: CheckSquare },
+  { id: "subjective", label: "Subjective" },
+  { id: "objective", label: "Objective" },
+  { id: "pointOfCare", label: "Point of Care" },
+  { id: "vaccines", label: "Vaccines" },
+  { id: "familyHistory", label: "Family History" },
+  { id: "riskFlags", label: "Risk Flags" },
+  { id: "surgicalHistory", label: "Surgical History" },
+  { id: "pastMedicalHistory", label: "Past Medical History" },
+  { id: "documents", label: "Documents" },
+  { id: "medications", label: "Medications" },
+  { id: "orders", label: "Orders" },
+  { id: "assessmentPlan", label: "Assessment & Plan" },
 ];
 
 /**
@@ -44,14 +29,21 @@ const allSections: VisitSection[] = [
  */
 export function getSectionsForRole(userRole?: string): VisitSection[] {
   if (userRole === "nurse") {
+    // For nurses: exclude assessmentPlan, and reorder so objective is 2nd to last, subjective is last
+    // Filter out assessmentPlan, objective, and subjective
     const otherSections = allSections.filter(
       s => s.id !== "assessmentPlan" && s.id !== "objective" && s.id !== "subjective"
     );
+    
+    // Build result: other sections, then objective (2nd to last), then subjective (last)
     const result = [...otherSections];
-    result.push({ id: "objective", label: "Objective", icon: Activity });
-    result.push({ id: "subjective", label: "Subjective", icon: MessageSquare });
+    result.push({ id: "objective", label: "Objective" });
+    result.push({ id: "subjective", label: "Subjective" });
+    
     return result;
   }
+  
+  // For doctors: return all sections in original order
   return allSections;
 }
 
@@ -71,74 +63,43 @@ export function SectionStepper({
   className,
 }: SectionStepperProps) {
   const sections = getSectionsForRole(userRole);
-  const currentIndex = sections.findIndex(s => s.id === currentSection);
-
+  
   return (
-    <div className={cn("w-full overflow-x-auto thin-scrollbar", className)}>
-      <nav className="flex items-center justify-center min-w-max px-4 relative">
-        {/* Progress track background */}
-        <div className="flex items-center gap-0">
-          {sections.map((section, idx) => {
-            const isCurrent = currentSection === section.id;
-            const isReviewed = reviewedSections.has(section.id);
-            const isPast = idx < currentIndex;
-            const Icon = section.icon;
-
-            return (
-              <div key={section.id} className="flex items-center">
-                {/* Step dot/indicator */}
-                <button
-                  onClick={() => onSectionClick(section.id)}
-                  className={cn(
-                    "relative flex flex-col items-center gap-1.5 px-1 transition-all group",
-                    isCurrent ? "scale-105" : "hover:scale-105"
-                  )}
-                >
-                  <div
-                    className={cn(
-                      "h-8 w-8 rounded-full flex items-center justify-center transition-all duration-200 border",
-                      isCurrent
-                        ? "bg-slate-900 border-slate-900 text-white shadow-lg dark:bg-white dark:border-white dark:text-slate-900"
-                        : isReviewed
-                          ? "bg-green-50 border-green-500 text-green-600 dark:bg-green-950 dark:border-green-500"
-                          : "bg-white border-slate-900 text-slate-900 dark:bg-slate-900 dark:border-white dark:text-white"
-                    )}
-                  >
-                    {isReviewed && !isCurrent ? (
-                      <CheckCircle2 className="h-4 w-4" />
-                    ) : (
-                      <Icon className="h-4 w-4" />
-                    )}
-                  </div>
-
-                  <span className={cn(
-                    "text-[9px] font-semibold whitespace-nowrap uppercase tracking-wide transition-colors text-center",
-                    isCurrent
-                      ? "text-slate-900 dark:text-white"
-                      : isReviewed
-                        ? "text-green-600 dark:text-green-400"
-                        : "text-slate-900 dark:text-white group-hover:text-slate-600"
-                  )}>
-                    {section.label}
-                  </span>
-                </button>
-
-                {/* Connector line */}
-                {idx < sections.length - 1 && (
-                  <div className={cn(
-                    "w-4 h-0.5 -mt-4 mx-0.5 rounded-full transition-colors",
-                    isReviewed && (isPast || isCurrent)
-                      ? "bg-green-400 dark:bg-green-500"
-                      : "bg-slate-200 dark:bg-slate-700"
-                  )} />
-                )}
-              </div>
-            );
-          })}
-        </div>
+    <div className={cn("space-y-1", className)}>
+      <h3 className="text-sm font-semibold text-foreground mb-3">
+        Visit Note Sections
+      </h3>
+      <nav className="space-y-1">
+        {sections.map((section) => {
+          const isCurrent = currentSection === section.id;
+          const isReviewed = reviewedSections.has(section.id);
+          
+          return (
+            <button
+              key={section.id}
+              onClick={() => onSectionClick(section.id)}
+              className={cn(
+                "w-full text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-2",
+                isCurrent
+                  ? "bg-accent text-accent-foreground font-medium"
+                  : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                isReviewed && !isCurrent && "text-foreground/80"
+              )}
+            >
+              {isReviewed ? (
+                <Check className="h-4 w-4 text-green-600 dark:text-green-400" />
+              ) : (
+                <Circle className="h-4 w-4" />
+              )}
+              <span>{section.label}</span>
+            </button>
+          );
+        })}
       </nav>
     </div>
   );
 }
 
+// Export all sections for backward compatibility (used in other places)
 export { allSections as visitSections };
+

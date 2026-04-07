@@ -35,11 +35,10 @@ export default async function PatientOverviewPage({
         <h1 className="text-3xl font-bold text-foreground">Overview</h1>
       </div>
 
-      <PatientOverviewCards
+      <PatientOverviewCards 
         patient={overview.patient}
         stats={overview.stats}
         latestVisit={overview.latestVisit}
-        recentVisits={overview.recentVisits}
         userRole={session.role}
       />
     </div>
