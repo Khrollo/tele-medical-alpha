@@ -14,7 +14,7 @@ interface WaitingRoomShellProps {
 }
 
 export function WaitingRoomShell({ children, userRole, userName }: WaitingRoomShellProps) {
-    const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
+    const [, setIsSidebarOpen] = React.useState(false);
     const openSidebarRef = React.useRef<(() => void) | null>(null);
 
     return (

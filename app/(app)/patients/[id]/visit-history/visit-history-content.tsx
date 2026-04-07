@@ -3,12 +3,11 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Calendar, Search, X, CalendarDays, Clock, MapPin, ChevronRight, Filter, ClipboardList } from "lucide-react";
+import { Calendar, Search, X, CalendarDays, Clock, ChevronRight, Filter, ClipboardList } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { cn } from "@/app/_lib/utils/cn";
 import {
   Select,

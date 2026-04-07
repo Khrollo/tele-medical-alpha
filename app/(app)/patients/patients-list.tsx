@@ -4,15 +4,15 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useMemo } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { QRCodeSVG } from "qrcode.react";
 import { Input } from "@/components/ui/input";
-import { Video, Copy, Check, Phone, Mail, Calendar, User, Pill, AlertCircle, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { Video, Copy, Check, User, Pill, AlertCircle, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { toast } from "sonner";
-import { formatDate, formatDateTime } from "@/app/_lib/utils/format-date";
+import { formatDate } from "@/app/_lib/utils/format-date";
 import { formatVisitStatusLabel } from "@/app/_lib/utils/visit-status-label";
 
 interface VisitInfo {
@@ -44,7 +44,8 @@ interface PatientsListProps {
   userRole: string;
 }
 
-export function PatientsList({ patients, userRole }: PatientsListProps) {
+export function PatientsList({ patients, userRole: _userRole }: PatientsListProps) {
+  void _userRole;
   const router = useRouter();
   const searchParams = useSearchParams();
   const [showVirtualModal, setShowVirtualModal] = useState<{ patientId: string; visitId: string; joinUrl: string } | null>(null);

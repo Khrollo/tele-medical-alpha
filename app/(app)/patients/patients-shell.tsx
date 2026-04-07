@@ -13,7 +13,7 @@ interface PatientsShellProps {
 }
 
 export function PatientsShell({ children, userRole, userName }: PatientsShellProps) {
-    const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
+    const [, setIsSidebarOpen] = React.useState(false);
     const openSidebarRef = React.useRef<(() => void) | null>(null);
 
     return (

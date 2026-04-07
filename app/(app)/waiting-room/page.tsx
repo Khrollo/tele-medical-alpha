@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { getServerSession } from "@/app/_lib/supabase/server";
 import { getUnassignedPatientsWithVisits } from "@/app/_lib/db/drizzle/queries/patients";
-import { Card, CardContent } from "@/components/ui/card";
 import { WaitingRoomList } from "./waiting-room-list";
 
 export default async function WaitingRoomPage() {

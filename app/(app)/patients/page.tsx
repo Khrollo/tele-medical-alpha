@@ -2,9 +2,6 @@ import { redirect } from "next/navigation";
 import { getServerSession } from "@/app/_lib/supabase/server";
 import { getAllPatients } from "@/app/_lib/db/drizzle/queries/patients";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
-import Link from "next/link";
 import { PatientsList } from "./patients-list";
 import { PatientsShell } from "./patients-shell";
 
