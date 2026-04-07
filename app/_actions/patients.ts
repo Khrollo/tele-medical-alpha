@@ -91,6 +91,7 @@ export async function createPatientAction(payload: CreatePatientPayload) {
 
     // Create patient in database
     const patient = await createPatient({
+      id: payload.patientId,
       fullName,
       preferredName: payload.preferredName || null,
       dob: payload.dob || null,

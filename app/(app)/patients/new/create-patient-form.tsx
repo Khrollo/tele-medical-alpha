@@ -590,8 +590,8 @@ export function CreatePatientForm() {
     }
 
     if (isVoiceRecording) {
-      voiceControllerRef.current.stop();
-      await handleApplyVoicePrefill(voiceTranscript);
+      const snapshot = await voiceControllerRef.current.stop();
+      await handleApplyVoicePrefill(snapshot.fullTranscript);
       return;
     }
 
@@ -1080,6 +1080,7 @@ export function CreatePatientForm() {
 
             // Now create the patient with the signature URL and the pre-generated ID
             const result = await createPatientAction({
+              patientId,
               firstName: pendingPatientData.firstName,
               lastName: pendingPatientData.lastName,
               dob: pendingPatientData.dob || undefined,

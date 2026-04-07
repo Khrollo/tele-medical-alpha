@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     if (witnessSignature) {
       const witnessBase64Data = witnessSignature.replace(/^data:image\/\w+;base64,/, "");
       const witnessBuffer = Buffer.from(witnessBase64Data, "base64");
-      witnessSignaturePath = `${patientId}/signatures/${uniqueId}-witness-signature.png`;
+      witnessSignaturePath = `${targetPatientId}/signatures/${uniqueId}-witness-signature.png`;
 
       await uploadFile(bucket, witnessSignaturePath, witnessBuffer, {
         contentType: "image/png",

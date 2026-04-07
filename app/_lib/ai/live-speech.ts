@@ -64,7 +64,7 @@ interface CreateLiveSpeechControllerOptions {
 export interface LiveSpeechController {
   isSupported: boolean;
   start: () => Promise<void>;
-  stop: () => void;
+  stop: () => Promise<LiveSpeechSnapshot>;
   destroy: () => void;
 }
 
@@ -94,6 +94,12 @@ export function createLiveSpeechController(
       },
       stop: () => {
         options.onStateChange?.("stopped");
+        return Promise.resolve({
+          finalTranscript: "",
+          interimTranscript: "",
+          fullTranscript: "",
+          appendedFinalTranscript: "",
+        });
       },
       destroy: () => {
         options.onStateChange?.("stopped");
@@ -104,18 +110,44 @@ export function createLiveSpeechController(
   let recognition: SpeechRecognitionLike | null = null;
   let shouldRestart = false;
   let finalSegments: string[] = [];
+  let latestSnapshot: LiveSpeechSnapshot = {
+    finalTranscript: "",
+    interimTranscript: "",
+    fullTranscript: "",
+    appendedFinalTranscript: "",
+  };
+  let pendingStopPromise: Promise<LiveSpeechSnapshot> | null = null;
+  let resolvePendingStop: ((snapshot: LiveSpeechSnapshot) => void) | null = null;
+  let stopTimeoutId: number | null = null;
 
   const emitSnapshot = (
     appendedFinalTranscript = "",
     interimTranscript = ""
   ) => {
     const finalTranscript = finalSegments.join(" ").trim();
-    options.onSnapshot({
+    latestSnapshot = {
       finalTranscript,
       interimTranscript: interimTranscript.trim(),
       fullTranscript: [finalTranscript, interimTranscript.trim()].filter(Boolean).join(" ").trim(),
       appendedFinalTranscript: appendedFinalTranscript.trim(),
-    });
+    };
+    options.onSnapshot(latestSnapshot);
+  };
+
+  const clearPendingStopTimeout = () => {
+    if (stopTimeoutId !== null && typeof window !== "undefined") {
+      window.clearTimeout(stopTimeoutId);
+      stopTimeoutId = null;
+    }
+  };
+
+  const settlePendingStop = (snapshot: LiveSpeechSnapshot = latestSnapshot) => {
+    clearPendingStopTimeout();
+    if (resolvePendingStop) {
+      resolvePendingStop(snapshot);
+      resolvePendingStop = null;
+    }
+    pendingStopPromise = null;
   };
 
   const ensureRecognition = () => {
@@ -161,6 +193,9 @@ export function createLiveSpeechController(
         shouldRestart = false;
       }
       options.onError?.(message);
+      if (event.error !== "no-speech") {
+        settlePendingStop();
+      }
     };
 
     recognition.onend = () => {
@@ -171,7 +206,9 @@ export function createLiveSpeechController(
         } catch {
           shouldRestart = false;
         }
+        return;
       }
+      settlePendingStop();
     };
 
     return recognition;
@@ -183,17 +220,40 @@ export function createLiveSpeechController(
       const instance = ensureRecognition();
       shouldRestart = options.restartOnEnd ?? true;
       finalSegments = [];
+      settlePendingStop({
+        finalTranscript: "",
+        interimTranscript: "",
+        fullTranscript: "",
+        appendedFinalTranscript: "",
+      });
       emitSnapshot();
       instance.start();
     },
     stop: () => {
       shouldRestart = false;
+      if (!recognition) {
+        options.onStateChange?.("stopped");
+        return Promise.resolve(latestSnapshot);
+      }
+      if (pendingStopPromise) {
+        return pendingStopPromise;
+      }
+      pendingStopPromise = new Promise<LiveSpeechSnapshot>((resolve) => {
+        resolvePendingStop = resolve;
+        if (typeof window !== "undefined") {
+          stopTimeoutId = window.setTimeout(() => {
+            settlePendingStop();
+          }, 1200);
+        }
+      });
       recognition?.stop();
       options.onStateChange?.("stopped");
+      return pendingStopPromise;
     },
     destroy: () => {
       shouldRestart = false;
       recognition?.abort();
+      settlePendingStop();
       recognition = null;
       options.onStateChange?.("idle");
     },
