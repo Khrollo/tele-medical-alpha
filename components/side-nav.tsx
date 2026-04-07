@@ -108,7 +108,7 @@ export function SideNav({ userRole, userName, patientId, patientName, onMobileSt
             });
             items.push({
                 href: "/open-notes",
-                label: "Open Notes",
+                label: "Inbox",
                 icon: <FileText className="h-4 w-4" />,
             });
         }
@@ -121,7 +121,7 @@ export function SideNav({ userRole, userName, patientId, patientName, onMobileSt
             });
             items.push({
                 href: "/waiting-room",
-                label: "Waiting Room",
+                label: "Schedule",
                 icon: <Clock className="h-4 w-4" />,
             });
         }

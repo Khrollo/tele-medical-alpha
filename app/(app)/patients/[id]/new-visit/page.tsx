@@ -2,6 +2,7 @@ import { redirect, notFound } from "next/navigation";
 import { getCurrentUser } from "@/app/_lib/auth/get-current-user";
 import { getPatientBasics } from "@/app/_lib/db/drizzle/queries/patient";
 import { getVisitDetails } from "@/app/_lib/db/drizzle/queries/visit";
+import { getRecentVisitHistoryPreview } from "@/app/_lib/db/drizzle/queries/visit-history";
 import { NewVisitForm } from "@/app/_components/visit/new-visit-form";
 
 interface NewVisitPageProps {
@@ -35,6 +36,8 @@ export default async function NewVisitPage({
     notFound();
   }
 
+  const previousVisits = await getRecentVisitHistoryPreview(patientId, 6);
+
   // If visitId is provided, load existing visit data for editing
   let existingVisitData = null;
   let visitAppointmentType: string | null = null;
@@ -60,6 +63,7 @@ export default async function NewVisitPage({
       existingVisitData={existingVisitData || undefined}
       visitAppointmentType={visitAppointmentType ?? undefined}
       visitTwilioRoomName={visitTwilioRoomName ?? undefined}
+      previousVisits={previousVisits}
     />
   );
 }

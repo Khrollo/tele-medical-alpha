@@ -46,9 +46,10 @@ export function WaitingRoomShell({ children, userRole, userName }: WaitingRoomSh
                         </Button>
                         <div className="flex-1 min-w-0">
                             <Input
-                                placeholder="Search by name, priority, or appointment type..."
+                                placeholder={userRole === "nurse" ? "Search today’s schedule..." : "Search by name, priority, or appointment type..."}
                                 className="max-w-md w-full"
                                 id="waiting-room-search"
+                                autoComplete="off"
                             />
                         </div>
                     </div>

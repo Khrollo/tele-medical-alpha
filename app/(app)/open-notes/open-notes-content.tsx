@@ -149,9 +149,9 @@ export function OpenNotesContent({ visits }: OpenNotesContentProps) {
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
       <div>
-        <h1 className="text-3xl font-bold text-foreground">Open Notes</h1>
+        <h1 className="text-3xl font-bold text-foreground">Inbox</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Visits assigned to you that are in progress or waiting
+          Visits and note tasks assigned to you that are in progress or waiting
         </p>
       </div>
 
@@ -164,7 +164,7 @@ export function OpenNotesContent({ visits }: OpenNotesContentProps) {
       ) : visits.length === 0 ? (
         <Card>
           <CardContent className="flex items-center justify-center py-12">
-            <p className="text-muted-foreground">No open notes</p>
+            <p className="text-muted-foreground">No inbox items</p>
           </CardContent>
         </Card>
       ) : (

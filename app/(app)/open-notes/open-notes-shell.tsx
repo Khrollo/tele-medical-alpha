@@ -44,7 +44,7 @@ export function OpenNotesShell({ children, userRole, userName }: OpenNotesShellP
                     </Button>
                     <div className="flex-1 min-w-0">
                         <Input
-                            placeholder="Search by patient name, status, or priority..."
+                            placeholder="Search inbox by patient name, status, or priority..."
                             className="max-w-md w-full"
                             id="open-notes-search"
                         />
