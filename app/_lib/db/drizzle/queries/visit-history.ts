@@ -1,4 +1,4 @@
-import { eq, desc, and, gte, lte, count } from "drizzle-orm";
+import { eq, desc, and, gte, lte, count, max } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
 import { db } from "../index";
 import { visits, patients, notes } from "../schema";
@@ -141,6 +141,15 @@ export async function getRecentVisitHistoryPreview(
   patientId: string,
   limit = 5
 ): Promise<VisitHistoryPreviewEntry[]> {
+  const latestNotePerVisit = db
+    .select({
+      visitId: notes.visitId,
+      latestCreatedAt: max(notes.createdAt).as("latest_created_at"),
+    })
+    .from(notes)
+    .groupBy(notes.visitId)
+    .as("latest_note_per_visit");
+
   const visitRows = await db
     .select({
       id: visits.id,
@@ -151,7 +160,14 @@ export async function getRecentVisitHistoryPreview(
       note: notes.note,
     })
     .from(visits)
-    .leftJoin(notes, eq(notes.visitId, visits.id))
+    .leftJoin(latestNotePerVisit, eq(latestNotePerVisit.visitId, visits.id))
+    .leftJoin(
+      notes,
+      and(
+        eq(notes.visitId, visits.id),
+        eq(notes.createdAt, latestNotePerVisit.latestCreatedAt)
+      )
+    )
     .where(eq(visits.patientId, patientId))
     .orderBy(desc(visits.createdAt))
     .limit(limit);
