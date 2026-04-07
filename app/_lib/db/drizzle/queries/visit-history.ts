@@ -1,7 +1,7 @@
 import { eq, desc, and, gte, lte, count } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
 import { db } from "../index";
-import { visits, patients } from "../schema";
+import { visits, patients, notes } from "../schema";
 
 export interface GetVisitHistoryOptions {
   page?: number;
@@ -32,6 +32,15 @@ export interface VisitHistoryResult {
   total: number;
   page: number;
   pageSize: number;
+}
+
+export interface VisitHistoryPreviewEntry {
+  id: string;
+  status: string | null;
+  createdAt: Date;
+  appointmentType: string | null;
+  priority: string | null;
+  note: unknown;
 }
 
 /**
@@ -126,5 +135,34 @@ export async function getVisitHistory(
       revalidate: 60,
     }
   )();
+}
+
+export async function getRecentVisitHistoryPreview(
+  patientId: string,
+  limit = 5
+): Promise<VisitHistoryPreviewEntry[]> {
+  const visitRows = await db
+    .select({
+      id: visits.id,
+      status: visits.status,
+      createdAt: visits.createdAt,
+      appointmentType: visits.appointmentType,
+      priority: visits.priority,
+      note: notes.note,
+    })
+    .from(visits)
+    .leftJoin(notes, eq(notes.visitId, visits.id))
+    .where(eq(visits.patientId, patientId))
+    .orderBy(desc(visits.createdAt))
+    .limit(limit);
+
+  return visitRows.map((row) => ({
+    id: row.id,
+    status: row.status,
+    createdAt: row.createdAt,
+    appointmentType: row.appointmentType,
+    priority: row.priority,
+    note: row.note,
+  }));
 }
 
