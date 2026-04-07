@@ -187,6 +187,52 @@ export function NewVisitForm({
     defaultValues: createEmptyVisitNote(),
   });
 
+  const collectLockedPaths = React.useCallback((dirtyFields: Record<string, unknown>) => {
+    const locked = new Set<string>();
+
+    const walk = (value: unknown, prefix = "") => {
+      if (!value) return;
+      if (value === true && prefix) {
+        locked.add(prefix);
+        return;
+      }
+      if (Array.isArray(value)) {
+        return;
+      }
+      if (typeof value === "object") {
+        for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+          walk(child, prefix ? `${prefix}.${key}` : key);
+        }
+      }
+    };
+
+    walk(dirtyFields);
+    return locked;
+  }, []);
+
+  React.useEffect(() => {
+    const currentLockedPaths = collectLockedPaths(
+      form.formState.dirtyFields as Record<string, unknown>
+    );
+
+    currentLockedPaths.forEach((path) => {
+      lockedPathsRef.current.add(path);
+    });
+  }, [collectLockedPaths, form.formState.dirtyFields]);
+
+  const getLockedPaths = React.useCallback(() => {
+    const currentLockedPaths = collectLockedPaths(
+      form.formState.dirtyFields as Record<string, unknown>
+    );
+    const combined = new Set(lockedPathsRef.current);
+
+    currentLockedPaths.forEach((path) => {
+      combined.add(path);
+    });
+
+    return combined;
+  }, [collectLockedPaths, form.formState.dirtyFields]);
+
   // Auto-mark section as reviewed when navigated to
   const handleSectionChange = React.useCallback(async (sectionId: string) => {
     // Save current section data before switching
@@ -371,13 +417,15 @@ export function NewVisitForm({
           // Merge with most recent (AI) values taking precedence
           const merged = mergeVisitNote(
             currentData,
-            initialParsedData as Partial<VisitNote>
+            initialParsedData as Partial<VisitNote>,
+            { lockedPaths: getLockedPaths() }
           );
 
           console.log("Merged data after merge:", merged);
 
           form.reset(merged);
           appliedParsedDataRef.current = dataKey;
+          setHasAiDraftSuggestions(true);
           toast.success("AI data applied to form");
 
           // Verify the form was updated
@@ -390,7 +438,7 @@ export function NewVisitForm({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialParsedData, draftLoaded]);
+  }, [initialParsedData, draftLoaded, getLockedPaths]);
 
   // Auto-save draft on form changes (debounced)
   React.useEffect(() => {
@@ -478,9 +526,12 @@ export function NewVisitForm({
       const currentData = form.getValues() as VisitNote;
 
       // Merge with most recent (AI) values taking precedence
-      const merged = mergeVisitNote(currentData, parsed as Partial<VisitNote>);
+      const merged = mergeVisitNote(currentData, parsed as Partial<VisitNote>, {
+        lockedPaths: getLockedPaths(),
+      });
 
       form.reset(merged);
+      setHasAiDraftSuggestions(true);
       toast.success("AI data applied to form");
     } catch (error) {
       console.error("Error merging parsed data:", error);
@@ -1112,6 +1163,11 @@ export function NewVisitForm({
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
+      {hasAiDraftSuggestions && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/30 dark:bg-amber-950/40 dark:text-amber-200">
+          AI draft suggestions were applied. Fields you edited manually stay locked against later AI updates.
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

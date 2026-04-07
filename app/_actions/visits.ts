@@ -14,6 +14,7 @@ import type { VisitNote } from "@/app/_lib/visit-note/schema";
 import { db } from "@/app/_lib/db/drizzle/index";
 import { patients, notes } from "@/app/_lib/db/drizzle/schema";
 import { eq, desc } from "drizzle-orm";
+import { parseVisitNoteFromTranscript } from "@/app/_lib/ai/parse-visit";
 
 /**
  * Create a visit draft (server action)
@@ -153,7 +154,7 @@ export async function finalizeVisitAction(
       if (visitNotes.length > 0) {
         const latestNote = visitNotes[0];
         if (latestNote.note && typeof latestNote.note === "object") {
-          const noteData = latestNote.note as any;
+          const noteData = latestNote.note as Partial<VisitNote>;
 
           // Sync all sections from visit note to patient record
           const { syncVisitNoteToPatientAction } = await import(
@@ -249,6 +250,29 @@ export async function saveTranscriptAction(params: {
   });
 
   return { success: true };
+}
+
+export async function parseTranscriptDraftAction(params: {
+  transcript: string;
+  previousTranscripts?: string[];
+  patientContext?: {
+    allergies?: unknown[];
+    meds?: unknown[];
+    pmh?: unknown[];
+  };
+}) {
+  await requireUser(["doctor", "nurse"]);
+
+  const parsed = await parseVisitNoteFromTranscript({
+    transcript: params.transcript,
+    previousTranscripts: params.previousTranscripts,
+    patientContext: params.patientContext,
+  });
+
+  return {
+    success: true,
+    parsed,
+  };
 }
 
 /**

@@ -4,14 +4,15 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { assignVisitToMeAction } from "@/app/_actions/visits";
 import { toast } from "sonner";
-import { Clock, ArrowUpDown, Video, Copy, Check, QrCode, RefreshCw } from "lucide-react";
+import { ArrowUpDown, Video, Copy, Check, QrCode, RefreshCw, User } from "lucide-react";
+import { cn } from "@/app/_lib/utils/cn";
 import { QRCodeSVG } from "qrcode.react";
 import { useWaitingRoomRealtime } from "@/app/_lib/hooks/use-waiting-room-realtime";
 
@@ -246,41 +247,48 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
   }, [searchQuery]);
 
   return (
-    <div className="space-y-4 p-4 md:p-6">
-      {/* Refresh Button and Sort Controls */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleRefresh}
-          disabled={isRefreshing}
-          className="w-fit"
-        >
-          <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
-          {isRefreshing ? "Refreshing..." : "Refresh"}
-        </Button>
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-end">
-        <div className="flex items-center gap-2">
-          <Select value={sortField} onValueChange={(value) => handleSortChange(value as SortField)}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Sort by" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="waitTime">Wait Time</SelectItem>
-              <SelectItem value="priority">Priority</SelectItem>
-              <SelectItem value="name">Name</SelectItem>
-              <SelectItem value="appointmentType">Appointment Type</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => setSortDirection(sortDirection === "asc" ? "desc" : "asc")}
-            title={`Sort ${sortDirection === "asc" ? "Descending" : "Ascending"}`}
-          >
-            <ArrowUpDown className="h-4 w-4" />
-          </Button>
+    <div className="space-y-6 p-4 md:p-6">
+      {/* Header Area */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Waiting Room</h2>
+          <p className="mt-0.5 text-sm text-slate-500">
+            Monitor and assign incoming patient visits.
+          </p>
         </div>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="rounded-full px-4 hover:bg-white dark:hover:bg-slate-800 border border-slate-200 transition-all"
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 text-slate-500 ${isRefreshing ? "animate-spin" : ""}`} />
+            <span className="text-xs font-bold text-slate-600 uppercase tracking-widest">{isRefreshing ? "Syncing..." : "Sync"}</span>
+          </Button>
+          <div className="h-8 w-[1px] bg-slate-200 dark:bg-slate-800 hidden sm:block" />
+          <div className="flex items-center gap-2">
+            <Select value={sortField} onValueChange={(value) => handleSortChange(value as SortField)}>
+              <SelectTrigger className="w-[160px] h-9 rounded-full bg-white dark:bg-slate-900 border border-slate-100 text-xs font-bold uppercase tracking-widest">
+                <SelectValue placeholder="Sort by" />
+              </SelectTrigger>
+              <SelectContent className="rounded-xl">
+                <SelectItem value="waitTime">Wait Time</SelectItem>
+                <SelectItem value="priority">Priority</SelectItem>
+                <SelectItem value="name">Name</SelectItem>
+                <SelectItem value="appointmentType">Appointment Type</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 rounded-full border border-slate-100 bg-white dark:bg-slate-900"
+              onClick={() => setSortDirection(sortDirection === "asc" ? "desc" : "asc")}
+            >
+              <ArrowUpDown className="h-4 w-4 text-slate-600" />
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -290,54 +298,67 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
           const waitTime = getWaitTime(patient.visit);
           const priorityBadge = getPriorityBadge(patient.visit?.priority ?? null);
           const appointmentBadge = getAppointmentTypeBadge(patient.visit?.appointmentType ?? null);
+          const isUrgent = patient.visit?.priority?.toLowerCase() === "critical" || patient.visit?.priority?.toLowerCase() === "urgent";
 
           return (
-            <Card 
-              key={patient.id} 
-              className="w-full hover:shadow-md transition-shadow"
+            <Card
+              key={patient.id}
+              className={cn(
+                "group relative rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden transition-all hover:shadow-md hover:translate-y-[-2px]",
+                isUrgent && "ring-2 ring-red-500/10"
+              )}
             >
-              <CardHeader>
-                <CardTitle className="text-lg font-semibold">
-                  {patient.fullName}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Wait Time */}
-                <div className="flex items-center gap-2 text-sm">
-                  <Clock className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-muted-foreground">Waiting:</span>
-                  <span className="font-medium">
-                    {waitTime > 0 ? formatWaitTime(waitTime) : "Just arrived"}
-                  </span>
+              {isUrgent && (
+                <div className="absolute top-0 left-0 right-0 h-1 bg-red-500/50" />
+              )}
+              <CardContent className="p-5">
+                <div className="flex justify-between items-start mb-3">
+                  <div className="h-10 w-10 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-400 group-hover:bg-slate-900 group-hover:text-white transition-all">
+                    <User className="h-5 w-5" />
+                  </div>
+                  <div className="px-2.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 flex flex-col items-center min-w-[56px]">
+                     <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">Wait</span>
+                     <span className={cn(
+                       "text-sm font-medium",
+                       waitTime > 30 ? "text-red-500" : waitTime > 15 ? "text-orange-500" : "text-slate-700 dark:text-slate-200"
+                     )}>
+                       {waitTime > 0 ? formatWaitTime(waitTime) : "NEW"}
+                     </span>
+                  </div>
                 </div>
 
-                {/* Priority and Appointment Type */}
-                <div className="flex flex-wrap gap-2">
-                  <Badge
-                    variant={priorityBadge.variant}
-                    className={
-                      priorityBadge.className ||
-                      (priorityBadge.variant === "default" && priorityBadge.label === "mild" ? "bg-green-500/10 text-green-700 dark:text-green-400 border-green-500" : "")
-                    }
-                  >
-                    {priorityBadge.label}
-                  </Badge>
-                  <Badge
-                    variant={appointmentBadge.variant}
-                    className={appointmentBadge.className || ""}
-                  >
-                    {appointmentBadge.label}
-                  </Badge>
+                <div className="mb-3">
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-1.5">
+                    {patient.fullName}
+                  </h3>
+                  <div className="flex flex-wrap gap-1.5">
+                    <Badge
+                      variant={priorityBadge.variant}
+                      className={cn(
+                        "rounded-full px-3 py-0.5 text-[10px] font-medium uppercase tracking-wider h-5",
+                        priorityBadge.className
+                      )}
+                    >
+                      {priorityBadge.label}
+                    </Badge>
+                    <Badge
+                      variant={appointmentBadge.variant}
+                      className={cn(
+                        "rounded-full px-3 py-0.5 text-[10px] font-medium uppercase tracking-wider h-5",
+                        appointmentBadge.className
+                      )}
+                    >
+                      {appointmentBadge.label}
+                    </Badge>
+                  </div>
                 </div>
 
-                {/* Show virtual appointment actions if:
-                  1. We have virtual visit data for this patient, OR
-                  2. The visit is virtual and has a clinician assigned (already assigned) */}
-                {(virtualVisitData[patient.id] ||
-                  (patient.visit?.appointmentType?.toLowerCase() === "virtual" &&
-                    patient.visit?.status === "In Progress" &&
-                    patient.visit?.patientJoinToken)) ? (
-                  <div onClick={(e) => e.stopPropagation()}>
+                {/* Show virtual appointment actions if ready */}
+                <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
+                  {(virtualVisitData[patient.id] ||
+                    (patient.visit?.appointmentType?.toLowerCase() === "virtual" &&
+                      patient.visit?.status === "In Progress" &&
+                      patient.visit?.patientJoinToken)) ? (
                     <VirtualAppointmentActions
                       joinUrl={
                         typeof window !== 'undefined'
@@ -346,17 +367,17 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
                       }
                       onJoin={() => router.push(`/visit/${virtualVisitData[patient.id]?.visitId || patient.visit?.id || ""}/call`)}
                     />
-                  </div>
-                ) : (
-                  <Button
-                    onClick={(e) => handleAssignToMe(patient.id, patient.visit?.id ?? null, e)}
-                    className="w-full"
-                    variant="default"
-                    disabled={loadingPatientId === patient.id}
-                  >
-                    {loadingPatientId === patient.id ? "Loading..." : "Assign To Me"}
-                  </Button>
-                )}
+                  ) : (
+                    <Button
+                      onClick={(e) => handleAssignToMe(patient.id, patient.visit?.id ?? null, e)}
+                      className="w-full"
+                      variant={isUrgent ? "default" : "secondary"}
+                      disabled={loadingPatientId === patient.id}
+                    >
+                      {loadingPatientId === patient.id ? "Assigning..." : "Assign To Me"}
+                    </Button>
+                  )}
+                </div>
               </CardContent>
             </Card>
           );
@@ -402,30 +423,30 @@ function VirtualAppointmentActions({
         <Video className="h-4 w-4 mr-2" />
         Join Call
       </Button>
-      <div className="flex gap-2 flex-nowrap">
+      <div className="grid grid-cols-2 gap-3">
         <Button
           onClick={() => setShowQR(true)}
           variant="outline"
-          className="flex-1 min-w-0"
+          className="rounded-xl h-10 font-bold"
           size="sm"
         >
-          <QrCode className="h-4 w-4 mr-1" />
+          <QrCode className="h-4 w-4 mr-2" />
           QR Code
         </Button>
         <Button
           onClick={handleCopy}
           variant="outline"
-          className="flex-1 min-w-0"
+          className="rounded-xl h-10 font-bold"
           size="sm"
         >
           {copied ? (
             <>
-              <Check className="h-4 w-4 mr-1" />
+              <Check className="h-4 w-4 mr-2" />
               Copied
             </>
           ) : (
             <>
-              <Copy className="h-4 w-4 mr-1" />
+              <Copy className="h-4 w-4 mr-2" />
               Copy Link
             </>
           )}
