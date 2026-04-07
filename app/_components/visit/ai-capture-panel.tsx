@@ -49,6 +49,33 @@ export function AICapturePanel({
   const lastParsedTranscriptRef = useRef("");
   const liveControllerRef = useRef<ReturnType<typeof createLiveSpeechController> | null>(null);
 
+  const queuePendingParsing = React.useCallback(
+    async (params: { audioFileId?: string | null; audioPath?: string }) => {
+      try {
+        const { getOfflineDB } = await import("@/app/_lib/offline/db");
+        const db = getOfflineDB();
+        const draft = await db.draftVisits.where("patientId").equals(patientId).first();
+
+        if (!draft || !params.audioFileId) {
+          return;
+        }
+
+        await db.draftVisits.update(draft.draftId, {
+          pendingParsing: JSON.stringify({
+            audioFileId: params.audioFileId,
+            audioPath: params.audioPath,
+            previousTranscripts:
+              previousTranscripts.length > 0 ? previousTranscripts : undefined,
+            patientId,
+          }),
+        });
+      } catch (offlineError) {
+        console.warn("Failed to save offline draft:", offlineError);
+      }
+    },
+    [patientId, previousTranscripts]
+  );
+
   React.useEffect(() => {
     if (navigator.onLine) {
       preloadLamejs().catch((error) => {
@@ -125,7 +152,7 @@ export function AICapturePanel({
       setInterimTranscript(snapshot.interimTranscript);
 
       if (snapshot.appendedFinalTranscript) {
-        onTranscriptReady(snapshot.appendedFinalTranscript);
+        onTranscriptReady(snapshot.fullTranscript);
         setPreviousTranscripts((prev) => [...prev, snapshot.appendedFinalTranscript]);
       }
 
@@ -241,24 +268,7 @@ export function AICapturePanel({
       }
 
       if (!navigator.onLine) {
-        try {
-          const { getOfflineDB } = await import("@/app/_lib/offline/db");
-          const db = getOfflineDB();
-          const draft = await db.draftVisits.where("patientId").equals(patientId).first();
-
-          if (draft && fileId) {
-            await db.draftVisits.update(draft.draftId, {
-              pendingParsing: JSON.stringify({
-                audioFileId: fileId,
-                previousTranscripts:
-                  previousTranscripts.length > 0 ? previousTranscripts : undefined,
-                patientId,
-              }),
-            });
-          }
-        } catch (offlineError) {
-          console.warn("Failed to save offline draft:", offlineError);
-        }
+        await queuePendingParsing({ audioFileId: fileId });
         toast.warning("Connection lost. Audio saved locally.");
         setState("idle");
         return;
@@ -290,6 +300,10 @@ export function AICapturePanel({
           throw new Error("Upload failed");
         }
       } catch {
+        await queuePendingParsing({
+          audioFileId: fileId || fallbackId,
+          audioPath: path,
+        });
         toast.warning("Upload failed. Audio saved locally.");
         setState("idle");
         return;
@@ -327,6 +341,10 @@ export function AICapturePanel({
           setState("idle");
         }, 2000);
       } catch {
+        await queuePendingParsing({
+          audioFileId: fileId || fallbackId,
+          audioPath: audioPath || path,
+        });
         toast.warning("Processing failed. Audio saved offline.");
         setState("idle");
       }

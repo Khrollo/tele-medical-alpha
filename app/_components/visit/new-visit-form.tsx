@@ -99,6 +99,7 @@ export function NewVisitForm({
   const [visitIdRemote, setVisitIdRemote] = React.useState<string | null>(existingVisitId || null);
   const [draftLoaded, setDraftLoaded] = React.useState(false);
   const [hasAiDraftSuggestions, setHasAiDraftSuggestions] = React.useState(false);
+  const lockedPathsRef = React.useRef<Set<string>>(new Set());
 
   // Listen for medical panel open events from PatientChartShell
   React.useEffect(() => {
@@ -178,8 +179,7 @@ export function NewVisitForm({
     defaultValues: createEmptyVisitNote(),
   });
 
-  const getLockedPaths = React.useCallback(() => {
-    const dirtyFields = form.formState.dirtyFields as Record<string, unknown>;
+  const collectLockedPaths = React.useCallback((dirtyFields: Record<string, unknown>) => {
     const locked = new Set<string>();
 
     const walk = (value: unknown, prefix = "") => {
@@ -200,7 +200,30 @@ export function NewVisitForm({
 
     walk(dirtyFields);
     return locked;
-  }, [form.formState.dirtyFields]);
+  }, []);
+
+  React.useEffect(() => {
+    const currentLockedPaths = collectLockedPaths(
+      form.formState.dirtyFields as Record<string, unknown>
+    );
+
+    currentLockedPaths.forEach((path) => {
+      lockedPathsRef.current.add(path);
+    });
+  }, [collectLockedPaths, form.formState.dirtyFields]);
+
+  const getLockedPaths = React.useCallback(() => {
+    const currentLockedPaths = collectLockedPaths(
+      form.formState.dirtyFields as Record<string, unknown>
+    );
+    const combined = new Set(lockedPathsRef.current);
+
+    currentLockedPaths.forEach((path) => {
+      combined.add(path);
+    });
+
+    return combined;
+  }, [collectLockedPaths, form.formState.dirtyFields]);
 
   // Auto-mark section as reviewed when navigated to
   const handleSectionChange = React.useCallback(async (sectionId: string) => {
