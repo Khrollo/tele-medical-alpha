@@ -14,7 +14,7 @@ interface WaitingRoomShellProps {
 }
 
 export function WaitingRoomShell({ children, userRole, userName }: WaitingRoomShellProps) {
-    const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
+    const [, setIsSidebarOpen] = React.useState(false);
     const openSidebarRef = React.useRef<(() => void) | null>(null);
 
     return (
@@ -49,6 +49,7 @@ export function WaitingRoomShell({ children, userRole, userName }: WaitingRoomSh
                                 placeholder="Search by name, priority, or appointment type..."
                                 className="max-w-md w-full"
                                 id="waiting-room-search"
+                                autoComplete="off"
                             />
                         </div>
                     </div>
