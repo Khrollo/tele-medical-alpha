@@ -36,7 +36,9 @@ export default async function NewVisitPage({
     notFound();
   }
 
-  const previousVisits = await getRecentVisitHistoryPreview(patientId, 6);
+  const previousVisits = (await getRecentVisitHistoryPreview(patientId, 6)).filter(
+    (visit) => visit.id !== visitId
+  );
 
   // If visitId is provided, load existing visit data for editing
   let existingVisitData = null;
@@ -45,11 +47,16 @@ export default async function NewVisitPage({
   if (visitId) {
     const visitDetails = await getVisitDetails(visitId);
     if (visitDetails) {
+      if (visitDetails.patient.id !== patientId) {
+        notFound();
+      }
       if (visitDetails.notes[0]) {
         existingVisitData = visitDetails.notes[0].note;
       }
       visitAppointmentType = visitDetails.visit.appointmentType;
       visitTwilioRoomName = visitDetails.visit.twilioRoomName;
+    } else {
+      notFound();
     }
   }
 

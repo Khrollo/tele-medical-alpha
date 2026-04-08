@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Menu, X, LogOut, Clock, Users, FileText, UserPlus, ChevronLeft, ChevronRight, Info, User, Pill, Syringe, History, Stethoscope, AlertCircle, Activity, FolderOpen } from "lucide-react";
+import { X, LogOut, Clock, Users, FileText, UserPlus, ChevronLeft, ChevronRight, Info, User, Pill, Syringe, History, Stethoscope, AlertCircle, Activity, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "./theme-toggle";
 import { cn } from "@/app/_lib/utils/cn";
@@ -103,7 +103,7 @@ export function SideNav({ userRole, userName, patientId, patientName, onMobileSt
         if (userRole === "doctor") {
             items.push({
                 href: "/waiting-room",
-                label: "Waiting Room",
+                label: "Schedule",
                 icon: <Clock className="h-4 w-4" />,
             });
             items.push({

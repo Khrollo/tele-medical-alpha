@@ -3038,6 +3038,9 @@ function OrdersSection({ form, userRole }: { form: any; userRole?: string }) {
     form.setValue("orders", current.filter((_, i) => i !== index));
   };
 
+  const shouldShowPendingPhysicianSignatureStatus =
+    userRole === "nurse" || editData.status === "Pending Physician Signature";
+
   return (
     <div className="space-y-4">
       {orders.length === 0 ? (
@@ -3110,7 +3113,7 @@ function OrdersSection({ form, userRole }: { form: any; userRole?: string }) {
                           <SelectValue placeholder="Select..." />
                         </SelectTrigger>
                         <SelectContent>
-                          {userRole === "nurse" && (
+                          {shouldShowPendingPhysicianSignatureStatus && (
                             <SelectItem value="Pending Physician Signature">Pending Physician Signature</SelectItem>
                           )}
                           <SelectItem value="Pending">Pending</SelectItem>
