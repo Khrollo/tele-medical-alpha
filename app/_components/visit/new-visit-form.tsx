@@ -107,6 +107,8 @@ export function NewVisitForm({
   const [isSaving, setIsSaving] = React.useState(false);
   const [visitIdRemote, setVisitIdRemote] = React.useState<string | null>(existingVisitId || null);
   const [draftLoaded, setDraftLoaded] = React.useState(false);
+  const [hasAiDraftSuggestions, setHasAiDraftSuggestions] = React.useState(false);
+  const lockedPathsRef = React.useRef<Set<string>>(new Set());
   const [showPreviousVisitsDialog, setShowPreviousVisitsDialog] = React.useState(false);
 
   // Listen for medical panel open events from PatientChartShell
@@ -224,7 +226,7 @@ export function NewVisitForm({
     const currentLockedPaths = collectLockedPaths(
       form.formState.dirtyFields as Record<string, unknown>
     );
-    const combined = new Set(lockedPathsRef.current);
+    const combined = new Set<string>(lockedPathsRef.current);
 
     currentLockedPaths.forEach((path) => {
       combined.add(path);
