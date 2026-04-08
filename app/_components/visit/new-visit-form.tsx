@@ -5,7 +5,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Save, CheckCircle2, ChevronLeft, ChevronRight, Plus, Pencil, Trash2, CheckCircle, AlertCircle, XCircle, Camera, X, Loader2, User, Clock, FileSignature, Video } from "lucide-react";
+import { Save, CheckCircle2, ChevronLeft, ChevronRight, ChevronDown, Plus, Pencil, Trash2, CheckCircle, AlertCircle, XCircle, Camera, X, Loader2, User, Clock, FileSignature, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -2430,6 +2430,34 @@ function SurgicalHistorySection({ form }: { form: any }) {
   );
 }
 
+type Icd10Option = {
+  code: string;
+  label: string;
+};
+
+function normalizeIcd10Options(payload: unknown): Icd10Option[] {
+  if (!Array.isArray(payload)) return [];
+
+  const stringArrays = payload.filter(
+    (entry): entry is string[] =>
+      Array.isArray(entry) && entry.every((item) => typeof item === "string")
+  );
+
+  const codes = stringArrays.find((entry) =>
+    entry.some((item) => /^[A-Z][0-9A-Z]{1,6}(\.[0-9A-Z]{1,4})?$/.test(item))
+  );
+  if (!codes || codes.length === 0) return [];
+
+  const descriptions = stringArrays.find(
+    (entry) => entry.length === codes.length && entry !== codes
+  );
+
+  return codes.map((code, index) => ({
+    code,
+    label: descriptions?.[index] ? `${code} - ${descriptions[index]}` : code,
+  }));
+}
+
 // Past Medical History Section Component
 function PastMedicalHistorySection({ form }: { form: any }) {
   const pastMedicalHistoryValue = form.watch("pastMedicalHistory");
@@ -2450,6 +2478,10 @@ function PastMedicalHistorySection({ form }: { form: any }) {
     icd10: "",
     source: "",
   });
+  const [icd10Options, setIcd10Options] = React.useState<Icd10Option[]>([]);
+  const [isLoadingIcd10, setIsLoadingIcd10] = React.useState(false);
+  const [isIcd10DropdownOpen, setIsIcd10DropdownOpen] = React.useState(false);
+  const icd10DropdownRef = React.useRef<HTMLDivElement | null>(null);
 
   // Use refs to track latest values for cleanup
   const editingIndexRef = React.useRef<number | null>(null);
@@ -2459,6 +2491,77 @@ function PastMedicalHistorySection({ form }: { form: any }) {
     editingIndexRef.current = editingIndex;
     editDataRef.current = editData;
   }, [editingIndex, editData]);
+
+  React.useEffect(() => {
+    if (editingIndex === null) {
+      setIcd10Options([]);
+      setIsLoadingIcd10(false);
+      return;
+    }
+
+    const searchTerm = editData.icd10.trim() || editData.condition.trim();
+    if (searchTerm.length < 2) {
+      setIcd10Options([]);
+      setIsLoadingIcd10(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        setIsLoadingIcd10(true);
+        const response = await fetch(
+          `https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?sf=code,name&terms=${encodeURIComponent(searchTerm)}&maxList=50`,
+          { signal: controller.signal }
+        );
+
+        if (!response.ok) {
+          throw new Error(`ICD-10 search failed with status ${response.status}`);
+        }
+
+        const payload = (await response.json()) as unknown;
+        const normalized = normalizeIcd10Options(payload);
+        const currentCode = editData.icd10.trim().toUpperCase();
+
+        const withCurrentCode =
+          currentCode && !normalized.some((option) => option.code.toUpperCase() === currentCode)
+            ? [{ code: currentCode, label: `${currentCode} - current entry` }, ...normalized]
+            : normalized;
+
+        setIcd10Options(withCurrentCode);
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          console.warn("Unable to load ICD-10 options", error);
+          setIcd10Options([]);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsLoadingIcd10(false);
+        }
+      }
+    }, 250);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeoutId);
+    };
+  }, [editData.condition, editData.icd10, editingIndex]);
+
+  React.useEffect(() => {
+    if (!isIcd10DropdownOpen) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!icd10DropdownRef.current) return;
+      if (!icd10DropdownRef.current.contains(event.target as Node)) {
+        setIsIcd10DropdownOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isIcd10DropdownOpen]);
 
   // Auto-save pending edits when component unmounts (section change)
   React.useEffect(() => {
@@ -2628,11 +2731,45 @@ function PastMedicalHistorySection({ form }: { form: any }) {
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
                       <Label>ICD-10 Code</Label>
-                      <Input
-                        value={editData.icd10}
-                        onChange={(e) => setEditData({ ...editData, icd10: e.target.value })}
-                        placeholder="e.g., E11.9"
-                      />
+                      <div className="relative" ref={icd10DropdownRef}>
+                        <Input
+                          value={editData.icd10}
+                          onFocus={() => setIsIcd10DropdownOpen(true)}
+                          onChange={(e) => {
+                            setEditData({
+                              ...editData,
+                              icd10: e.target.value.toUpperCase(),
+                            });
+                            setIsIcd10DropdownOpen(true);
+                          }}
+                          placeholder="e.g., E11.9"
+                          className="pr-8"
+                        />
+                        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        {isIcd10DropdownOpen && (isLoadingIcd10 || icd10Options.length > 0) && (
+                          <div className="absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md">
+                            {isLoadingIcd10 ? (
+                              <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                                Loading ICD-10 options...
+                              </div>
+                            ) : (
+                              icd10Options.map((option) => (
+                                <button
+                                  key={option.code}
+                                  type="button"
+                                  onClick={() => {
+                                    setEditData({ ...editData, icd10: option.code });
+                                    setIsIcd10DropdownOpen(false);
+                                  }}
+                                  className="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                                >
+                                  {option.label}
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                     <div className="space-y-2">
                       <Label>Source</Label>
