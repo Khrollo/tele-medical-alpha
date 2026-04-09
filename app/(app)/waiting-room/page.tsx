@@ -21,7 +21,7 @@ export default async function WaitingRoomPage() {
 
     return (
         <div className="flex flex-1 flex-col">
-            <WaitingRoomList patients={patients} />
+            <WaitingRoomList patients={patients} userRole={session.role} />
         </div>
     );
 }

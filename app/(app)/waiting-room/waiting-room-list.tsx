@@ -36,12 +36,13 @@ interface Patient {
 
 interface WaitingRoomListProps {
   patients: Patient[]; // Initial patients from server
+  userRole?: string;
 }
 
 type SortField = "name" | "waitTime" | "priority" | "appointmentType";
 type SortDirection = "asc" | "desc";
 
-export function WaitingRoomList({ patients: initialPatients }: WaitingRoomListProps) {
+export function WaitingRoomList({ patients: initialPatients, userRole }: WaitingRoomListProps) {
   const router = useRouter();
   const [loadingPatientId, setLoadingPatientId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -384,14 +385,13 @@ export function WaitingRoomList({ patients: initialPatients }: WaitingRoomListPr
       </div>
 
       {filteredAndSortedPatients.length === 0 && (
-        <Card className="rounded-2xl border-dashed border-2 bg-transparent shadow-none">
-          <CardContent className="flex items-center justify-center py-16">
-            <div className="text-center">
-              <div className="h-12 w-12 bg-white dark:bg-slate-900 rounded-full border border-slate-100 flex items-center justify-center mx-auto mb-3">
-                 <RefreshCw className="h-5 w-5 text-slate-300" />
-              </div>
-              <p className="text-sm text-slate-500">No patients currently in the waiting room.</p>
-            </div>
+        <Card>
+          <CardContent className="flex items-center justify-center py-12">
+            <p className="text-muted-foreground">
+              {userRole === "nurse"
+                ? "No patients currently scheduled or waiting"
+                : "No patients found matching your search"}
+            </p>
           </CardContent>
         </Card>
       )}

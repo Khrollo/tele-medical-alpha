@@ -59,6 +59,14 @@ interface NewVisitFormProps {
   isInVideoCall?: boolean; // Flag to indicate if form is in video call context
   visitAppointmentType?: string | null; // Appointment type for virtual visit detection
   visitTwilioRoomName?: string | null; // Twilio room name for joining calls
+  previousVisits?: Array<{
+    id: string;
+    status: string | null;
+    createdAt: Date;
+    appointmentType: string | null;
+    priority: string | null;
+    note: unknown;
+  }>;
 }
 
 
@@ -79,6 +87,7 @@ export function NewVisitForm({
   isInVideoCall = false,
   visitAppointmentType,
   visitTwilioRoomName,
+  previousVisits = [],
 }: NewVisitFormProps) {
   const router = useRouter();
   const postSaveSessionKey = React.useMemo(
@@ -100,6 +109,7 @@ export function NewVisitForm({
   const [draftLoaded, setDraftLoaded] = React.useState(false);
   const [hasAiDraftSuggestions, setHasAiDraftSuggestions] = React.useState(false);
   const lockedPathsRef = React.useRef<Set<string>>(new Set());
+  const [showPreviousVisitsDialog, setShowPreviousVisitsDialog] = React.useState(false);
 
   // Listen for medical panel open events from PatientChartShell
   React.useEffect(() => {
@@ -216,7 +226,7 @@ export function NewVisitForm({
     const currentLockedPaths = collectLockedPaths(
       form.formState.dirtyFields as Record<string, unknown>
     );
-    const combined = new Set(lockedPathsRef.current);
+    const combined = new Set<string>(lockedPathsRef.current);
 
     currentLockedPaths.forEach((path) => {
       combined.add(path);
@@ -678,11 +688,17 @@ export function NewVisitForm({
         // Navigate to send to waiting room page
         router.push(`/patients/${patientId}/send-to-waiting-room?visitId=${visitIdRemote}`);
       } else if (action === "sign") {
-        // Sign the note and set is_assigned to null
-        await finalizeVisitAction(visitIdRemote, "signed");
-        await updatePatientAssignedAction(patientId, null);
-        toast.success("Note signed successfully");
-        router.push(`/patients/${patientId}/visit-history`);
+        if (userRole === "nurse") {
+          await updatePatientAssignedAction(patientId, false);
+          toast.success("Note handed off to physician workflow");
+          router.push("/waiting-room");
+        } else {
+          // Sign the note and set is_assigned to null
+          await finalizeVisitAction(visitIdRemote, "signed");
+          await updatePatientAssignedAction(patientId, null);
+          toast.success("Note signed successfully");
+          router.push(`/patients/${patientId}/visit-history`);
+        }
       } else {
         // For "view" and "waiting", keep visit as "In Progress"
         // Visit status remains "In Progress" until explicitly signed
@@ -1123,7 +1139,7 @@ export function NewVisitForm({
         );
       case "orders":
         return (
-          <OrdersSection form={form} />
+          <OrdersSection form={form} userRole={userRole} />
         );
       case "documents":
         return (
@@ -1300,6 +1316,16 @@ export function NewVisitForm({
           {reviewedSections.size} of {roleSections.length} sections reviewed
         </div>
         <div className="flex items-center gap-2">
+          {previousVisits.length > 0 && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowPreviousVisitsDialog(true)}
+            >
+              <Clock className="h-4 w-4 mr-2" />
+              Previous Visits
+            </Button>
+          )}
           <Button
             onClick={handleFinalize}
             disabled={isSaving || !allSectionsReviewed || !isOnline}
@@ -1356,9 +1382,11 @@ export function NewVisitForm({
             >
               <FileSignature className="h-5 w-5 mr-3" />
               <div className="text-left">
-                <div className="font-medium">Sign the Note</div>
+                <div className="font-medium">{userRole === "nurse" ? "Hand Off Note" : "Sign the Note"}</div>
                 <div className="text-sm text-muted-foreground">
-                  Mark note as signed and unassign patient
+                  {userRole === "nurse"
+                    ? "Hand this note off for physician completion"
+                    : "Mark note as signed and unassign patient"}
                 </div>
               </div>
             </Button>
@@ -1369,6 +1397,79 @@ export function NewVisitForm({
               <span className="text-sm text-muted-foreground">Processing...</span>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+      <Dialog open={showPreviousVisitsDialog} onOpenChange={setShowPreviousVisitsDialog}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Previous Visit History</DialogTitle>
+            <DialogDescription>
+              Review recent visits without leaving the active note.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-2">
+            {previousVisits.map((visit) => {
+              const noteData =
+                visit.note && typeof visit.note === "object"
+                  ? (visit.note as Record<string, any>)
+                  : null;
+
+              return (
+                <div key={visit.id} className="rounded-xl border p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="font-semibold">
+                        {new Date(visit.createdAt).toLocaleString()}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {visit.status || "Unknown status"}
+                        {visit.appointmentType ? ` • ${visit.appointmentType}` : ""}
+                        {visit.priority ? ` • ${visit.priority}` : ""}
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() =>
+                        window.open(
+                          `/patients/${patientId}/visit-history/${visit.id}`,
+                          "_blank",
+                          "noopener,noreferrer"
+                        )
+                      }
+                    >
+                      Open Full Details
+                    </Button>
+                  </div>
+                  {noteData && (
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      <div className="rounded-lg bg-muted/40 p-3">
+                        <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Subjective
+                        </div>
+                        <p className="text-sm">
+                          {noteData.subjective?.chiefComplaint ||
+                            noteData.subjective?.hpi ||
+                            "No subjective summary"}
+                        </p>
+                      </div>
+                      <div className="rounded-lg bg-muted/40 p-3">
+                        <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Assessment / Plan
+                        </div>
+                        <p className="text-sm">
+                          {Array.isArray(noteData.assessmentPlan) &&
+                          noteData.assessmentPlan[0]?.assessment
+                            ? noteData.assessmentPlan[0].assessment
+                            : "No assessment summary"}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </DialogContent>
       </Dialog>
     </div>
@@ -2822,7 +2923,7 @@ function PastMedicalHistorySection({ form }: { form: any }) {
 }
 
 // Orders Section Component
-function OrdersSection({ form }: { form: any }) {
+function OrdersSection({ form, userRole }: { form: any; userRole?: string }) {
   const ordersValue = form.watch("orders");
   // Ensure orders is always an array
   const orders = React.useMemo(() => {
@@ -2883,7 +2984,7 @@ function OrdersSection({ form }: { form: any }) {
       type: "",
       priority: "",
       details: "",
-      status: "",
+      status: userRole === "nurse" ? "Pending Physician Signature" : "",
       dateOrdered: "",
     };
     const current = getOrdersArray();
@@ -2938,6 +3039,9 @@ function OrdersSection({ form }: { form: any }) {
     const current = getOrdersArray();
     form.setValue("orders", current.filter((_, i) => i !== index));
   };
+
+  const shouldShowPendingPhysicianSignatureStatus =
+    userRole === "nurse" || editData.status === "Pending Physician Signature";
 
   return (
     <div className="space-y-4">
@@ -3011,6 +3115,9 @@ function OrdersSection({ form }: { form: any }) {
                           <SelectValue placeholder="Select..." />
                         </SelectTrigger>
                         <SelectContent>
+                          {shouldShowPendingPhysicianSignatureStatus && (
+                            <SelectItem value="Pending Physician Signature">Pending Physician Signature</SelectItem>
+                          )}
                           <SelectItem value="Pending">Pending</SelectItem>
                           <SelectItem value="Ordered">Ordered</SelectItem>
                           <SelectItem value="In Progress">In Progress</SelectItem>
@@ -3088,7 +3195,7 @@ function OrdersSection({ form }: { form: any }) {
         className="w-full"
       >
         <Plus className="h-4 w-4 mr-2" />
-        Add Order
+        {userRole === "nurse" ? "Add Draft Order" : "Add Order"}
       </Button>
     </div>
   );
