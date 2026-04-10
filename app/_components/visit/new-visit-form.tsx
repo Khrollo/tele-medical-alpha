@@ -1224,8 +1224,6 @@ export function NewVisitForm({
     assessmentPlan: "Formulate diagnoses, treatment plans, and follow-up instructions.",
   };
 
-  const CurrentIcon = roleSections.find(s => s.id === currentSection)?.icon;
-
   return (
     <div className="flex flex-col min-h-full pb-0">
       {hasAiDraftSuggestions && (
@@ -1314,7 +1312,6 @@ export function NewVisitForm({
           {/* Section header with icon, title, and description */}
           <div className="text-center space-y-1">
             <div className="flex items-center justify-center gap-3">
-              {CurrentIcon && <CurrentIcon className="h-5 w-5 text-slate-400" />}
               <h1 className="text-2xl font-bold text-foreground">
                 {roleSections.find(s => s.id === currentSection)?.label}
               </h1>
