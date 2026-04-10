@@ -39,6 +39,7 @@ export default async function PatientOverviewPage({
         patient={overview.patient}
         stats={overview.stats}
         latestVisit={overview.latestVisit}
+        recentVisits={overview.recentVisits}
         userRole={session.role}
       />
     </div>
