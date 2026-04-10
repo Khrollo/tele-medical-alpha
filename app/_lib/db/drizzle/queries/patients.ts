@@ -1,4 +1,4 @@
-import { eq, desc, or, isNull, and, inArray, count } from "drizzle-orm";
+import { eq, desc, or, isNull, and, inArray, count, gte, lt } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
 import { db } from "../index";
 import { patients, visits, users, notes, documents } from "../schema";
@@ -223,6 +223,7 @@ export async function getAllPatients() {
       id: visits.id,
       patientId: visits.patientId,
       status: visits.status,
+      notesStatus: visits.notesStatus,
       appointmentType: visits.appointmentType,
       clinicianId: visits.clinicianId,
       patientJoinToken: visits.patientJoinToken,
@@ -264,6 +265,218 @@ export async function getAllPatients() {
   )();
 }
 
+function getDayBounds(reference = new Date()) {
+  const start = new Date(reference);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return { start, end };
+}
+
+async function buildPatientsWithDetails(patientRows: Array<{
+  id: string;
+  fullName: string;
+  dob: string | null;
+  phone: string | null;
+  email: string | null;
+  clinicianId: string | null;
+  allergies: unknown;
+  currentMedications: unknown;
+  createdAt: Date;
+}>) {
+  const clinicianIds = patientRows
+    .map((p) => p.clinicianId)
+    .filter((id): id is string => id !== null);
+
+  const clinicians = clinicianIds.length > 0
+    ? await db
+        .select({
+          id: users.id,
+          name: users.name,
+          email: users.email,
+        })
+        .from(users)
+        .where(inArray(users.id, clinicianIds))
+    : [];
+
+  const clinicianMap = new Map(clinicians.map((c) => [c.id, c]));
+  const patientIds = patientRows.map((p) => p.id);
+
+  if (patientIds.length === 0) {
+    return [];
+  }
+
+  const openVisits = await db
+    .select({
+      id: visits.id,
+      patientId: visits.patientId,
+      status: visits.status,
+      notesStatus: visits.notesStatus,
+      appointmentType: visits.appointmentType,
+      clinicianId: visits.clinicianId,
+      patientJoinToken: visits.patientJoinToken,
+      twilioRoomName: visits.twilioRoomName,
+      createdAt: visits.createdAt,
+    })
+    .from(visits)
+    .where(
+      and(
+        inArray(visits.patientId, patientIds),
+        or(
+          eq(visits.status, "In Progress"),
+          eq(visits.status, "in_progress"),
+          eq(visits.status, "in progress"),
+          eq(visits.status, "Waiting"),
+          eq(visits.status, "waiting"),
+          eq(visits.notesStatus, "draft"),
+          eq(visits.notesStatus, "in_progress"),
+          eq(visits.notesStatus, "in progress")
+        )
+      )
+    )
+    .orderBy(desc(visits.createdAt));
+
+  const openVisitMap = new Map<string, (typeof openVisits)[0]>();
+  for (const visit of openVisits) {
+    if (!openVisitMap.has(visit.patientId)) {
+      openVisitMap.set(visit.patientId, visit);
+    }
+  }
+
+  const latestVisits = await db
+    .select({
+      id: visits.id,
+      patientId: visits.patientId,
+      status: visits.status,
+      notesStatus: visits.notesStatus,
+      appointmentType: visits.appointmentType,
+      clinicianId: visits.clinicianId,
+      patientJoinToken: visits.patientJoinToken,
+      twilioRoomName: visits.twilioRoomName,
+      createdAt: visits.createdAt,
+    })
+    .from(visits)
+    .where(inArray(visits.patientId, patientIds))
+    .orderBy(desc(visits.createdAt));
+
+  const visitMap = new Map<string, (typeof latestVisits)[0]>();
+  for (const visit of latestVisits) {
+    if (!visitMap.has(visit.patientId)) {
+      visitMap.set(visit.patientId, visit);
+    }
+  }
+
+  return patientRows.map((patient) => {
+    const clinician = patient.clinicianId ? clinicianMap.get(patient.clinicianId) : null;
+    const allergies = Array.isArray(patient.allergies) ? patient.allergies : [];
+    const medications = Array.isArray(patient.currentMedications) ? patient.currentMedications : [];
+
+    return {
+      ...patient,
+      clinicianName: clinician?.name || null,
+      clinicianEmail: clinician?.email || null,
+      allergiesCount: allergies.length,
+      medicationsCount: medications.length,
+      visit: openVisitMap.get(patient.id) || visitMap.get(patient.id) || null,
+    };
+  });
+}
+
+async function getPatientIdsWithVisitsToday() {
+  const { start, end } = getDayBounds();
+  const todayVisits = await db
+    .select({ patientId: visits.patientId })
+    .from(visits)
+    .where(and(gte(visits.createdAt, start), lt(visits.createdAt, end)))
+    .orderBy(desc(visits.createdAt));
+
+  return Array.from(new Set(todayVisits.map((visit) => visit.patientId)));
+}
+
+async function getRecentActivePatientIds(daysBack: number) {
+  const since = new Date();
+  since.setDate(since.getDate() - daysBack);
+
+  const recentVisits = await db
+    .select({ patientId: visits.patientId })
+    .from(visits)
+    .where(gte(visits.createdAt, since))
+    .orderBy(desc(visits.createdAt));
+
+  return Array.from(new Set(recentVisits.map((visit) => visit.patientId)));
+}
+
+export async function getDoctorScopedPatients(clinicianId: string) {
+  return unstable_cache(
+    async () => {
+      const todayPatientIds = await getPatientIdsWithVisitsToday();
+      const whereCondition = todayPatientIds.length > 0
+        ? or(eq(patients.clinicianId, clinicianId), inArray(patients.id, todayPatientIds))
+        : eq(patients.clinicianId, clinicianId);
+
+      const scopedPatients = await db
+        .select({
+          id: patients.id,
+          fullName: patients.fullName,
+          dob: patients.dob,
+          phone: patients.phone,
+          email: patients.email,
+          clinicianId: patients.clinicianId,
+          allergies: patients.allergies,
+          currentMedications: patients.currentMedications,
+          createdAt: patients.createdAt,
+        })
+        .from(patients)
+        .where(whereCondition)
+        .orderBy(desc(patients.createdAt));
+
+      return buildPatientsWithDetails(scopedPatients);
+    },
+    [`doctor-scoped-patients:${clinicianId}`],
+    {
+      tags: ["patients", "waiting-room", `clinician:${clinicianId}`],
+      revalidate: 30,
+    }
+  )();
+}
+
+export async function getNurseFocusedPatients() {
+  return unstable_cache(
+    async () => {
+      const todayPatientIds = await getPatientIdsWithVisitsToday();
+      const recentPatientIds = await getRecentActivePatientIds(14);
+      const focusedPatientIds = Array.from(new Set([...todayPatientIds, ...recentPatientIds]));
+
+      if (focusedPatientIds.length === 0) {
+        return [];
+      }
+
+      const focusedPatients = await db
+        .select({
+          id: patients.id,
+          fullName: patients.fullName,
+          dob: patients.dob,
+          phone: patients.phone,
+          email: patients.email,
+          clinicianId: patients.clinicianId,
+          allergies: patients.allergies,
+          currentMedications: patients.currentMedications,
+          createdAt: patients.createdAt,
+        })
+        .from(patients)
+        .where(inArray(patients.id, focusedPatientIds))
+        .orderBy(desc(patients.createdAt));
+
+      return buildPatientsWithDetails(focusedPatients);
+    },
+    ["nurse-focused-patients"],
+    {
+      tags: ["patients", "waiting-room"],
+      revalidate: 30,
+    }
+  )();
+}
+
 /**
  * Get patient overview data including latest visit
  * @param patientId - UUID of the patient
@@ -295,8 +508,8 @@ export async function getPatientOverview(patientId: string) {
     return null;
   }
 
-  // Get latest visit for this patient
-  const latestVisitResult = await db
+  // Get recent visits for this patient (up to 5)
+  const recentVisitsResult = await db
     .select({
       id: visits.id,
       createdAt: visits.createdAt,
@@ -310,9 +523,9 @@ export async function getPatientOverview(patientId: string) {
     .from(visits)
     .where(eq(visits.patientId, patientId))
     .orderBy(desc(visits.createdAt))
-    .limit(1);
+    .limit(5);
 
-  const latestVisit = latestVisitResult[0] || null;
+  const latestVisit = recentVisitsResult[0] || null;
 
   // Count orders from notes across all visits for this patient.
   // Orders are stored inside the JSONB `note` column, so we still need
@@ -377,6 +590,12 @@ export async function getPatientOverview(patientId: string) {
               chiefComplaint,
             }
           : null,
+        recentVisits: recentVisitsResult.map((v) => ({
+          id: v.id,
+          createdAt: v.createdAt,
+          status: v.status,
+          appointmentType: v.appointmentType,
+        })),
       };
     },
     [`patient-overview-${patientId}`],
