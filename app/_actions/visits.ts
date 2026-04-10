@@ -553,3 +553,25 @@ export async function getClinicianOpenVisitsAction() {
 
   return { visits };
 }
+
+export async function getDoctorInboxDailySummaryAction() {
+  const user = await requireUser(["doctor"]);
+
+  const { getDoctorInboxDailySummary } = await import(
+    "@/app/_lib/db/drizzle/queries/visit"
+  );
+  const summary = await getDoctorInboxDailySummary(user.id);
+
+  return summary;
+}
+
+export async function getVisitCreatedByRoleAction(visitId: string) {
+  await requireUser(["doctor", "nurse"]);
+
+  const { getVisitCreatedByRole } = await import(
+    "@/app/_lib/db/drizzle/queries/visit"
+  );
+  const role = await getVisitCreatedByRole(visitId);
+
+  return { role };
+}
