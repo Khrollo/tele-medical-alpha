@@ -3,9 +3,9 @@
 import * as React from "react";
 import { SideNav } from "@/components/side-nav";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Menu } from "lucide-react";
 import { PatientCacheProvider } from "@/app/_components/providers/patient-cache-provider";
-import { WorkflowCommandSearch } from "@/components/workflow-command-search";
 
 interface WaitingRoomShellProps {
   children: React.ReactNode;
@@ -43,9 +43,11 @@ export function WaitingRoomShell({
               <span className="sr-only">Open menu</span>
             </Button>
             <div className="flex-1 min-w-0">
-              <WorkflowCommandSearch
+              <Input
                 placeholder="Search schedule, inbox, patients, or workflows..."
-                className="max-w-md"
+                className="max-w-md w-full"
+                id="waiting-room-search"
+                autoComplete="off"
               />
             </div>
           </div>

@@ -3,8 +3,8 @@
 import * as React from "react";
 import { SideNav } from "@/components/side-nav";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Menu } from "lucide-react";
-import { WorkflowCommandSearch } from "@/components/workflow-command-search";
 
 interface OpenNotesShellProps {
     children: React.ReactNode;
@@ -43,9 +43,11 @@ export function OpenNotesShell({ children, userRole, userName }: OpenNotesShellP
                         <span className="sr-only">Open menu</span>
                     </Button>
                     <div className="flex-1 min-w-0">
-                        <WorkflowCommandSearch
+                        <Input
                             placeholder="Search inbox, patients, or workflows..."
-                            className="max-w-md"
+                            className="max-w-md w-full"
+                            id="open-notes-search"
+                            autoComplete="off"
                         />
                     </div>
                 </div>
