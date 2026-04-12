@@ -3,7 +3,7 @@
 import { useState, FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { createSupabaseBrowserClient } from "@/app/_lib/supabase/client";
+import { authClient } from "@/app/_lib/auth/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,7 +22,6 @@ export function SignInForm() {
     setError(null);
     setIsLoading(true);
 
-    // Basic validation
     if (!email.trim()) {
       setError("Email is required");
       setIsLoading(false);
@@ -36,8 +35,7 @@ export function SignInForm() {
     }
 
     try {
-      const supabase = createSupabaseBrowserClient();
-      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+      const { error: signInError } = await authClient.signIn.email({
         email: email.trim(),
         password,
       });
@@ -48,17 +46,13 @@ export function SignInForm() {
         return;
       }
 
-      if (data.user) {
-        const requestedRedirect = searchParams.get("redirect");
-        const safeRedirect =
-          requestedRedirect && requestedRedirect.startsWith("/")
-            ? requestedRedirect
-            : "/";
+      const requestedRedirect = searchParams.get("redirect");
+      const safeRedirect =
+        requestedRedirect && requestedRedirect.startsWith("/")
+          ? requestedRedirect
+          : "/";
 
-        // Use a full navigation so the server decides the post-login destination
-        // from the real session + DB role instead of stale client metadata.
-        window.location.assign(safeRedirect);
-      }
+      window.location.assign(safeRedirect);
     } catch (err) {
       setError(err instanceof Error ? err.message : "An unexpected error occurred");
       setIsLoading(false);
@@ -152,4 +146,3 @@ export function SignInForm() {
     </Card>
   );
 }
-
