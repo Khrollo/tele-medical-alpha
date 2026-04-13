@@ -7,11 +7,10 @@ import * as z from "zod";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Save, Phone, Mail, Calendar, UserPlus, Cross, FileText, X, Clock, User, AlertCircle, Search, ChevronDown, Check, Mic, Square, AudioLines } from "lucide-react";
+import { Save, Phone, Mail, Calendar, Cross, X, Clock, User, AlertCircle, Search, ChevronDown, Check, Mic, Square, AudioLines } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -20,7 +19,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -29,18 +27,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { createPatientAction, updatePatientAssignmentAction, updatePatientConsentSignatureAction, extractPatientIntakeFromTranscriptAction } from "@/app/_actions/patients";
+import { createPatientAction, updatePatientAssignmentAction, extractPatientIntakeFromTranscriptAction } from "@/app/_actions/patients";
 import { createVisitDraftAction, updateVisitWaitingRoomAction } from "@/app/_actions/visits";
 import { cn } from "@/app/_lib/utils/cn";
 import { ConsentFormDialog } from "@/app/_components/patient-chart/consent-form-dialog";
 import { createLiveSpeechController, isLiveSpeechSupported } from "@/app/_lib/ai/live-speech";
 
-// Phone number validation helper
-const phoneRegex = /^[\d\s\-\(\)\+\.]+$/;
 const cleanPhone = (phone: string) => phone.replace(/\D/g, "");
-
-// US ZIP code validation (5 digits or 5+4 format)
-const zipRegex = /^\d{5}(-\d{4})?$/;
 
 // Country codes with common countries (no flags)
 const countryCodes = [
@@ -71,15 +64,6 @@ const countryCodes = [
 
 // Default to Jamaica (876)
 const DEFAULT_COUNTRY = countryCodes.find(c => c.country === "Jamaica" && c.areaCode === "876") || countryCodes[1];
-
-// US State codes (2-letter abbreviations)
-const usStates = [
-  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
-  "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
-  "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
-  "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC",
-  "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY", "DC"
-];
 
 const createPatientSchema = z.object({
   firstName: z
@@ -359,12 +343,18 @@ export function CreatePatientForm() {
   const [showAiConfirmDialog, setShowAiConfirmDialog] = React.useState(false);
   const [pendingSubmitData, setPendingSubmitData] = React.useState<CreatePatientFormData | null>(null);
   const [isVoiceRecording, setIsVoiceRecording] = React.useState(false);
+  const [isVoiceSessionActive, setIsVoiceSessionActive] = React.useState(false);
   const [voiceTranscript, setVoiceTranscript] = React.useState("");
   const [voiceInterimTranscript, setVoiceInterimTranscript] = React.useState("");
   const [isParsingVoice, setIsParsingVoice] = React.useState(false);
   const [aiPrefilledFields, setAiPrefilledFields] = React.useState<string[]>([]);
   const [aiPrefillConfirmed, setAiPrefillConfirmed] = React.useState(false);
   const voiceControllerRef = React.useRef<ReturnType<typeof createLiveSpeechController> | null>(null);
+  const voiceParseIntervalRef = React.useRef<NodeJS.Timeout | null>(null);
+  const lastAppliedVoiceTranscriptRef = React.useRef("");
+  const isVoiceApplyingRef = React.useRef(false);
+  const isVoiceSessionActiveRef = React.useRef(false);
+  const latestVoiceTranscriptRef = React.useRef("");
 
   React.useEffect(() => {
     voiceControllerRef.current = createLiveSpeechController({
@@ -372,16 +362,28 @@ export function CreatePatientForm() {
         setIsVoiceRecording(state === "listening");
       },
       onSnapshot: (snapshot) => {
+        latestVoiceTranscriptRef.current = snapshot.fullTranscript;
         setVoiceTranscript(snapshot.finalTranscript);
         setVoiceInterimTranscript(snapshot.interimTranscript);
       },
       onError: (message) => {
+        isVoiceSessionActiveRef.current = false;
+        setIsVoiceSessionActive(false);
+        if (voiceParseIntervalRef.current) {
+          clearInterval(voiceParseIntervalRef.current);
+          voiceParseIntervalRef.current = null;
+        }
         toast.warning(message || "Live voice intake is unavailable in this browser.");
       },
     });
 
     return () => {
+      isVoiceSessionActiveRef.current = false;
+      setIsVoiceSessionActive(false);
       voiceControllerRef.current?.destroy();
+      if (voiceParseIntervalRef.current) {
+        clearInterval(voiceParseIntervalRef.current);
+      }
     };
   }, []);
 
@@ -446,11 +448,6 @@ export function CreatePatientForm() {
         : `${phoneCountry.code}${phoneDigits}`;
 
       // Check for duplicates first (before showing consent)
-      const commMethods: string[] = [];
-      if (data.smsNotifications) commMethods.push("SMS");
-      if (data.emailNotifications) commMethods.push("Email");
-      const preferredCommMethod = commMethods.length > 0 ? commMethods.join(", ") : null;
-
       // Check for existing patients with the same phone or email
       const checkResponse = await fetch("/api/patients/check-duplicate", {
         method: "POST",
@@ -497,12 +494,19 @@ export function CreatePatientForm() {
   };
 
   const handleApplyVoicePrefill = React.useCallback(
-    async (transcript: string) => {
+    async (
+      transcript: string,
+      options?: {
+        announce?: boolean;
+      }
+    ) => {
       const normalized = transcript.trim();
-      if (!normalized) {
+      const announce = options?.announce ?? true;
+      if (!normalized || isVoiceApplyingRef.current) {
         return;
       }
 
+      isVoiceApplyingRef.current = true;
       setIsParsingVoice(true);
 
       try {
@@ -566,22 +570,61 @@ export function CreatePatientForm() {
           appliedFields.push("emergencyContactPhone");
         }
 
+        lastAppliedVoiceTranscriptRef.current = normalized;
+
         if (appliedFields.length > 0) {
-          setAiPrefilledFields(appliedFields);
+          setAiPrefilledFields((prev) =>
+            Array.from(new Set([...prev, ...appliedFields]))
+          );
           setAiPrefillConfirmed(false);
-          toast.success("AI intake draft applied. Review before saving.");
-        } else {
+          if (announce) {
+            toast.success("AI intake draft applied. Review before saving.");
+          }
+        } else if (announce) {
           toast.info("No new intake fields were applied from voice input.");
         }
       } catch (error) {
         console.error("Error applying patient voice prefill:", error);
-        toast.error("Failed to parse patient voice intake");
+        if (announce) {
+          toast.error("Failed to parse patient voice intake");
+        }
       } finally {
+        isVoiceApplyingRef.current = false;
         setIsParsingVoice(false);
       }
     },
     [form]
   );
+
+  React.useEffect(() => {
+    latestVoiceTranscriptRef.current = voiceTranscript;
+  }, [voiceTranscript]);
+
+  const startVoiceParseLoop = React.useCallback(() => {
+    if (voiceParseIntervalRef.current) {
+      return;
+    }
+
+    voiceParseIntervalRef.current = setInterval(() => {
+      if (!isVoiceSessionActiveRef.current || isVoiceApplyingRef.current) {
+        return;
+      }
+
+      const normalized = latestVoiceTranscriptRef.current.trim();
+      if (!normalized || normalized === lastAppliedVoiceTranscriptRef.current) {
+        return;
+      }
+
+      void handleApplyVoicePrefill(normalized, { announce: false });
+    }, 5000);
+  }, [handleApplyVoicePrefill]);
+
+  const stopVoiceParseLoop = React.useCallback(() => {
+    if (voiceParseIntervalRef.current) {
+      clearInterval(voiceParseIntervalRef.current);
+      voiceParseIntervalRef.current = null;
+    }
+  }, []);
 
   const toggleVoiceIntake = async () => {
     if (!voiceControllerRef.current?.isSupported) {
@@ -589,14 +632,24 @@ export function CreatePatientForm() {
       return;
     }
 
-    if (isVoiceRecording) {
-      const snapshot = await voiceControllerRef.current.stop();
-      await handleApplyVoicePrefill(snapshot.fullTranscript);
+    if (isVoiceSessionActive || isVoiceRecording) {
+      isVoiceSessionActiveRef.current = false;
+      setIsVoiceSessionActive(false);
+      stopVoiceParseLoop();
+      voiceControllerRef.current.stop();
+      await handleApplyVoicePrefill(latestVoiceTranscriptRef.current, {
+        announce: true,
+      });
       return;
     }
 
     setVoiceTranscript("");
     setVoiceInterimTranscript("");
+    lastAppliedVoiceTranscriptRef.current = "";
+    latestVoiceTranscriptRef.current = "";
+    isVoiceSessionActiveRef.current = true;
+    setIsVoiceSessionActive(true);
+    startVoiceParseLoop();
     await voiceControllerRef.current.start();
   };
 
@@ -611,11 +664,11 @@ export function CreatePatientForm() {
             </span>
             <Button
               type="button"
-              variant={isVoiceRecording ? "destructive" : "secondary"}
+              variant={isVoiceSessionActive || isVoiceRecording ? "destructive" : "secondary"}
               onClick={toggleVoiceIntake}
-              disabled={isParsingVoice || !isLiveSpeechSupported()}
+              disabled={!(isVoiceSessionActive || isVoiceRecording) && (isParsingVoice || !isLiveSpeechSupported())}
             >
-              {isVoiceRecording ? (
+              {isVoiceSessionActive || isVoiceRecording ? (
                 <>
                   <Square className="mr-2 h-4 w-4 fill-current" />
                   Stop Intake
