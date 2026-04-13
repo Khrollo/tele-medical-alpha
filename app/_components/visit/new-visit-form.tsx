@@ -2679,38 +2679,30 @@ function SurgicalHistorySection({ form }: { form: any }) {
   );
 }
 
-// Past Medical History Section Component
 type Icd10Option = {
   code: string;
   label: string;
 };
 
 function normalizeIcd10Options(payload: unknown): Icd10Option[] {
-  if (!Array.isArray(payload)) {
-    return [];
-  }
+  if (!Array.isArray(payload)) return [];
 
-  const stringArrays = payload.filter(
-    (entry): entry is string[] =>
-      Array.isArray(entry) && entry.every((item) => typeof item === "string")
-  );
+  const codes = Array.isArray(payload[1]) ? (payload[1] as string[]) : [];
+  if (codes.length === 0) return [];
 
-  const codes = stringArrays.find((entry) =>
-    entry.some((item) => /^[A-Z][0-9A-Z]{1,6}(\.[0-9A-Z]{1,4})?$/.test(item))
-  );
+  const displayTuples = Array.isArray(payload[3]) ? (payload[3] as string[][]) : [];
 
-  if (!codes || codes.length === 0) {
-    return [];
-  }
-
-  const descriptions = stringArrays.find((entry) => entry.length === codes.length && entry !== codes);
-
-  return codes.map((code, index) => ({
-    code,
-    label: descriptions?.[index] ? `${code} - ${descriptions[index]}` : code,
-  }));
+  return codes.map((code, index) => {
+    const tuple = displayTuples[index];
+    const name = Array.isArray(tuple) && tuple.length > 1 ? tuple[1] : undefined;
+    return {
+      code,
+      label: name ? `${code} — ${name}` : code,
+    };
+  });
 }
 
+// Past Medical History Section Component
 function PastMedicalHistorySection({ form }: { form: any }) {
   const pastMedicalHistoryValue = form.watch("pastMedicalHistory");
   // Ensure pastMedicalHistory is always an array
@@ -2763,7 +2755,7 @@ function PastMedicalHistorySection({ form }: { form: any }) {
       try {
         setIsLoadingIcd10(true);
         const response = await fetch(
-          `https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?sf=code,name&terms=${encodeURIComponent(searchTerm)}&maxList=50`,
+          `https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?sf=code,name&terms=${encodeURIComponent(searchTerm)}&maxList=12`,
           { signal: controller.signal }
         );
 
@@ -2791,7 +2783,7 @@ function PastMedicalHistorySection({ form }: { form: any }) {
           setIsLoadingIcd10(false);
         }
       }
-    }, 250);
+    }, 400);
 
     return () => {
       controller.abort();
@@ -2800,14 +2792,10 @@ function PastMedicalHistorySection({ form }: { form: any }) {
   }, [editData.condition, editData.icd10, editingIndex]);
 
   React.useEffect(() => {
-    if (!isIcd10DropdownOpen) {
-      return;
-    }
+    if (!isIcd10DropdownOpen) return;
 
     const handleClickOutside = (event: MouseEvent) => {
-      if (!icd10DropdownRef.current) {
-        return;
-      }
+      if (!icd10DropdownRef.current) return;
       if (!icd10DropdownRef.current.contains(event.target as Node)) {
         setIsIcd10DropdownOpen(false);
       }
