@@ -32,7 +32,8 @@ export function OrdersContent({
   today.setHours(0, 0, 0, 0);
   
   const ordersToday = orders.filter(order => {
-    const orderDate = order.dateOrdered ? new Date(order.dateOrdered) : order.visitDate;
+    const orderDate = order.dateOrdered ? new Date(order.dateOrdered) : new Date(order.visitDate);
+    if (isNaN(orderDate.getTime())) return false;
     orderDate.setHours(0, 0, 0, 0);
     return orderDate.getTime() === today.getTime();
   });

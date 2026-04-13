@@ -1,9 +1,14 @@
 "use client";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-require-imports */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @next/next/no-img-element */
 
 import * as React from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { toast } from "sonner";
 import { Save, CheckCircle2, ChevronLeft, ChevronRight, ChevronDown, Plus, Pencil, Trash2, CheckCircle, AlertCircle, XCircle, Camera, X, Loader2, User, Clock, FileSignature, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -59,6 +64,15 @@ interface NewVisitFormProps {
   isInVideoCall?: boolean; // Flag to indicate if form is in video call context
   visitAppointmentType?: string | null; // Appointment type for virtual visit detection
   visitTwilioRoomName?: string | null; // Twilio room name for joining calls
+  visitCreatedByRole?: "doctor" | "nurse" | null;
+  previousVisits?: Array<{
+    id: string;
+    status: string | null;
+    createdAt: Date;
+    appointmentType: string | null;
+    priority: string | null;
+    note: unknown;
+  }>;
 }
 
 
@@ -79,8 +93,16 @@ export function NewVisitForm({
   isInVideoCall = false,
   visitAppointmentType,
   visitTwilioRoomName,
+  visitCreatedByRole = null,
+  previousVisits = [],
 }: NewVisitFormProps) {
   const router = useRouter();
+  const postSaveSessionKey = React.useMemo(
+    () => `visit-post-save:${patientId}`,
+    [patientId]
+  );
+  const shouldBypassDoctorPostSaveModal =
+    userRole === "doctor" && visitCreatedByRole === "nurse";
   // Get sections based on role
   const roleSections = React.useMemo(() => getSectionsForRole(userRole), [userRole]);
   const [currentSection, setCurrentSection] = React.useState(roleSections[0].id);
@@ -88,12 +110,14 @@ export function NewVisitForm({
   const [expandedSections, setExpandedSections] = React.useState<Set<string>>(new Set());
   const [medicalPanelOpen, setMedicalPanelOpen] = React.useState(false);
   const [medicalPanelSection, setMedicalPanelSection] = React.useState<string | null>(null);
-  const [isOnline, setIsOnline] = React.useState(navigator.onLine);
+  const [isOnline, setIsOnline] = React.useState(typeof navigator !== "undefined" ? navigator.onLine : true);
   const [pendingCount, setPendingCount] = React.useState(0);
   const [isSyncing, setIsSyncing] = React.useState(false);
   const [isSaving, setIsSaving] = React.useState(false);
   const [visitIdRemote, setVisitIdRemote] = React.useState<string | null>(existingVisitId || null);
   const [draftLoaded, setDraftLoaded] = React.useState(false);
+  const [hasAiDraftSuggestions, setHasAiDraftSuggestions] = React.useState(false);
+  const [showPreviousVisitsDialog, setShowPreviousVisitsDialog] = React.useState(false);
 
   // Listen for medical panel open events from PatientChartShell
   React.useEffect(() => {
@@ -128,22 +152,99 @@ export function NewVisitForm({
     // Check if visit was just saved (from call page)
     const saved = searchParams.get('saved');
     if (saved === 'true') {
-      setShowPostSaveModal(true);
+      if (!shouldBypassDoctorPostSaveModal) {
+        setShowPostSaveModal(true);
+      }
       // Clear the param from URL without reload
       const url = new URL(window.location.href);
       url.searchParams.delete('saved');
       window.history.replaceState({}, '', url);
     }
-  }, []);
+  }, [shouldBypassDoctorPostSaveModal]);
 
   const [showPostSaveModal, setShowPostSaveModal] = React.useState(false);
   const [isProcessingAction, setIsProcessingAction] = React.useState(false);
   const appliedParsedDataRef = React.useRef<any>(null);
+  const lockedPathsRef = React.useRef<Set<string>>(new Set());
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const rawState = window.sessionStorage.getItem(postSaveSessionKey);
+    if (!rawState) return;
+
+    window.sessionStorage.removeItem(postSaveSessionKey);
+
+    try {
+      const savedState = JSON.parse(rawState) as {
+        patientId?: string;
+        visitId?: string;
+      };
+
+      if (savedState.patientId !== patientId) {
+        return;
+      }
+
+      if (savedState.visitId) {
+        setVisitIdRemote(savedState.visitId);
+      }
+
+      if (!shouldBypassDoctorPostSaveModal) {
+        setShowPostSaveModal(true);
+      }
+    } catch (error) {
+      console.warn("Failed to restore post-save state:", error);
+    }
+  }, [patientId, postSaveSessionKey, shouldBypassDoctorPostSaveModal]);
 
   const form = useForm({
     resolver: zodResolver(visitNoteSchema),
     defaultValues: createEmptyVisitNote(),
   });
+
+  const collectLockedPaths = React.useCallback((dirtyFields: Record<string, unknown>) => {
+    const locked = new Set<string>();
+
+    const walk = (value: unknown, prefix = "") => {
+      if (!value) return;
+      if (value === true && prefix) {
+        locked.add(prefix);
+        return;
+      }
+      if (Array.isArray(value)) {
+        return;
+      }
+      if (typeof value === "object") {
+        for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+          walk(child, prefix ? `${prefix}.${key}` : key);
+        }
+      }
+    };
+
+    walk(dirtyFields);
+    return locked;
+  }, []);
+
+  React.useEffect(() => {
+    const dirtyFields = form.formState.dirtyFields as Record<string, unknown>;
+    const currentLockedPaths = collectLockedPaths(dirtyFields);
+
+    currentLockedPaths.forEach((path) => {
+      lockedPathsRef.current.add(path);
+    });
+  }, [collectLockedPaths, form.formState.dirtyFields]);
+
+  const getLockedPaths = React.useCallback(() => {
+    const dirtyFields = form.formState.dirtyFields as Record<string, unknown>;
+    const locked = new Set<string>(lockedPathsRef.current);
+    const currentLockedPaths = collectLockedPaths(dirtyFields);
+
+    currentLockedPaths.forEach((path) => {
+      locked.add(path);
+    });
+
+    return locked;
+  }, [collectLockedPaths, form.formState.dirtyFields]);
 
   // Auto-mark section as reviewed when navigated to
   const handleSectionChange = React.useCallback(async (sectionId: string) => {
@@ -306,7 +407,24 @@ export function NewVisitForm({
         }
         setDraftLoaded(true);
       } catch (error) {
-        console.error("Error loading draft:", error);
+        console.error("Error loading draft (IndexedDB may be unavailable):", error);
+        // Still initialize the form properly — mark first section reviewed
+        const sectionsForRole = getSectionsForRole(userRole);
+        setReviewedSections(new Set([sectionsForRole[0].id]));
+
+        // If editing existing visit, load from visit data even if draft failed
+        if (existingVisitId && existingVisitData) {
+          try {
+            const parsedData = parseVisitNote(existingVisitData);
+            form.reset(parsedData);
+            setReviewedSections(new Set(sectionsForRole.map((s) => s.id)));
+            setExpandedSections(new Set(sectionsForRole.map(s => s.id)));
+            setVisitIdRemote(existingVisitId);
+          } catch (parseError) {
+            console.error("Error parsing existing visit data:", parseError);
+          }
+        }
+
         setDraftLoaded(true);
       }
     };
@@ -329,13 +447,15 @@ export function NewVisitForm({
           // Merge with most recent (AI) values taking precedence
           const merged = mergeVisitNote(
             currentData,
-            initialParsedData as Partial<VisitNote>
+            initialParsedData as Partial<VisitNote>,
+            { lockedPaths: getLockedPaths() }
           );
 
           console.log("Merged data after merge:", merged);
 
           form.reset(merged);
           appliedParsedDataRef.current = dataKey;
+          setHasAiDraftSuggestions(true);
           toast.success("AI data applied to form");
 
           // Verify the form was updated
@@ -348,7 +468,7 @@ export function NewVisitForm({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialParsedData, draftLoaded]);
+  }, [initialParsedData, draftLoaded, getLockedPaths]);
 
   // Auto-save draft on form changes (debounced)
   React.useEffect(() => {
@@ -413,8 +533,12 @@ export function NewVisitForm({
   }, []);
 
   const handleTranscriptReady = async (transcript: string) => {
-    // Store transcript in draft
-    await saveDraft(patientId, userId, { transcript, role: userRole });
+    // Store transcript in draft (non-critical — IndexedDB may be unavailable)
+    try {
+      await saveDraft(patientId, userId, { transcript, role: userRole });
+    } catch (draftError) {
+      console.warn("Failed to save transcript to draft:", draftError);
+    }
 
     // Save transcript to database immediately if visit exists
     if (visitIdRemote) {
@@ -436,9 +560,12 @@ export function NewVisitForm({
       const currentData = form.getValues() as VisitNote;
 
       // Merge with most recent (AI) values taking precedence
-      const merged = mergeVisitNote(currentData, parsed as Partial<VisitNote>);
+      const merged = mergeVisitNote(currentData, parsed as Partial<VisitNote>, {
+        lockedPaths: getLockedPaths(),
+      });
 
       form.reset(merged);
+      setHasAiDraftSuggestions(true);
       toast.success("AI data applied to form");
     } catch (error) {
       console.error("Error merging parsed data:", error);
@@ -467,9 +594,7 @@ export function NewVisitForm({
   const allSectionsReviewed = roleSections.every((s) => reviewedSections.has(s.id));
 
 
-
-
-
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const handleFinalize = async () => {
     if (!allSectionsReviewed) {
       toast.error("Please review all sections before finalizing");
@@ -479,10 +604,16 @@ export function NewVisitForm({
     setIsSaving(true);
     try {
       const formData = form.getValues() as VisitNote;
+      let savedVisitId = visitIdRemote;
 
-      if (!visitIdRemote) {
-        // Load draft to get transcript if available
-        const draft = await loadDraft(patientId, userId, userRole);
+      if (!savedVisitId) {
+        // Load draft to get transcript if available (non-critical — IndexedDB may be unavailable)
+        let draft: { transcript?: string } = {};
+        try {
+          draft = await loadDraft(patientId, userId, userRole);
+        } catch (draftError) {
+          console.warn("Failed to load draft from IndexedDB, proceeding without it:", draftError);
+        }
 
         // Create visit first
         const result = await createVisitDraftAction({
@@ -490,6 +621,7 @@ export function NewVisitForm({
           notesJson: formData,
           transcript: draft.transcript || undefined,
         });
+        savedVisitId = result.visitId;
         setVisitIdRemote(result.visitId);
 
         // Save any transcripts from draft to database
@@ -506,21 +638,21 @@ export function NewVisitForm({
         }
       } else {
         // Update visit
-        await updateVisitDraftAction(visitIdRemote, {
+        await updateVisitDraftAction(savedVisitId, {
           notesJson: formData,
         });
       }
 
       // Save documents to database
       const documents = formData.docs?.uploadedDocuments || [];
-      if (documents.length > 0 && visitIdRemote) {
+      if (documents.length > 0 && savedVisitId) {
         const documentPromises = documents.map(async (doc: any) => {
           // Only save if it doesn't already have a DB record (check if it has storageUrl)
           // Documents uploaded during the form already have storageUrl from the upload endpoint
           if (doc.storageUrl) {
             return createDocumentAction({
               patientId,
-              visitId: visitIdRemote,
+              visitId: savedVisitId,
               filename: doc.name,
               mimeType: doc.type,
               size: doc.size.toString(),
@@ -542,15 +674,35 @@ export function NewVisitForm({
       // The visit status will remain "In Progress" until explicitly signed
       // Medications will be synced to patient record when the note is signed
 
-      // Clear draft
-      await clearDraft(patientId, userId);
+      if (typeof window !== "undefined" && savedVisitId) {
+        window.sessionStorage.setItem(
+          postSaveSessionKey,
+          JSON.stringify({
+            patientId,
+            visitId: savedVisitId,
+          })
+        );
+      }
 
-      // Show post-save modal instead of redirecting
-      setShowPostSaveModal(true);
-      toast.success("Visit saved successfully");
+      // Clear draft (non-critical — IndexedDB may be unavailable)
+      try {
+        await clearDraft(patientId, userId);
+      } catch (clearError) {
+        console.warn("Failed to clear draft from IndexedDB:", clearError);
+      }
+
+      if (shouldBypassDoctorPostSaveModal) {
+        toast.success("Visit saved and returned to physician workflow");
+        router.push("/open-notes");
+      } else {
+        // Show post-save modal instead of redirecting
+        setShowPostSaveModal(true);
+        toast.success("Visit saved successfully");
+      }
     } catch (error) {
       console.error("Error finalizing visit:", error);
-      toast.error("Failed to save visit");
+      const message = error instanceof Error ? error.message : "Unknown error";
+      toast.error(`Failed to save visit: ${message}`);
     } finally {
       setIsSaving(false);
     }
@@ -581,11 +733,17 @@ export function NewVisitForm({
         // Navigate to send to waiting room page
         router.push(`/patients/${patientId}/send-to-waiting-room?visitId=${visitIdRemote}`);
       } else if (action === "sign") {
-        // Sign the note and set is_assigned to null
-        await finalizeVisitAction(visitIdRemote, "signed");
-        await updatePatientAssignedAction(patientId, null);
-        toast.success("Note signed successfully");
-        router.push(`/patients/${patientId}/visit-history`);
+        if (userRole === "nurse") {
+          await updatePatientAssignedAction(patientId, false);
+          toast.success("Note handed off to physician workflow");
+          router.push(`/waiting-room`);
+        } else {
+          // Sign the note and set is_assigned to null
+          await finalizeVisitAction(visitIdRemote, "signed");
+          await updatePatientAssignedAction(patientId, null);
+          toast.success("Note signed successfully");
+          router.push(`/patients/${patientId}/visit-history`);
+        }
       } else {
         // For "view" and "waiting", keep visit as "In Progress"
         // Visit status remains "In Progress" until explicitly signed
@@ -626,14 +784,14 @@ export function NewVisitForm({
       case "subjective":
         return (
           <div className="space-y-8">
-            <div className="space-y-3">
+            <div className="space-y-6">
               <Label className="text-base">Chief Complaint</Label>
               <Textarea
                 {...form.register("subjective.chiefComplaint")}
                 className="min-h-[100px]"
               />
             </div>
-            <div className="space-y-3">
+            <div className="space-y-6">
               <Label className="text-base">History of Present Illness (HPI)</Label>
               <Textarea
                 {...form.register("subjective.hpi")}
@@ -646,7 +804,7 @@ export function NewVisitForm({
       case "objective":
         return (
           <div className="grid gap-6 md:grid-cols-2">
-            <div className="space-y-3">
+            <div className="space-y-6">
               <div className="flex items-center gap-2">
                 <Label className="text-base">Blood Pressure</Label>
               </div>
@@ -654,13 +812,13 @@ export function NewVisitForm({
                 {...form.register("objective.bp")}
               />
             </div>
-            <div className="space-y-3">
+            <div className="space-y-6">
               <Label className="text-base">Heart Rate</Label>
               <Input
                 {...form.register("objective.hr")}
               />
             </div>
-            <div className="space-y-3">
+            <div className="space-y-6">
               <Label className="text-base">Temperature</Label>
               <Input
                 {...form.register("objective.temp")}
@@ -680,7 +838,7 @@ export function NewVisitForm({
                 </p>
               )}
             </div>
-            <div className="space-y-3">
+            <div className="space-y-6">
               <Label className="text-base">Weight (lbs)</Label>
               <Input
                 {...form.register("objective.weight")}
@@ -700,7 +858,7 @@ export function NewVisitForm({
                 </p>
               )}
             </div>
-            <div className="space-y-3">
+            <div className="space-y-6">
               <Label className="text-base">Height (cm)</Label>
               <Input
                 {...form.register("objective.height")}
@@ -726,7 +884,7 @@ export function NewVisitForm({
                 </p>
               )}
             </div>
-            <div className="space-y-3">
+            <div className="space-y-6">
               <Label className="text-base">BMI</Label>
               <Input
                 {...form.register("objective.bmi")}
@@ -883,7 +1041,7 @@ export function NewVisitForm({
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-foreground border-b pb-2">HIV</h3>
               <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 min-w-0">
-                <div className="space-y-3">
+                <div className="space-y-6">
                   <Label className="text-base">HIV Result</Label>
                   <Select
                     value={form.watch("pointOfCare.hiv") || "Unknown"}
@@ -906,7 +1064,7 @@ export function NewVisitForm({
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-foreground border-b pb-2">Syphilis</h3>
               <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 min-w-0">
-                <div className="space-y-3">
+                <div className="space-y-6">
                   <Label className="text-base">Result</Label>
                   <Select
                     value={form.watch("pointOfCare.syphilis.result") || "Unknown"}
@@ -922,7 +1080,7 @@ export function NewVisitForm({
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-3">
+                <div className="space-y-6">
                   <Label className="text-base">Reactivity</Label>
                   <Select
                     value={form.watch("pointOfCare.syphilis.reactivity") || "Unknown"}
@@ -1026,7 +1184,7 @@ export function NewVisitForm({
         );
       case "orders":
         return (
-          <OrdersSection form={form} />
+          <OrdersSection form={form} userRole={userRole} />
         );
       case "documents":
         return (
@@ -1050,58 +1208,67 @@ export function NewVisitForm({
     return <div>Loading...</div>;
   }
 
+  // Section descriptions for contextual guidance
+  const sectionDescriptions: Record<string, string> = {
+    subjective: "Document the patient's reported symptoms and history of present illness.",
+    objective: "Record vitals, physical examination findings, and vision assessment.",
+    pointOfCare: "Capture point-of-care test results for diabetes, HIV, and syphilis.",
+    vaccines: "Review and document vaccine administration records.",
+    familyHistory: "Record relevant family medical history and conditions.",
+    riskFlags: "Assess social determinants, substance use, and risk factors.",
+    surgicalHistory: "Document past surgical procedures and outcomes.",
+    pastMedicalHistory: "Record known medical conditions and their current status.",
+    documents: "Upload and manage visit-related documents and images.",
+    medications: "Review, add, or update the patient's medication list.",
+    orders: "Place and manage lab, imaging, and procedure orders.",
+    assessmentPlan: "Formulate diagnoses, treatment plans, and follow-up instructions.",
+  };
+
   return (
-    <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-3xl font-bold text-foreground">
-              {existingVisitId ? "Continue Visit" : "New Visit"}
-            </h1>
-            {isRecording && (
-              <Badge variant="destructive" className="gap-2 animate-pulse">
-                <div className="w-2 h-2 bg-white rounded-full" />
-                <span>Recording</span>
-              </Badge>
-            )}
-            {/* {onStartRecording && onStopRecording && (
-              <>
-                {isRecording ? (
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={onStopRecording}
-                    className="gap-2"
-                  >
-                    <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
-                    <span>Stop Recording</span>
-                  </Button>
-                ) : (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={onStartRecording}
-                  >
-                    Start Recording
-                  </Button>
-                )}
-              </>
-            )} */}
+    <div className="flex flex-col min-h-full pb-0">
+      {hasAiDraftSuggestions && (
+        <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/30 dark:bg-amber-950/40 dark:text-amber-200">
+          AI draft suggestions were applied. Manually edited fields stay locked until you change them yourself.
+        </div>
+      )}
+      {/* Compact top bar: back + patient info + status */}
+      <div className="flex items-center justify-between px-4 md:px-6 py-3 border-b border-slate-200/60 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur-sm">
+        <div className="flex items-center gap-3">
+          <Link href={`/patients/${patientId}`}>
+            <Button variant="ghost" size="sm" className="rounded-full h-8 w-8 p-0">
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+          </Link>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-foreground">{patientBasics.fullName}</span>
+            <span className="text-xs text-muted-foreground">DOB: {patientBasics.dob || "N/A"}</span>
           </div>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {patientBasics.fullName} • DOB: {patientBasics.dob || "N/A"}
-          </p>
+          {isRecording && (
+            <Badge variant="destructive" className="gap-1.5 animate-pulse text-xs">
+              <div className="w-1.5 h-1.5 bg-white rounded-full" />
+              Recording
+            </Badge>
+          )}
         </div>
         <div className="flex items-center gap-2">
-          {/* Join Call button for virtual visits */}
+          {previousVisits.length > 0 && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setShowPreviousVisitsDialog(true)}
+            >
+              <Clock className="h-3.5 w-3.5 mr-1.5" />
+              Previous Visits
+            </Button>
+          )}
           {visitAppointmentType?.toLowerCase() === "virtual" && visitTwilioRoomName && existingVisitId && (
             <Button
               onClick={() => router.push(`/visit/${existingVisitId}/call`)}
-              variant="default"
-              className="bg-purple-600 hover:bg-purple-700"
+              size="sm"
+              className="bg-purple-600 hover:bg-purple-700 text-xs"
             >
-              <Video className="h-4 w-4 mr-2" />
+              <Video className="h-3.5 w-3.5 mr-1.5" />
               Join Call
             </Button>
           )}
@@ -1113,100 +1280,103 @@ export function NewVisitForm({
         </div>
       </div>
 
-      {/* Layout: Stacked on tablet in video call, side-by-side otherwise */}
-      <div className={cn(
-        "grid gap-8",
-        isInVideoCall
-          ? "grid-cols-1" // Stacked vertically on tablet in video call
-          : "grid-cols-1 lg:grid-cols-4"  // Normal layout: side-by-side on desktop
-      )}>
-        {/* Left sidebar - Medical Info Panel, AI Capture, and Stepper */}
-        <div className={cn(
-          "space-y-4",
-          isInVideoCall ? "" : "lg:col-span-1"
-        )}>
-          {/* Medical Info Panel - appears at top of left sidebar when open */}
-          {medicalPanelOpen && medicalPanelSection && (
-            <MedicalInfoPanel
-              patientBasics={patientBasics}
-              sectionId={medicalPanelSection}
-              onClose={() => {
-                setMedicalPanelOpen(false);
-                setMedicalPanelSection(null);
-              }}
-            />
-          )}
+      {/* Medical Info Panel - renders as overlay drawer when open */}
+      {medicalPanelOpen && medicalPanelSection && (
+        <div className="fixed inset-y-0 left-0 z-40 w-80 bg-white dark:bg-slate-950 shadow-2xl border-r border-slate-200 dark:border-slate-800 overflow-y-auto">
+          <MedicalInfoPanel
+            patientBasics={patientBasics}
+            sectionId={medicalPanelSection}
+            onClose={() => {
+              setMedicalPanelOpen(false);
+              setMedicalPanelSection(null);
+            }}
+          />
+        </div>
+      )}
 
-          {!hideAICapture && (
-            <AICapturePanel
-              patientId={patientId}
-              onTranscriptReady={handleTranscriptReady}
-              onParseReady={handleParseReady}
-            />
-          )}
-          <Card>
-            <CardContent className="p-4">
-              <SectionStepper
-                currentSection={currentSection}
-                reviewedSections={reviewedSections}
-                onSectionClick={handleSectionChange}
-                userRole={userRole}
-              />
-            </CardContent>
-          </Card>
+      {/* Centered content area */}
+      <div className="flex-1 overflow-y-auto">
+        {/* Section stepper - full width bar with centered items */}
+        <div className="w-full border-b border-slate-200/60 dark:border-slate-800 py-4">
+          <SectionStepper
+            currentSection={currentSection}
+            reviewedSections={reviewedSections}
+            onSectionClick={handleSectionChange}
+            userRole={userRole}
+            className="pb-0 pt-0"
+          />
         </div>
 
-        {/* Main form area */}
-        <div className={cn(
-          "space-y-4",
-          isInVideoCall ? "" : "lg:col-span-3"
-        )}>
-          <Card>
-            <CardHeader className="pb-4">
-              <CardTitle>
-                {visitSections.find((s) => s.id === currentSection)?.label}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-8">{renderSection()}</CardContent>
+        <div className="max-w-3xl mx-auto w-full px-4 md:px-6 py-6 space-y-6">
+
+          {/* Section header with icon, title, and description */}
+          <div className="text-center space-y-1">
+            <div className="flex items-center justify-center gap-3">
+              <h1 className="text-2xl font-bold text-foreground">
+                {roleSections.find(s => s.id === currentSection)?.label}
+              </h1>
+            </div>
+            <p className="text-sm text-muted-foreground max-w-md mx-auto">
+              {sectionDescriptions[currentSection] || ""}
+            </p>
+            <p className="text-xs text-muted-foreground/60">
+              Step {currentSectionIndex + 1} of {roleSections.length}
+            </p>
+          </div>
+
+          {/* Form card - focused, centered content */}
+          <Card className="shadow-sm">
+            <CardContent className="p-6 md:p-8">{renderSection()}</CardContent>
           </Card>
 
-          {/* Navigation */}
-          <div className="flex items-center justify-between">
+          {/* Inline navigation - prev / next below the form */}
+          <div className="flex items-center justify-between pb-6">
             <Button
               variant="outline"
+              className="h-11 px-5 text-sm font-medium gap-2"
               onClick={goToPrev}
               disabled={!canGoPrev}
             >
-              <ChevronLeft className="h-4 w-4 mr-2" />
-              Previous
+              <ChevronLeft className="h-4 w-4" />
+              {canGoPrev ? roleSections[currentSectionIndex - 1]?.label : "Previous"}
             </Button>
-            <Button
-              variant="outline"
-              onClick={goToNext}
-              disabled={!canGoNext}
-            >
-              Next
-              <ChevronRight className="h-4 w-4 ml-2" />
-            </Button>
+
+            {canGoNext ? (
+              <Button
+                className="h-11 px-5 text-sm font-medium gap-2"
+                onClick={goToNext}
+              >
+                {roleSections[currentSectionIndex + 1]?.label}
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            ) : (
+              <Button
+                onClick={handleFinalize}
+                disabled={isSaving || !allSectionsReviewed || !isOnline}
+                className="h-11 px-6 text-sm font-semibold"
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Saving...
+                  </>
+                ) : (
+                  "Complete Visit"
+                )}
+              </Button>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Footer */}
-      <div className="sticky bottom-0 border-t bg-background p-4 flex items-center justify-between">
-        <div className="text-sm text-muted-foreground">
-          {reviewedSections.size} of {roleSections.length} sections reviewed
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            onClick={handleFinalize}
-            disabled={isSaving || !allSectionsReviewed || !isOnline}
-          >
-            <CheckCircle2 className="h-4 w-4 mr-2" />
-            Save Visit
-          </Button>
-        </div>
-      </div>
+      {/* Floating AI Capture Panel */}
+      {!hideAICapture && (
+        <AICapturePanel
+          patientId={patientId}
+          onTranscriptReady={handleTranscriptReady}
+          onParseReady={handleParseReady}
+        />
+      )}
 
       {/* Post-Save Modal */}
       <Dialog open={showPostSaveModal} onOpenChange={setShowPostSaveModal}>
@@ -1232,20 +1402,22 @@ export function NewVisitForm({
                 </div>
               </div>
             </Button>
-            <Button
-              variant="outline"
-              className="w-full justify-start h-auto py-4"
-              onClick={() => handlePostSaveAction("waiting")}
-              disabled={isProcessingAction}
-            >
-              <Clock className="h-5 w-5 mr-3" />
-              <div className="text-left">
-                <div className="font-medium">Send to Waiting Room</div>
-                <div className="text-sm text-muted-foreground">
-                  Send patient to waiting room queue
+            {userRole !== "doctor" && (
+              <Button
+                variant="outline"
+                className="w-full justify-start h-auto py-4"
+                onClick={() => handlePostSaveAction("waiting")}
+                disabled={isProcessingAction}
+              >
+                <Clock className="h-5 w-5 mr-3" />
+                <div className="text-left">
+                  <div className="font-medium">Send to Waiting Room</div>
+                  <div className="text-sm text-muted-foreground">
+                    Send patient to waiting room queue
+                  </div>
                 </div>
-              </div>
-            </Button>
+              </Button>
+            )}
             <Button
               variant="outline"
               className="w-full justify-start h-auto py-4"
@@ -1254,9 +1426,11 @@ export function NewVisitForm({
             >
               <FileSignature className="h-5 w-5 mr-3" />
               <div className="text-left">
-                <div className="font-medium">Sign the Note</div>
+                <div className="font-medium">{userRole === "nurse" ? "Hand Off Note" : "Sign the Note"}</div>
                 <div className="text-sm text-muted-foreground">
-                  Mark note as signed and unassign patient
+                  {userRole === "nurse"
+                    ? "Hand this note off for physician completion"
+                    : "Mark note as signed and unassign patient"}
                 </div>
               </div>
             </Button>
@@ -1269,6 +1443,81 @@ export function NewVisitForm({
           )}
         </DialogContent>
       </Dialog>
+
+      <Dialog open={showPreviousVisitsDialog} onOpenChange={setShowPreviousVisitsDialog}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Previous Visit History</DialogTitle>
+            <DialogDescription>
+              Review recent visits without leaving the active note.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-2">
+            {previousVisits.map((visit) => {
+              const noteData =
+                visit.note && typeof visit.note === "object"
+                  ? (visit.note as Record<string, any>)
+                  : null;
+
+              return (
+                <div key={visit.id} className="rounded-xl border p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="font-semibold">
+                        {new Date(visit.createdAt).toLocaleString()}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {visit.status || "Unknown status"}
+                        {visit.appointmentType ? ` • ${visit.appointmentType}` : ""}
+                        {visit.priority ? ` • ${visit.priority}` : ""}
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() =>
+                        window.open(
+                          `/patients/${patientId}/visit-history/${visit.id}`,
+                          "_blank",
+                          "noopener,noreferrer"
+                        )
+                      }
+                    >
+                      Open Full Details
+                    </Button>
+                  </div>
+                  {noteData && (
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      <div className="rounded-lg bg-muted/40 p-3">
+                        <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Subjective
+                        </div>
+                        <p className="text-sm">
+                          {noteData.subjective?.chiefComplaint ||
+                            noteData.subjective?.hpi ||
+                            "No subjective summary"}
+                        </p>
+                      </div>
+                      <div className="rounded-lg bg-muted/40 p-3">
+                        <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Assessment / Plan
+                        </div>
+                        <p className="text-sm">
+                          {Array.isArray(noteData.assessmentPlan) &&
+                          noteData.assessmentPlan[0]?.assessment
+                            ? noteData.assessmentPlan[0].assessment
+                            : "No assessment summary"}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }
@@ -1464,7 +1713,7 @@ function MedicationsSection({ form }: { form: any }) {
           No medications added yet
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-6">
           {medications.map((med, index) => (
             <div
               key={med.id || index}
@@ -1733,7 +1982,7 @@ function VaccinesSection({ form }: { form: any }) {
           No vaccines added yet
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-6">
           {vaccines.map((vaccine, index) => (
             <div
               key={index}
@@ -2025,7 +2274,7 @@ function FamilyHistorySection({ form }: { form: any }) {
           No family history entries added yet
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-6">
           {familyHistory.map((entry, index) => (
             <div
               key={index}
@@ -2283,7 +2532,7 @@ function SurgicalHistorySection({ form }: { form: any }) {
           No surgical history entries added yet
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-6">
           {surgicalHistory.map((entry, index) => (
             <div
               key={index}
@@ -2658,7 +2907,7 @@ function PastMedicalHistorySection({ form }: { form: any }) {
           No past medical history entries added yet
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-6">
           {pastMedicalHistory.map((entry, index) => (
             <div
               key={index}
@@ -2731,10 +2980,7 @@ function PastMedicalHistorySection({ form }: { form: any }) {
                           value={editData.icd10}
                           onFocus={() => setIsIcd10DropdownOpen(true)}
                           onChange={(e) => {
-                            setEditData({
-                              ...editData,
-                              icd10: e.target.value.toUpperCase(),
-                            });
+                            setEditData({ ...editData, icd10: e.target.value.toUpperCase() });
                             setIsIcd10DropdownOpen(true);
                           }}
                           placeholder="e.g., E11.9"
@@ -2765,6 +3011,11 @@ function PastMedicalHistorySection({ form }: { form: any }) {
                           </div>
                         )}
                       </div>
+                      <p className="text-xs text-muted-foreground">
+                        {isLoadingIcd10
+                          ? "Loading ICD-10 options..."
+                          : "Search and select from ICD-10 options."}
+                      </p>
                     </div>
                     <div className="space-y-2">
                       <Label>Source</Label>
@@ -2852,7 +3103,7 @@ function PastMedicalHistorySection({ form }: { form: any }) {
 }
 
 // Orders Section Component
-function OrdersSection({ form }: { form: any }) {
+function OrdersSection({ form, userRole }: { form: any; userRole?: string }) {
   const ordersValue = form.watch("orders");
   // Ensure orders is always an array
   const orders = React.useMemo(() => {
@@ -2913,7 +3164,7 @@ function OrdersSection({ form }: { form: any }) {
       type: "",
       priority: "",
       details: "",
-      status: "",
+      status: userRole === "nurse" ? "Pending Physician Signature" : "Pending",
       dateOrdered: "",
     };
     const current = getOrdersArray();
@@ -2976,7 +3227,7 @@ function OrdersSection({ form }: { form: any }) {
           No orders added yet
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-6">
           {orders.map((order, index) => (
             <div
               key={index}
@@ -3041,6 +3292,9 @@ function OrdersSection({ form }: { form: any }) {
                           <SelectValue placeholder="Select..." />
                         </SelectTrigger>
                         <SelectContent>
+                          {userRole === "nurse" && (
+                            <SelectItem value="Pending Physician Signature">Pending Physician Signature</SelectItem>
+                          )}
                           <SelectItem value="Pending">Pending</SelectItem>
                           <SelectItem value="Ordered">Ordered</SelectItem>
                           <SelectItem value="In Progress">In Progress</SelectItem>
@@ -3118,7 +3372,7 @@ function OrdersSection({ form }: { form: any }) {
         className="w-full"
       >
         <Plus className="h-4 w-4 mr-2" />
-        Add Order
+        {userRole === "nurse" ? "Add Draft Order" : "Add Order"}
       </Button>
     </div>
   );
@@ -3316,7 +3570,7 @@ function AssessmentPlanSection({ form }: { form: any }) {
           No assessment & plan entries yet
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-6">
           {assessmentPlans.map((item: any, index: number) => (
             <div
               key={index}

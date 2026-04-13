@@ -68,3 +68,25 @@ There is **no recommended full presenter path** from sign-in to completion.
 - `app/(app)/patients/[id]/visit-history/visit-history-content.tsx`
 
 These fixes lint/typecheck cleanly locally. They still need deployment and one more live validation pass before the verdict can improve.
+
+## Batch 3 Addendum
+
+On April 3, 2026, the current branch moved materially closer to demo readiness even though the **live deployment verdict does not change yet**:
+
+- `RG-3` is now **fixed and behaviorally validated locally** on an approved nurse -> doctor handoff path.
+- `RG-4` is now **fixed and behaviorally validated locally** on the same record: save, waiting-room handoff, doctor re-open, and sign all complete successfully.
+- The two Batch 3 repo changes are:
+  - `app/_components/visit/new-visit-form.tsx`: restore the post-save action modal after the save-triggered refresh so the workflow can continue cleanly
+  - `app/_actions/visits.ts`: revalidate waiting-room / patient / visit caches when a visit is sent back to waiting room so the doctor immediately sees the assignable row
+
+### What Still Needs Deployment Smoke
+
+1. Nurse save -> send to waiting room on the hosted build
+2. Doctor waiting room -> `Assign To Me`
+3. Doctor save -> visit history/detail reopen -> sign
+4. Fresh hosted history page confirms the signed state
+
+Until that hosted smoke completes, the correct posture remains:
+
+**Current production:** **NOT DEMO READY**  
+**Current branch:** materially closer, with the full RG-3 / RG-4 path now proven locally

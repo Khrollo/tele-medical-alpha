@@ -1,11 +1,12 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { toast } from "sonner";
-import { Plus, X, Trash2, Pencil } from "lucide-react";
+import { Plus, Trash2, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -56,11 +57,16 @@ export function AllergiesContent({
   patientName,
   allergies: initialAllergies,
 }: AllergiesContentProps) {
+  const router = useRouter();
   const [allergies, setAllergies] = React.useState<Allergy[]>(initialAllergies);
   const [showAddModal, setShowAddModal] = React.useState(false);
   const [editingAllergy, setEditingAllergy] = React.useState<Allergy | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    setAllergies(initialAllergies);
+  }, [initialAllergies]);
 
   const form = useForm<AllergyFormData>({
     resolver: zodResolver(allergySchema),
@@ -105,8 +111,7 @@ export function AllergiesContent({
         toast.success("Allergy added successfully");
       }
       
-      // Refresh the page to get updated data
-      window.location.reload();
+      router.refresh();
     } catch (error) {
       console.error("Error saving allergy:", error);
       toast.error(
@@ -130,8 +135,8 @@ export function AllergiesContent({
     try {
       await deleteAllergyAction(patientId, allergyId);
       toast.success("Allergy deleted successfully");
-      // Refresh the page to get updated data
-      window.location.reload();
+      setAllergies((current) => current.filter((allergy) => allergy.id !== allergyId));
+      router.refresh();
     } catch (error) {
       console.error("Error deleting allergy:", error);
       toast.error(
@@ -398,4 +403,3 @@ export function AllergiesContent({
     </div>
   );
 }
-

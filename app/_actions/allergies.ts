@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { getServerSession } from "@/app/_lib/supabase/server";
 import {
@@ -66,6 +66,8 @@ export async function addAllergyAction(
 
     revalidatePath(`/patients/${patientId}/allergies`);
     revalidatePath(`/patients/${patientId}`);
+    revalidateTag(`patient:${patientId}`, "max");
+    revalidateTag("patients", "max");
 
     return { success: true };
   } catch (error) {
@@ -104,6 +106,8 @@ export async function updateAllergyAction(
 
     revalidatePath(`/patients/${patientId}/allergies`);
     revalidatePath(`/patients/${patientId}`);
+    revalidateTag(`patient:${patientId}`, "max");
+    revalidateTag("patients", "max");
 
     return { success: true };
   } catch (error) {
@@ -141,6 +145,8 @@ export async function deleteAllergyAction(
 
     revalidatePath(`/patients/${patientId}/allergies`);
     revalidatePath(`/patients/${patientId}`);
+    revalidateTag(`patient:${patientId}`, "max");
+    revalidateTag("patients", "max");
 
     return { success: true };
   } catch (error) {
