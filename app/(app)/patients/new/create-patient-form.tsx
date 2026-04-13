@@ -1133,6 +1133,7 @@ export function CreatePatientForm() {
 
             // Now create the patient with the signature URL and the pre-generated ID
             const result = await createPatientAction({
+              patientId,
               firstName: pendingPatientData.firstName,
               lastName: pendingPatientData.lastName,
               dob: pendingPatientData.dob || undefined,
