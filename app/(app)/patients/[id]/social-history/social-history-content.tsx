@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -45,11 +46,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
-  getPatientSocialHistoryAction,
   updateSocialHistoryAction,
 } from "@/app/_actions/social-history";
 import type { SocialHistory } from "@/app/_lib/db/drizzle/queries/social-history";
-import { cn } from "@/app/_lib/utils/cn";
 import { v4 as uuidv4 } from "uuid";
 
 interface SocialHistoryContentProps {
@@ -136,12 +135,20 @@ const socialHistorySchema = z.object({
 });
 
 type SocialHistoryFormData = z.infer<typeof socialHistorySchema>;
+type LifestyleActivityLevel = NonNullable<SocialHistory["lifestyle"]>["activityLevel"];
+type LifestyleDietQuality = NonNullable<SocialHistory["lifestyle"]>["dietQuality"];
+type LifestyleSleepQuality = NonNullable<SocialHistory["lifestyle"]>["sleepQuality"];
+type LifestyleStressLevel = NonNullable<SocialHistory["lifestyle"]>["stressLevel"];
+type PsychosocialSocialSupport = NonNullable<SocialHistory["psychosocial"]>["socialSupport"];
+type PsychosocialFinancialStrain = NonNullable<SocialHistory["psychosocial"]>["financialStrain"];
+type PsychosocialTransportation = NonNullable<SocialHistory["psychosocial"]>["transportation"];
 
 export function SocialHistoryContent({
   patientId,
   patientName,
   socialHistory: initialSocialHistory,
 }: SocialHistoryContentProps) {
+  const router = useRouter();
   const [socialHistory, setSocialHistory] = React.useState<SocialHistory | null>(
     initialSocialHistory
   );
@@ -170,6 +177,10 @@ export function SocialHistoryContent({
       clinicianNotes: initialSocialHistory?.clinicianNotes || "",
     },
   });
+
+  React.useEffect(() => {
+    setSocialHistory(initialSocialHistory);
+  }, [initialSocialHistory]);
 
   React.useEffect(() => {
     if (showUpdateModal && initialSocialHistory) {
@@ -246,8 +257,14 @@ export function SocialHistoryContent({
       }
       
       await updateSocialHistoryAction(patientId, updates);
+      setSocialHistory({
+        ...(socialHistory || {}),
+        ...updates,
+        lastUpdated: new Date().toISOString(),
+      });
+      router.refresh();
+      setShowUpdateModal(false);
       toast.success("Social history updated successfully");
-      window.location.reload();
     } catch (error) {
       console.error("Error updating social history:", error);
       toast.error(
@@ -867,7 +884,7 @@ export function SocialHistoryContent({
                       <Select
                         value={form.watch("lifestyle.activityLevel") || ""}
                         onValueChange={(value) =>
-                          form.setValue("lifestyle.activityLevel", value as any)
+                          form.setValue("lifestyle.activityLevel", value as LifestyleActivityLevel)
                         }
                       >
                         <SelectTrigger>
@@ -887,7 +904,7 @@ export function SocialHistoryContent({
                       <Select
                         value={form.watch("lifestyle.dietQuality") || ""}
                         onValueChange={(value) =>
-                          form.setValue("lifestyle.dietQuality", value as any)
+                          form.setValue("lifestyle.dietQuality", value as LifestyleDietQuality)
                         }
                       >
                         <SelectTrigger>
@@ -920,7 +937,7 @@ export function SocialHistoryContent({
                       <Select
                         value={form.watch("lifestyle.sleepQuality") || ""}
                         onValueChange={(value) =>
-                          form.setValue("lifestyle.sleepQuality", value as any)
+                          form.setValue("lifestyle.sleepQuality", value as LifestyleSleepQuality)
                         }
                       >
                         <SelectTrigger>
@@ -939,7 +956,7 @@ export function SocialHistoryContent({
                       <Select
                         value={form.watch("lifestyle.stressLevel") || ""}
                         onValueChange={(value) =>
-                          form.setValue("lifestyle.stressLevel", value as any)
+                          form.setValue("lifestyle.stressLevel", value as LifestyleStressLevel)
                         }
                       >
                         <SelectTrigger>
@@ -967,7 +984,7 @@ export function SocialHistoryContent({
                       <Select
                         value={form.watch("psychosocial.socialSupport") || ""}
                         onValueChange={(value) =>
-                          form.setValue("psychosocial.socialSupport", value as any)
+                          form.setValue("psychosocial.socialSupport", value as PsychosocialSocialSupport)
                         }
                       >
                         <SelectTrigger>
@@ -986,7 +1003,7 @@ export function SocialHistoryContent({
                       <Select
                         value={form.watch("psychosocial.financialStrain") || ""}
                         onValueChange={(value) =>
-                          form.setValue("psychosocial.financialStrain", value as any)
+                          form.setValue("psychosocial.financialStrain", value as PsychosocialFinancialStrain)
                         }
                       >
                         <SelectTrigger>
@@ -1005,7 +1022,7 @@ export function SocialHistoryContent({
                       <Select
                         value={form.watch("psychosocial.transportation") || ""}
                         onValueChange={(value) =>
-                          form.setValue("psychosocial.transportation", value as any)
+                          form.setValue("psychosocial.transportation", value as PsychosocialTransportation)
                         }
                       >
                         <SelectTrigger>

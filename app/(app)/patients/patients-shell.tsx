@@ -13,7 +13,7 @@ interface PatientsShellProps {
 }
 
 export function PatientsShell({ children, userRole, userName }: PatientsShellProps) {
-    const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
+    const [, setIsSidebarOpen] = React.useState(false);
     const openSidebarRef = React.useRef<(() => void) | null>(null);
 
     return (
@@ -29,8 +29,8 @@ export function PatientsShell({ children, userRole, userName }: PatientsShellPro
             {/* Main Content Area */}
             <div className="flex flex-1 flex-col overflow-hidden transition-all duration-300 ease-in-out">
                 {/* Top Bar */}
-                <div className="flex h-16 items-center gap-4 border-b border-border bg-background px-6">
-                    {/* Mobile hamburger button - inline with search */}
+                <div className="flex h-16 items-center gap-4 border-b border-border bg-background px-6 sticky top-0 z-10">
+                    {/* Mobile hamburger button */}
                     <Button
                         variant="ghost"
                         size="icon"
@@ -48,7 +48,7 @@ export function PatientsShell({ children, userRole, userName }: PatientsShellPro
                 </div>
 
                 {/* Page Content */}
-                <div className="flex-1 overflow-y-auto bg-background">
+                <div className="flex-1 overflow-y-auto">
                     {children}
                 </div>
             </div>

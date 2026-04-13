@@ -2,7 +2,6 @@ import { eq, desc, and, gte, lte, count, max } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
 import { db } from "../index";
 import { visits, patients, notes } from "../schema";
-import { VisitHistoryPreviewEntry } from "@/codex-feature-split/app/_lib/db/drizzle/queries/visit-history";
 
 export interface GetVisitHistoryOptions {
   page?: number;
@@ -33,6 +32,15 @@ export interface VisitHistoryResult {
   total: number;
   page: number;
   pageSize: number;
+}
+
+export interface VisitHistoryPreviewEntry {
+  id: string;
+  status: string | null;
+  createdAt: Date;
+  appointmentType: string | null;
+  priority: string | null;
+  note: unknown;
 }
 
 /**

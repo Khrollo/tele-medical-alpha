@@ -98,7 +98,7 @@ export function OpenNotesContent({ visits, dailySummary }: OpenNotesContentProps
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
       <div>
-        <h1 className="text-3xl font-bold text-foreground">Open Notes</h1>
+        <h1 className="text-3xl font-bold text-foreground">Inbox</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Daily physician note queue, ordered by what still needs attention first.
         </p>

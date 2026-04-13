@@ -37,7 +37,9 @@ export default async function PatientOverviewPage({
 
       <PatientOverviewCards 
         patient={overview.patient}
+        stats={overview.stats}
         latestVisit={overview.latestVisit}
+        recentVisits={overview.recentVisits}
         userRole={session.role}
       />
     </div>

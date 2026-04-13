@@ -1,15 +1,11 @@
 "use client";
-/* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/no-require-imports */
-/* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-disable @next/next/no-img-element */
 
 import * as React from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Save, CheckCircle2, ChevronLeft, ChevronRight, ChevronDown, Plus, Pencil, Trash2, CheckCircle, AlertCircle, XCircle, Camera, X, Loader2, User, Clock, FileSignature, Video } from "lucide-react";
+import { Save, CheckCircle2, ChevronLeft, ChevronRight, Plus, Pencil, Trash2, CheckCircle, AlertCircle, XCircle, Camera, X, Loader2, User, Clock, FileSignature, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -63,15 +59,6 @@ interface NewVisitFormProps {
   isInVideoCall?: boolean; // Flag to indicate if form is in video call context
   visitAppointmentType?: string | null; // Appointment type for virtual visit detection
   visitTwilioRoomName?: string | null; // Twilio room name for joining calls
-  visitCreatedByRole?: "doctor" | "nurse" | null;
-  previousVisits?: Array<{
-    id: string;
-    status: string | null;
-    createdAt: Date;
-    appointmentType: string | null;
-    priority: string | null;
-    note: unknown;
-  }>;
 }
 
 
@@ -92,16 +79,12 @@ export function NewVisitForm({
   isInVideoCall = false,
   visitAppointmentType,
   visitTwilioRoomName,
-  visitCreatedByRole = null,
-  previousVisits = [],
 }: NewVisitFormProps) {
   const router = useRouter();
   const postSaveSessionKey = React.useMemo(
     () => `visit-post-save:${patientId}`,
     [patientId]
   );
-  const shouldBypassDoctorPostSaveModal =
-    userRole === "doctor" && visitCreatedByRole === "nurse";
   // Get sections based on role
   const roleSections = React.useMemo(() => getSectionsForRole(userRole), [userRole]);
   const [currentSection, setCurrentSection] = React.useState(roleSections[0].id);
@@ -116,7 +99,6 @@ export function NewVisitForm({
   const [visitIdRemote, setVisitIdRemote] = React.useState<string | null>(existingVisitId || null);
   const [draftLoaded, setDraftLoaded] = React.useState(false);
   const [hasAiDraftSuggestions, setHasAiDraftSuggestions] = React.useState(false);
-  const [showPreviousVisitsDialog, setShowPreviousVisitsDialog] = React.useState(false);
 
   // Listen for medical panel open events from PatientChartShell
   React.useEffect(() => {
@@ -151,20 +133,17 @@ export function NewVisitForm({
     // Check if visit was just saved (from call page)
     const saved = searchParams.get('saved');
     if (saved === 'true') {
-      if (!shouldBypassDoctorPostSaveModal) {
-        setShowPostSaveModal(true);
-      }
+      setShowPostSaveModal(true);
       // Clear the param from URL without reload
       const url = new URL(window.location.href);
       url.searchParams.delete('saved');
       window.history.replaceState({}, '', url);
     }
-  }, [shouldBypassDoctorPostSaveModal]);
+  }, []);
 
   const [showPostSaveModal, setShowPostSaveModal] = React.useState(false);
   const [isProcessingAction, setIsProcessingAction] = React.useState(false);
   const appliedParsedDataRef = React.useRef<any>(null);
-  const lockedPathsRef = React.useRef<Set<string>>(new Set());
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
@@ -188,62 +167,16 @@ export function NewVisitForm({
         setVisitIdRemote(savedState.visitId);
       }
 
-      if (!shouldBypassDoctorPostSaveModal) {
-        setShowPostSaveModal(true);
-      }
+      setShowPostSaveModal(true);
     } catch (error) {
       console.warn("Failed to restore post-save state:", error);
     }
-  }, [patientId, postSaveSessionKey, shouldBypassDoctorPostSaveModal]);
+  }, [patientId, postSaveSessionKey]);
 
   const form = useForm({
     resolver: zodResolver(visitNoteSchema),
     defaultValues: createEmptyVisitNote(),
   });
-
-  const collectLockedPaths = React.useCallback((dirtyFields: Record<string, unknown>) => {
-    const locked = new Set<string>();
-
-    const walk = (value: unknown, prefix = "") => {
-      if (!value) return;
-      if (value === true && prefix) {
-        locked.add(prefix);
-        return;
-      }
-      if (Array.isArray(value)) {
-        return;
-      }
-      if (typeof value === "object") {
-        for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-          walk(child, prefix ? `${prefix}.${key}` : key);
-        }
-      }
-    };
-
-    walk(dirtyFields);
-    return locked;
-  }, []);
-
-  React.useEffect(() => {
-    const dirtyFields = form.formState.dirtyFields as Record<string, unknown>;
-    const currentLockedPaths = collectLockedPaths(dirtyFields);
-
-    currentLockedPaths.forEach((path) => {
-      lockedPathsRef.current.add(path);
-    });
-  }, [collectLockedPaths, form.formState.dirtyFields]);
-
-  const getLockedPaths = React.useCallback(() => {
-    const dirtyFields = form.formState.dirtyFields as Record<string, unknown>;
-    const locked = new Set<string>(lockedPathsRef.current);
-    const currentLockedPaths = collectLockedPaths(dirtyFields);
-
-    currentLockedPaths.forEach((path) => {
-      locked.add(path);
-    });
-
-    return locked;
-  }, [collectLockedPaths, form.formState.dirtyFields]);
 
   // Auto-mark section as reviewed when navigated to
   const handleSectionChange = React.useCallback(async (sectionId: string) => {
@@ -406,7 +339,24 @@ export function NewVisitForm({
         }
         setDraftLoaded(true);
       } catch (error) {
-        console.error("Error loading draft:", error);
+        console.error("Error loading draft (IndexedDB may be unavailable):", error);
+        // Still initialize the form properly — mark first section reviewed
+        const sectionsForRole = getSectionsForRole(userRole);
+        setReviewedSections(new Set([sectionsForRole[0].id]));
+
+        // If editing existing visit, load from visit data even if draft failed
+        if (existingVisitId && existingVisitData) {
+          try {
+            const parsedData = parseVisitNote(existingVisitData);
+            form.reset(parsedData);
+            setReviewedSections(new Set(sectionsForRole.map((s) => s.id)));
+            setExpandedSections(new Set(sectionsForRole.map(s => s.id)));
+            setVisitIdRemote(existingVisitId);
+          } catch (parseError) {
+            console.error("Error parsing existing visit data:", parseError);
+          }
+        }
+
         setDraftLoaded(true);
       }
     };
@@ -429,8 +379,7 @@ export function NewVisitForm({
           // Merge with most recent (AI) values taking precedence
           const merged = mergeVisitNote(
             currentData,
-            initialParsedData as Partial<VisitNote>,
-            { lockedPaths: getLockedPaths() }
+            initialParsedData as Partial<VisitNote>
           );
 
           console.log("Merged data after merge:", merged);
@@ -450,7 +399,7 @@ export function NewVisitForm({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialParsedData, draftLoaded, getLockedPaths]);
+  }, [initialParsedData, draftLoaded]);
 
   // Auto-save draft on form changes (debounced)
   React.useEffect(() => {
@@ -538,9 +487,7 @@ export function NewVisitForm({
       const currentData = form.getValues() as VisitNote;
 
       // Merge with most recent (AI) values taking precedence
-      const merged = mergeVisitNote(currentData, parsed as Partial<VisitNote>, {
-        lockedPaths: getLockedPaths(),
-      });
+      const merged = mergeVisitNote(currentData, parsed as Partial<VisitNote>);
 
       form.reset(merged);
       setHasAiDraftSuggestions(true);
@@ -572,7 +519,9 @@ export function NewVisitForm({
   const allSectionsReviewed = roleSections.every((s) => reviewedSections.has(s.id));
 
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
+
+
   const handleFinalize = async () => {
     if (!allSectionsReviewed) {
       toast.error("Please review all sections before finalizing");
@@ -585,8 +534,13 @@ export function NewVisitForm({
       let savedVisitId = visitIdRemote;
 
       if (!savedVisitId) {
-        // Load draft to get transcript if available
-        const draft = await loadDraft(patientId, userId, userRole);
+        // Load draft to get transcript if available (non-critical — IndexedDB may be unavailable)
+        let draft: { transcript?: string } = {};
+        try {
+          draft = await loadDraft(patientId, userId, userRole);
+        } catch (draftError) {
+          console.warn("Failed to load draft from IndexedDB, proceeding without it:", draftError);
+        }
 
         // Create visit first
         const result = await createVisitDraftAction({
@@ -657,17 +611,16 @@ export function NewVisitForm({
         );
       }
 
-      // Clear draft
-      await clearDraft(patientId, userId);
-
-      if (shouldBypassDoctorPostSaveModal) {
-        toast.success("Visit saved and returned to physician workflow");
-        router.push("/open-notes");
-      } else {
-        // Show post-save modal instead of redirecting
-        setShowPostSaveModal(true);
-        toast.success("Visit saved successfully");
+      // Clear draft (non-critical — IndexedDB may be unavailable)
+      try {
+        await clearDraft(patientId, userId);
+      } catch (clearError) {
+        console.warn("Failed to clear draft from IndexedDB:", clearError);
       }
+
+      // Show post-save modal instead of redirecting
+      setShowPostSaveModal(true);
+      toast.success("Visit saved successfully");
     } catch (error) {
       console.error("Error finalizing visit:", error);
       toast.error("Failed to save visit");
@@ -701,17 +654,11 @@ export function NewVisitForm({
         // Navigate to send to waiting room page
         router.push(`/patients/${patientId}/send-to-waiting-room?visitId=${visitIdRemote}`);
       } else if (action === "sign") {
-        if (userRole === "nurse") {
-          await updatePatientAssignedAction(patientId, false);
-          toast.success("Note handed off to physician workflow");
-          router.push(`/waiting-room`);
-        } else {
-          // Sign the note and set is_assigned to null
-          await finalizeVisitAction(visitIdRemote, "signed");
-          await updatePatientAssignedAction(patientId, null);
-          toast.success("Note signed successfully");
-          router.push(`/patients/${patientId}/visit-history`);
-        }
+        // Sign the note and set is_assigned to null
+        await finalizeVisitAction(visitIdRemote, "signed");
+        await updatePatientAssignedAction(patientId, null);
+        toast.success("Note signed successfully");
+        router.push(`/patients/${patientId}/visit-history`);
       } else {
         // For "view" and "waiting", keep visit as "In Progress"
         // Visit status remains "In Progress" until explicitly signed
@@ -1152,7 +1099,7 @@ export function NewVisitForm({
         );
       case "orders":
         return (
-          <OrdersSection form={form} userRole={userRole} />
+          <OrdersSection form={form} />
         );
       case "documents":
         return (
@@ -1177,40 +1124,55 @@ export function NewVisitForm({
   }
 
   return (
-    <div className="flex flex-col min-h-full pb-0">
+    <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
       {hasAiDraftSuggestions && (
-        <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/30 dark:bg-amber-950/40 dark:text-amber-200">
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/30 dark:bg-amber-950/40 dark:text-amber-200">
           AI draft suggestions were applied. Manually edited fields stay locked until you change them yourself.
         </div>
       )}
-      {/* Compact top bar: back + patient info + status */}
-      <div className="flex items-center justify-between px-4 md:px-6 py-3 border-b border-slate-200/60 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur-sm">
-        <div className="flex items-center gap-3">
-          <Link href={`/patients/${patientId}`}>
-            <Button variant="ghost" size="sm" className="rounded-full h-8 w-8 p-0">
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-          </Link>
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-foreground">{patientBasics.fullName}</span>
-            <span className="text-xs text-muted-foreground">DOB: {patientBasics.dob || "N/A"}</span>
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-3xl font-bold text-foreground">
+              {existingVisitId ? "Continue Visit" : "New Visit"}
+            </h1>
+            {isRecording && (
+              <Badge variant="destructive" className="gap-2 animate-pulse">
+                <div className="w-2 h-2 bg-white rounded-full" />
+                <span>Recording</span>
+              </Badge>
+            )}
+            {/* {onStartRecording && onStopRecording && (
+              <>
+                {isRecording ? (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={onStopRecording}
+                    className="gap-2"
+                  >
+                    <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                    <span>Stop Recording</span>
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={onStartRecording}
+                  >
+                    Start Recording
+                  </Button>
+                )}
+              </>
+            )} */}
           </div>
           <p className="mt-2 text-sm text-muted-foreground">
             {patientBasics.fullName} • DOB: {patientBasics.dob || "N/A"}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {previousVisits.length > 0 && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setShowPreviousVisitsDialog(true)}
-            >
-              <Clock className="h-3.5 w-3.5 mr-1.5" />
-              Previous Visits
-            </Button>
-          )}
+          {/* Join Call button for virtual visits */}
           {visitAppointmentType?.toLowerCase() === "virtual" && visitTwilioRoomName && existingVisitId && (
             <Button
               onClick={() => router.push(`/visit/${existingVisitId}/call`)}
@@ -1348,22 +1310,20 @@ export function NewVisitForm({
                 </div>
               </div>
             </Button>
-            {userRole !== "doctor" && (
-              <Button
-                variant="outline"
-                className="w-full justify-start h-auto py-4"
-                onClick={() => handlePostSaveAction("waiting")}
-                disabled={isProcessingAction}
-              >
-                <Clock className="h-5 w-5 mr-3" />
-                <div className="text-left">
-                  <div className="font-medium">Send to Waiting Room</div>
-                  <div className="text-sm text-muted-foreground">
-                    Send patient to waiting room queue
-                  </div>
+            <Button
+              variant="outline"
+              className="w-full justify-start h-auto py-4"
+              onClick={() => handlePostSaveAction("waiting")}
+              disabled={isProcessingAction}
+            >
+              <Clock className="h-5 w-5 mr-3" />
+              <div className="text-left">
+                <div className="font-medium">Send to Waiting Room</div>
+                <div className="text-sm text-muted-foreground">
+                  Send patient to waiting room queue
                 </div>
-              </Button>
-            )}
+              </div>
+            </Button>
             <Button
               variant="outline"
               className="w-full justify-start h-auto py-4"
@@ -1372,11 +1332,9 @@ export function NewVisitForm({
             >
               <FileSignature className="h-5 w-5 mr-3" />
               <div className="text-left">
-                <div className="font-medium">{userRole === "nurse" ? "Hand Off Note" : "Sign the Note"}</div>
+                <div className="font-medium">Sign the Note</div>
                 <div className="text-sm text-muted-foreground">
-                  {userRole === "nurse"
-                    ? "Hand this note off for physician completion"
-                    : "Mark note as signed and unassign patient"}
+                  Mark note as signed and unassign patient
                 </div>
               </div>
             </Button>
@@ -1389,81 +1347,6 @@ export function NewVisitForm({
           )}
         </DialogContent>
       </Dialog>
-
-      <Dialog open={showPreviousVisitsDialog} onOpenChange={setShowPreviousVisitsDialog}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Previous Visit History</DialogTitle>
-            <DialogDescription>
-              Review recent visits without leaving the active note.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-2">
-            {previousVisits.map((visit) => {
-              const noteData =
-                visit.note && typeof visit.note === "object"
-                  ? (visit.note as Record<string, any>)
-                  : null;
-
-              return (
-                <div key={visit.id} className="rounded-xl border p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <div className="font-semibold">
-                        {new Date(visit.createdAt).toLocaleString()}
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        {visit.status || "Unknown status"}
-                        {visit.appointmentType ? ` • ${visit.appointmentType}` : ""}
-                        {visit.priority ? ` • ${visit.priority}` : ""}
-                      </div>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() =>
-                        window.open(
-                          `/patients/${patientId}/visit-history/${visit.id}`,
-                          "_blank",
-                          "noopener,noreferrer"
-                        )
-                      }
-                    >
-                      Open Full Details
-                    </Button>
-                  </div>
-                  {noteData && (
-                    <div className="mt-4 grid gap-3 md:grid-cols-2">
-                      <div className="rounded-lg bg-muted/40 p-3">
-                        <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                          Subjective
-                        </div>
-                        <p className="text-sm">
-                          {noteData.subjective?.chiefComplaint ||
-                            noteData.subjective?.hpi ||
-                            "No subjective summary"}
-                        </p>
-                      </div>
-                      <div className="rounded-lg bg-muted/40 p-3">
-                        <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                          Assessment / Plan
-                        </div>
-                        <p className="text-sm">
-                          {Array.isArray(noteData.assessmentPlan) &&
-                          noteData.assessmentPlan[0]?.assessment
-                            ? noteData.assessmentPlan[0].assessment
-                            : "No assessment summary"}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </DialogContent>
-      </Dialog>
-
     </div>
   );
 }
@@ -2626,37 +2509,6 @@ function SurgicalHistorySection({ form }: { form: any }) {
 }
 
 // Past Medical History Section Component
-type Icd10Option = {
-  code: string;
-  label: string;
-};
-
-function normalizeIcd10Options(payload: unknown): Icd10Option[] {
-  if (!Array.isArray(payload)) {
-    return [];
-  }
-
-  const stringArrays = payload.filter(
-    (entry): entry is string[] =>
-      Array.isArray(entry) && entry.every((item) => typeof item === "string")
-  );
-
-  const codes = stringArrays.find((entry) =>
-    entry.some((item) => /^[A-Z][0-9A-Z]{1,6}(\.[0-9A-Z]{1,4})?$/.test(item))
-  );
-
-  if (!codes || codes.length === 0) {
-    return [];
-  }
-
-  const descriptions = stringArrays.find((entry) => entry.length === codes.length && entry !== codes);
-
-  return codes.map((code, index) => ({
-    code,
-    label: descriptions?.[index] ? `${code} - ${descriptions[index]}` : code,
-  }));
-}
-
 function PastMedicalHistorySection({ form }: { form: any }) {
   const pastMedicalHistoryValue = form.watch("pastMedicalHistory");
   // Ensure pastMedicalHistory is always an array
@@ -2676,10 +2528,6 @@ function PastMedicalHistorySection({ form }: { form: any }) {
     icd10: "",
     source: "",
   });
-  const [icd10Options, setIcd10Options] = React.useState<Icd10Option[]>([]);
-  const [isLoadingIcd10, setIsLoadingIcd10] = React.useState(false);
-  const [isIcd10DropdownOpen, setIsIcd10DropdownOpen] = React.useState(false);
-  const icd10DropdownRef = React.useRef<HTMLDivElement | null>(null);
 
   // Use refs to track latest values for cleanup
   const editingIndexRef = React.useRef<number | null>(null);
@@ -2689,81 +2537,6 @@ function PastMedicalHistorySection({ form }: { form: any }) {
     editingIndexRef.current = editingIndex;
     editDataRef.current = editData;
   }, [editingIndex, editData]);
-
-  React.useEffect(() => {
-    if (editingIndex === null) {
-      setIcd10Options([]);
-      setIsLoadingIcd10(false);
-      return;
-    }
-
-    const searchTerm = editData.icd10.trim() || editData.condition.trim();
-    if (searchTerm.length < 2) {
-      setIcd10Options([]);
-      setIsLoadingIcd10(false);
-      return;
-    }
-
-    const controller = new AbortController();
-    const timeoutId = window.setTimeout(async () => {
-      try {
-        setIsLoadingIcd10(true);
-        const response = await fetch(
-          `https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?sf=code,name&terms=${encodeURIComponent(searchTerm)}&maxList=50`,
-          { signal: controller.signal }
-        );
-
-        if (!response.ok) {
-          throw new Error(`ICD-10 search failed with status ${response.status}`);
-        }
-
-        const payload = (await response.json()) as unknown;
-        const normalized = normalizeIcd10Options(payload);
-        const currentCode = editData.icd10.trim().toUpperCase();
-
-        const withCurrentCode =
-          currentCode && !normalized.some((option) => option.code.toUpperCase() === currentCode)
-            ? [{ code: currentCode, label: `${currentCode} - current entry` }, ...normalized]
-            : normalized;
-
-        setIcd10Options(withCurrentCode);
-      } catch (error) {
-        if (!controller.signal.aborted) {
-          console.warn("Unable to load ICD-10 options", error);
-          setIcd10Options([]);
-        }
-      } finally {
-        if (!controller.signal.aborted) {
-          setIsLoadingIcd10(false);
-        }
-      }
-    }, 250);
-
-    return () => {
-      controller.abort();
-      window.clearTimeout(timeoutId);
-    };
-  }, [editData.condition, editData.icd10, editingIndex]);
-
-  React.useEffect(() => {
-    if (!isIcd10DropdownOpen) {
-      return;
-    }
-
-    const handleClickOutside = (event: MouseEvent) => {
-      if (!icd10DropdownRef.current) {
-        return;
-      }
-      if (!icd10DropdownRef.current.contains(event.target as Node)) {
-        setIsIcd10DropdownOpen(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [isIcd10DropdownOpen]);
 
   // Auto-save pending edits when component unmounts (section change)
   React.useEffect(() => {
@@ -2933,47 +2706,11 @@ function PastMedicalHistorySection({ form }: { form: any }) {
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
                       <Label>ICD-10 Code</Label>
-                      <div className="relative" ref={icd10DropdownRef}>
-                        <Input
-                          value={editData.icd10}
-                          onFocus={() => setIsIcd10DropdownOpen(true)}
-                          onChange={(e) => {
-                            setEditData({ ...editData, icd10: e.target.value.toUpperCase() });
-                            setIsIcd10DropdownOpen(true);
-                          }}
-                          placeholder="e.g., E11.9"
-                          className="pr-8"
-                        />
-                        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                        {isIcd10DropdownOpen && (isLoadingIcd10 || icd10Options.length > 0) && (
-                          <div className="absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md">
-                            {isLoadingIcd10 ? (
-                              <div className="px-2 py-1.5 text-sm text-muted-foreground">
-                                Loading ICD-10 options...
-                              </div>
-                            ) : (
-                              icd10Options.map((option) => (
-                                <button
-                                  key={option.code}
-                                  type="button"
-                                  onClick={() => {
-                                    setEditData({ ...editData, icd10: option.code });
-                                    setIsIcd10DropdownOpen(false);
-                                  }}
-                                  className="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
-                                >
-                                  {option.label}
-                                </button>
-                              ))
-                            )}
-                          </div>
-                        )}
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        {isLoadingIcd10
-                          ? "Loading ICD-10 options..."
-                          : "Search and select from ICD-10 options."}
-                      </p>
+                      <Input
+                        value={editData.icd10}
+                        onChange={(e) => setEditData({ ...editData, icd10: e.target.value })}
+                        placeholder="e.g., E11.9"
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label>Source</Label>
@@ -3061,7 +2798,7 @@ function PastMedicalHistorySection({ form }: { form: any }) {
 }
 
 // Orders Section Component
-function OrdersSection({ form, userRole }: { form: any; userRole?: string }) {
+function OrdersSection({ form }: { form: any }) {
   const ordersValue = form.watch("orders");
   // Ensure orders is always an array
   const orders = React.useMemo(() => {
@@ -3122,7 +2859,7 @@ function OrdersSection({ form, userRole }: { form: any; userRole?: string }) {
       type: "",
       priority: "",
       details: "",
-      status: userRole === "nurse" ? "Pending Physician Signature" : "Pending",
+      status: "",
       dateOrdered: "",
     };
     const current = getOrdersArray();
@@ -3250,9 +2987,6 @@ function OrdersSection({ form, userRole }: { form: any; userRole?: string }) {
                           <SelectValue placeholder="Select..." />
                         </SelectTrigger>
                         <SelectContent>
-                          {userRole === "nurse" && (
-                            <SelectItem value="Pending Physician Signature">Pending Physician Signature</SelectItem>
-                          )}
                           <SelectItem value="Pending">Pending</SelectItem>
                           <SelectItem value="Ordered">Ordered</SelectItem>
                           <SelectItem value="In Progress">In Progress</SelectItem>
@@ -3330,7 +3064,7 @@ function OrdersSection({ form, userRole }: { form: any; userRole?: string }) {
         className="w-full"
       >
         <Plus className="h-4 w-4 mr-2" />
-        {userRole === "nurse" ? "Add Draft Order" : "Add Order"}
+        Add Order
       </Button>
     </div>
   );

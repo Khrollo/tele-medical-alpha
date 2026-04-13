@@ -31,7 +31,7 @@ import { createPatientAction, updatePatientAssignmentAction, extractPatientIntak
 import { createVisitDraftAction, updateVisitWaitingRoomAction } from "@/app/_actions/visits";
 import { cn } from "@/app/_lib/utils/cn";
 import { ConsentFormDialog } from "@/app/_components/patient-chart/consent-form-dialog";
-import { createLiveSpeechController, isLiveSpeechSupported } from "@/codex-feature-split/app/_lib/ai/live-speech";
+import { createLiveSpeechController, isLiveSpeechSupported } from "@/app/_lib/ai/live-speech";
 
 const cleanPhone = (phone: string) => phone.replace(/\D/g, "");
 
@@ -412,7 +412,7 @@ export function CreatePatientForm() {
     },
   });
 
-  const onSubmit = async (data: CreatePatientFormData) => {
+  const continueSubmit = async (data: CreatePatientFormData) => {
     // Validate form and show toast errors
     const isValid = await form.trigger();
     if (!isValid) {
@@ -843,7 +843,7 @@ export function CreatePatientForm() {
                       {...form.register("phone", {
                         onChange: (e) => {
                           // Allow international format - just clean and validate length
-                          let value = e.target.value;
+                          const value = e.target.value;
                           // Don't auto-format for international numbers, just allow digits and common separators
                           form.setValue("phone", value, { shouldValidate: true });
                         },
@@ -1025,7 +1025,7 @@ export function CreatePatientForm() {
                       {...form.register("emergencyContactPhone", {
                         onChange: (e) => {
                           // Allow international format
-                          let value = e.target.value;
+                          const value = e.target.value;
                           form.setValue("emergencyContactPhone", value, { shouldValidate: true });
                         },
                       })}
@@ -1133,6 +1133,7 @@ export function CreatePatientForm() {
 
             // Now create the patient with the signature URL and the pre-generated ID
             const result = await createPatientAction({
+              patientId,
               firstName: pendingPatientData.firstName,
               lastName: pendingPatientData.lastName,
               dob: pendingPatientData.dob || undefined,
@@ -1345,6 +1346,40 @@ export function CreatePatientForm() {
           <DialogFooter>
             <Button onClick={() => setShowDuplicateModal(false)} variant="outline">
               Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showAiConfirmDialog} onOpenChange={setShowAiConfirmDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm AI-Prefilled Patient Data</DialogTitle>
+            <DialogDescription>
+              Review the AI-filled identity and contact fields before creating this patient record.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-lg border bg-muted/40 px-4 py-3 text-sm">
+            Fields to review: {aiPrefilledFields.join(", ")}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowAiConfirmDialog(false)}
+            >
+              Review Again
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!pendingSubmitData) {
+                  return;
+                }
+                setAiPrefillConfirmed(true);
+                setShowAiConfirmDialog(false);
+                await continueSubmit(pendingSubmitData);
+              }}
+            >
+              Confirm And Continue
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -2,10 +2,11 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { SideNav } from "@/components/side-nav";
-import { Menu } from "lucide-react";
+import { cn } from "@/app/_lib/utils/cn";
+import { Menu, ChevronRight, Home, Activity, Pill, AlertCircle, Syringe, History, Folder, BookOpen, User, ClipboardList, MessageSquare, FileText, Users, Speech, Stethoscope } from "lucide-react";
 
 interface PatientChartShellProps {
     children: React.ReactNode;
@@ -23,9 +24,30 @@ export function PatientChartShell({
     userName,
 }: PatientChartShellProps) {
     const openSidebarRef = React.useRef<(() => void) | null>(null);
+    const pathname = usePathname();
+
     const getNewVisitPath = () => {
         return `/patients/${patientId}/new-visit`;
     };
+
+    const pathSegments = pathname.split("/").filter(Boolean);
+    const breadcrumbs = pathSegments.map((segment, index) => {
+        const href = "/" + pathSegments.slice(0, index + 1).join("/");
+        
+        let label = segment;
+        if (segment === "patients") label = "Patients";
+        else if (segment === patientId) label = patientName;
+        else if (segment === "new-visit") label = "New Visit";
+        else if (segment === "lab-results") label = "Lab Results";
+        else if (segment === "documents") label = "Documents";
+        else if (segment === "messages") label = "Messages";
+        else if (segment === "history") label = "Patient History";
+        else {
+            label = segment.charAt(0).toUpperCase() + segment.slice(1).replace(/-/g, " ");
+        }
+        
+        return { href, label, isLast: index === pathSegments.length - 1 };
+    });
 
     return (
         <div className="flex h-screen w-full overflow-hidden bg-background">
@@ -77,11 +99,13 @@ export function PatientChartShell({
                                 Begin Intake
                             </Button>
                         )} */}
-                        <Button asChild size="default">
+                        {pathname.split("/").pop() !== "new-visit" && (
+                          <Button asChild size="default">
                             <Link href={getNewVisitPath()}>
                                 Log New Visit
                             </Link>
-                        </Button>
+                          </Button>
+                        )}
                     </div>
                 </div>
 

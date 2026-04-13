@@ -29,38 +29,6 @@ export function WaitingRoomShell({
           openMenuRef={openSidebarRef}
         />
 
-<<<<<<< Updated upstream
-                {/* Main Content Area */}
-                <div className="flex flex-1 flex-col overflow-hidden transition-all duration-300 ease-in-out">
-                    {/* Top Bar */}
-                    <div className="flex h-16 items-center gap-4 border-b border-border bg-background px-6">
-                        {/* Mobile hamburger button - inline with search */}
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="md:hidden shrink-0"
-                            onClick={() => {
-                                openSidebarRef.current?.();
-                            }}
-                        >
-                            <Menu className="h-5 w-5" />
-                            <span className="sr-only">Open menu</span>
-                        </Button>
-                        <div className="flex-1 min-w-0">
-                            <Input
-                                placeholder="Search by name, priority, or appointment type..."
-                                className="max-w-md w-full"
-                                id="waiting-room-search"
-                            />
-                        </div>
-                    </div>
-
-                    {/* Page Content */}
-                    <div className="flex-1 overflow-y-auto bg-background">
-                        {children}
-                    </div>
-                </div>
-=======
         <div className="flex flex-1 flex-col overflow-hidden transition-all duration-300 ease-in-out">
           <div className="flex h-16 items-center gap-4 border-b border-border bg-background px-6">
             <Button
@@ -79,7 +47,6 @@ export function WaitingRoomShell({
                 placeholder="Search schedule, inbox, patients, or workflows..."
                 className="max-w-md"
               />
->>>>>>> Stashed changes
             </div>
           </div>
 
