@@ -7,8 +7,6 @@ import {
   updateVisitDraft,
   finalizeVisit,
   getPatientOpenVisit,
-  type CreateVisitDraftParams,
-  type UpdateVisitDraftParams,
 } from "@/app/_lib/db/drizzle/queries/visit";
 import type { VisitNote } from "@/app/_lib/visit-note/schema";
 import { db } from "@/app/_lib/db/drizzle/index";
@@ -528,4 +526,26 @@ export async function getClinicianOpenVisitsAction() {
   const visits = await getClinicianOpenVisits(user.id);
 
   return { visits };
+}
+
+export async function getDoctorInboxDailySummaryAction() {
+  const user = await requireUser(["doctor"]);
+
+  const { getDoctorInboxDailySummary } = await import(
+    "@/app/_lib/db/drizzle/queries/visit"
+  );
+  const summary = await getDoctorInboxDailySummary(user.id);
+
+  return summary;
+}
+
+export async function getVisitCreatedByRoleAction(visitId: string) {
+  await requireUser(["doctor", "nurse"]);
+
+  const { getVisitCreatedByRole } = await import(
+    "@/app/_lib/db/drizzle/queries/visit"
+  );
+  const role = await getVisitCreatedByRole(visitId);
+
+  return { role };
 }

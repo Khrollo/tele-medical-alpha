@@ -4,14 +4,15 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { assignVisitToMeAction } from "@/app/_actions/visits";
 import { toast } from "sonner";
-import { Clock, ArrowUpDown, Video, Copy, Check, QrCode, RefreshCw } from "lucide-react";
+import { ArrowUpDown, Video, Copy, Check, QrCode, RefreshCw, User } from "lucide-react";
+import { cn } from "@/app/_lib/utils/cn";
 import { QRCodeSVG } from "qrcode.react";
 import { useWaitingRoomRealtime } from "@/app/_lib/hooks/use-waiting-room-realtime";
 
@@ -35,12 +36,13 @@ interface Patient {
 
 interface WaitingRoomListProps {
   patients: Patient[]; // Initial patients from server
+  userRole?: string;
 }
 
 type SortField = "name" | "waitTime" | "priority" | "appointmentType";
 type SortDirection = "asc" | "desc";
 
-export function WaitingRoomList({ patients: initialPatients }: WaitingRoomListProps) {
+export function WaitingRoomList({ patients: initialPatients, userRole }: WaitingRoomListProps) {
   const router = useRouter();
   const [loadingPatientId, setLoadingPatientId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -245,32 +247,20 @@ export function WaitingRoomList({ patients: initialPatients }: WaitingRoomListPr
   }, [searchQuery]);
 
   return (
-    <div className="space-y-4 p-4 md:p-6">
-      {/* Refresh Button and Sort Controls */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleRefresh}
-          disabled={isRefreshing}
-          className="w-fit"
-        >
-          <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
-          {isRefreshing ? "Refreshing..." : "Refresh"}
-        </Button>
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-end">
-        <div className="flex items-center gap-2">
-          <Select value={sortField} onValueChange={(value) => handleSortChange(value as SortField)}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Sort by" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="waitTime">Wait Time</SelectItem>
-              <SelectItem value="priority">Priority</SelectItem>
-              <SelectItem value="name">Name</SelectItem>
-              <SelectItem value="appointmentType">Appointment Type</SelectItem>
-            </SelectContent>
-          </Select>
+    <div className="space-y-6 p-4 md:p-6">
+      {/* Header Area */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+            Schedule
+          </h2>
+          <p className="mt-0.5 text-sm text-slate-500">
+            {userRole === "nurse"
+              ? "Review today’s assigned schedule and incoming visits."
+              : "Review the physician schedule and assign incoming patient visits."}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
           <Button
             variant="outline"
             size="icon"
@@ -363,9 +353,18 @@ export function WaitingRoomList({ patients: initialPatients }: WaitingRoomListPr
       </div>
 
       {filteredAndSortedPatients.length === 0 && (
-        <Card>
-          <CardContent className="flex items-center justify-center py-12">
-            <p className="text-muted-foreground">No patients found matching your search</p>
+        <Card className="rounded-2xl border-dashed border-2 bg-transparent shadow-none">
+          <CardContent className="flex items-center justify-center py-16">
+            <div className="text-center">
+              <div className="h-12 w-12 bg-white dark:bg-slate-900 rounded-full border border-slate-100 flex items-center justify-center mx-auto mb-3">
+                 <RefreshCw className="h-5 w-5 text-slate-300" />
+              </div>
+              <p className="text-sm text-slate-500">
+                {userRole === "nurse"
+                  ? "No patients currently scheduled or waiting."
+                  : "No patients currently scheduled or awaiting assignment."}
+              </p>
+            </div>
           </CardContent>
         </Card>
       )}

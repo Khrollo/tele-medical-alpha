@@ -1,7 +1,11 @@
 import { redirect, notFound } from "next/navigation";
 import { getCurrentUser } from "@/app/_lib/auth/get-current-user";
 import { getPatientBasics } from "@/app/_lib/db/drizzle/queries/patient";
-import { getVisitDetails } from "@/app/_lib/db/drizzle/queries/visit";
+import {
+  getVisitDetails,
+  getVisitCreatedByRole,
+} from "@/app/_lib/db/drizzle/queries/visit";
+import { getRecentVisitHistoryPreview } from "@/app/_lib/db/drizzle/queries/visit-history";
 import { NewVisitForm } from "@/app/_components/visit/new-visit-form";
 
 interface NewVisitPageProps {
@@ -31,6 +35,8 @@ export default async function NewVisitPage({
   // Get patient basics
   const patientBasics = await getPatientBasics(patientId);
 
+  const previousVisitHistory = await getRecentVisitHistoryPreview(patientId, 6);
+
   if (!patientBasics) {
     notFound();
   }
@@ -39,6 +45,7 @@ export default async function NewVisitPage({
   let existingVisitData = null;
   let visitAppointmentType: string | null = null;
   let visitTwilioRoomName: string | null = null;
+  let visitCreatedByRole: "doctor" | "nurse" | null = null;
   if (visitId) {
     const visitDetails = await getVisitDetails(visitId);
     if (visitDetails) {
@@ -47,6 +54,7 @@ export default async function NewVisitPage({
       }
       visitAppointmentType = visitDetails.visit.appointmentType;
       visitTwilioRoomName = visitDetails.visit.twilioRoomName;
+      visitCreatedByRole = await getVisitCreatedByRole(visitId);
     }
   }
 
@@ -60,6 +68,8 @@ export default async function NewVisitPage({
       existingVisitData={existingVisitData || undefined}
       visitAppointmentType={visitAppointmentType ?? undefined}
       visitTwilioRoomName={visitTwilioRoomName ?? undefined}
+      previousVisits={previousVisitHistory}
+      visitCreatedByRole={visitCreatedByRole}
     />
   );
 }

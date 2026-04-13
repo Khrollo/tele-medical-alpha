@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Menu, X, LogOut, Clock, Users, FileText, UserPlus, ChevronLeft, ChevronRight, Info, User, Pill, Syringe, History, Stethoscope, AlertCircle, Activity, FolderOpen } from "lucide-react";
+import { X, LogOut, Clock, Users, FileText, ChevronLeft, ChevronRight, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "./theme-toggle";
 import { cn } from "@/app/_lib/utils/cn";
@@ -17,24 +17,6 @@ interface SideNavProps {
     onMobileStateChange?: (isOpen: boolean) => void;
     openMenuRef?: React.MutableRefObject<(() => void) | null>;
 }
-
-const medicalSections = [
-    { id: "overview", label: "Overview", href: "", icon: <Info className="h-4 w-4" /> },
-    { id: "personal", label: "Personal Details", href: "/personal-details", icon: <User className="h-4 w-4" /> },
-    { id: "visits", label: "Visit History", href: "/visit-history", icon: <Clock className="h-4 w-4" /> },
-    { id: "vitals", label: "Vitals", href: "/vitals", icon: <Activity className="h-4 w-4" /> },
-    { id: "allergies", label: "Allergies", href: "/allergies", icon: <AlertCircle className="h-4 w-4" /> },
-    { id: "medications", label: "Medications", href: "/medications", icon: <Pill className="h-4 w-4" /> },
-    { id: "vaccines", label: "Vaccines", href: "/vaccines", icon: <Syringe className="h-4 w-4" /> },
-    { id: "family", label: "Family History", href: "/family-history", icon: <Users className="h-4 w-4" /> },
-    { id: "social", label: "Social History", href: "/social-history", icon: <Users className="h-4 w-4" /> },
-    { id: "surgical", label: "Surgical History", href: "/surgical-history", icon: <Stethoscope className="h-4 w-4" /> },
-    { id: "past-medical", label: "Past Medical History", href: "/past-medical-history", icon: <History className="h-4 w-4" /> },
-    { id: "orders", label: "Orders", href: "/orders", icon: <FileText className="h-4 w-4" /> },
-    { id: "documents", label: "Documents", href: "/documents", icon: <FolderOpen className="h-4 w-4" /> },
-    // Atlas / audit: was /log-history (404). Same destination as Visit History for demo-safe nav.
-    { id: "log", label: "Visit Log", href: "/visit-history", icon: <FileText className="h-4 w-4" /> },
-];
 
 export function SideNav({ userRole, userName, patientId, patientName, onMobileStateChange, openMenuRef }: SideNavProps) {
     const [isOpen, setIsOpen] = React.useState(false);
@@ -103,7 +85,7 @@ export function SideNav({ userRole, userName, patientId, patientName, onMobileSt
         if (userRole === "doctor") {
             items.push({
                 href: "/waiting-room",
-                label: "Waiting Room",
+                label: "Schedule",
                 icon: <Clock className="h-4 w-4" />,
             });
             items.push({
@@ -145,18 +127,6 @@ export function SideNav({ userRole, userName, patientId, patientName, onMobileSt
         if (!pathname || !patientId) return false;
         return pathname.startsWith(`/patients/${patientId}`);
     }, [pathname, patientId]);
-
-    // Get base path for patient routes
-    const patientBasePath = patientId ? `/patients/${patientId}` : "";
-
-    // Check if a medical section is active
-    const isMedicalSectionActive = (sectionHref: string) => {
-        if (!isOnPatientRoute) return false;
-        if (sectionHref === "") {
-            return pathname === patientBasePath || pathname === `${patientBasePath}/overview`;
-        }
-        return pathname === `${patientBasePath}${sectionHref}`;
-    };
 
     // Mobile drawer overlay
     const mobileOverlay = isOpen && isMobile && (

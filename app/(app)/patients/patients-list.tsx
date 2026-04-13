@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { QRCodeSVG } from "qrcode.react";
 import { Input } from "@/components/ui/input";
-import { Video, Copy, Check, Phone, Mail, Calendar, User, Pill, AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
+import { Video, Copy, Check, User, Pill, AlertCircle, ChevronLeft, ChevronRight, Plus, Calendar, Mail, Phone } from "lucide-react";
 import { toast } from "sonner";
 import { formatDate, formatDateTime } from "@/app/_lib/utils/format-date";
 import { formatVisitStatusLabel } from "@/app/_lib/utils/visit-status-label";
@@ -18,6 +18,7 @@ import { formatVisitStatusLabel } from "@/app/_lib/utils/visit-status-label";
 interface VisitInfo {
   id: string;
   status: string | null;
+  notesStatus: string | null;
   appointmentType: string | null;
   clinicianId: string | null;
   patientJoinToken: string | null;
@@ -41,10 +42,11 @@ interface Patient {
 
 interface PatientsListProps {
   patients: Patient[];
+  allPatients?: Patient[];
   userRole: string;
 }
 
-export function PatientsList({ patients, userRole }: PatientsListProps) {
+export function PatientsList({ patients, allPatients, userRole }: PatientsListProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [showVirtualModal, setShowVirtualModal] = useState<{ patientId: string; visitId: string; joinUrl: string } | null>(null);
@@ -113,29 +115,100 @@ export function PatientsList({ patients, userRole }: PatientsListProps) {
 
   const getStatusBadge = (status: string | null) => {
     if (!status) return null;
-    const statusLower = status.toLowerCase();
-    if (statusLower === "in progress" || statusLower === "in_progress") {
-      return <Badge variant="default" className="bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500">In Progress</Badge>;
+    const statusLower = status.trim().toLowerCase().replace(/[_-]/g, " ");
+    if (statusLower === "in progress" || statusLower === "draft") {
+      return (
+        <Badge
+          variant="outline"
+          className="rounded-full border-blue-500/60 bg-blue-500/10 text-blue-700 dark:text-blue-300"
+        >
+          In Progress
+        </Badge>
+      );
     }
-    if (statusLower === "signed & complete" || statusLower === "signed_and_complete") {
-      return <Badge variant="default" className="bg-green-500/10 text-green-700 dark:text-green-400 border-green-500">Signed & Complete</Badge>;
+    if (statusLower === "signed & complete" || statusLower === "signed and complete" || statusLower === "completed") {
+      return (
+        <Badge
+          variant="outline"
+          className="rounded-full border-emerald-500/60 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+        >
+          Signed & Complete
+        </Badge>
+      );
     }
     if (statusLower === "waiting") {
-      return <Badge variant="default" className="bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500">Waiting</Badge>;
+      return (
+        <Badge
+          variant="outline"
+          className="rounded-full border-amber-500/60 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+        >
+          Waiting
+        </Badge>
+      );
     }
-    return <Badge variant="outline">{formatVisitStatusLabel(status)}</Badge>;
+    return (
+      <Badge
+        variant="outline"
+        className="rounded-full border-slate-500/50 bg-slate-500/10 text-slate-700 dark:text-slate-300"
+      >
+        {formatVisitStatusLabel(status)}
+      </Badge>
+    );
   };
 
   const getAppointmentTypeBadge = (type: string | null) => {
     if (!type) return null;
-    const typeLower = type.toLowerCase();
+    const typeLower = type.trim().toLowerCase().replace(/[_-]/g, " ");
     if (typeLower === "virtual") {
-      return <Badge variant="default" className="bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500">Virtual</Badge>;
+      return (
+        <Badge
+          variant="outline"
+          className="rounded-full border-fuchsia-500/60 bg-fuchsia-500/10 text-fuchsia-700 dark:text-fuchsia-300"
+        >
+          Virtual
+        </Badge>
+      );
     }
-    if (typeLower === "in-person" || typeLower === "in person") {
-      return <Badge variant="default" className="bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500">In-Person</Badge>;
+    if (typeLower === "in person") {
+      return (
+        <Badge
+          variant="outline"
+          className="rounded-full border-indigo-500/60 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300"
+        >
+          In-Person
+        </Badge>
+      );
     }
-    return <Badge variant="outline">{type}</Badge>;
+
+    const normalized = typeLower
+      .split(" ")
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+
+    return (
+      <Badge
+        variant="outline"
+        className="rounded-full border-slate-500/50 bg-slate-500/10 text-slate-700 dark:text-slate-300"
+      >
+        {normalized}
+      </Badge>
+    );
+  };
+
+  const canContinueVisit = (visit: VisitInfo | null) => {
+    if (!visit) return false;
+
+    const normalizedStatus = (visit.status ?? "").trim().toLowerCase().replace(/[_-]/g, " ");
+    const normalizedNoteStatus = (visit.notesStatus ?? "").trim().toLowerCase().replace(/[_-]/g, " ");
+
+    return (
+      normalizedStatus === "in progress" ||
+      normalizedStatus === "waiting" ||
+      normalizedStatus === "draft" ||
+      normalizedNoteStatus === "in progress" ||
+      normalizedNoteStatus === "draft"
+    );
   };
 
   const isVirtualVisitReady = (visit: VisitInfo | null) => {
@@ -170,14 +243,23 @@ export function PatientsList({ patients, userRole }: PatientsListProps) {
     router.push(joinUrl);
   };
 
+  const scopedPatients = useMemo(() => {
+    const query = searchQuery.trim();
+    // Nurse default: active/recent list. Nurse with search: match across all patients.
+    if (userRole === "nurse" && query.length > 0) {
+      return allPatients ?? patients;
+    }
+    return patients;
+  }, [allPatients, patients, searchQuery, userRole]);
+
   // Filter patients based on search query
   const filteredPatients = useMemo(() => {
     if (!searchQuery.trim()) {
-      return patients;
+      return scopedPatients;
     }
 
     const query = searchQuery.toLowerCase();
-    return patients.filter((patient) => {
+    return scopedPatients.filter((patient) => {
       const fullName = patient.fullName.toLowerCase();
       const phone = patient.phone?.toLowerCase() || "";
       const email = patient.email?.toLowerCase() || "";
@@ -192,7 +274,7 @@ export function PatientsList({ patients, userRole }: PatientsListProps) {
         clinicianEmail.includes(query)
       );
     });
-  }, [patients, searchQuery]);
+  }, [scopedPatients, searchQuery]);
 
   // Calculate pagination
   const totalPages = Math.ceil(filteredPatients.length / PATIENTS_PER_PAGE);
@@ -212,12 +294,30 @@ export function PatientsList({ patients, userRole }: PatientsListProps) {
   };
 
   return (
-    <>
-      {/* Results Count */}
-      {filteredPatients.length > 0 && (
-        <div className="text-sm text-muted-foreground mb-4">
-          Showing {startIndex + 1}-{Math.min(endIndex, filteredPatients.length)} of {filteredPatients.length} patients
-          {searchQuery && ` matching "${searchQuery}"`}
+    <div className="flex flex-col gap-6 p-4 md:p-6">
+      {/* Results Count & Action */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+            {userRole === "doctor"
+              ? "Assigned & Active Patients"
+              : "Active & Recent Patients"}
+            {filteredPatients.length > 0 && (
+              <span className="ml-2 text-sm font-normal text-slate-400">({filteredPatients.length})</span>
+            )}
+          </h2>
+        </div>
+        <Link href="/patients/new">
+          <Button size="sm">
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
+            Add Patient
+          </Button>
+        </Link>
+      </div>
+
+      {filteredPatients.length > 0 && searchQuery && (
+        <div className="text-sm font-medium text-slate-500 bg-slate-100 dark:bg-slate-800 w-fit px-4 py-1.5 rounded-full">
+           Results for &quot;{searchQuery}&quot;
         </div>
       )}
 
@@ -238,6 +338,10 @@ export function PatientsList({ patients, userRole }: PatientsListProps) {
               const joinUrl = getJoinUrl(patient.visit);
 
               const age = calculateAge(patient.dob);
+              const continueVisitHref = patient.visit
+                ? `/patients/${patient.id}/new-visit?visitId=${patient.visit.id}`
+                : null;
+              const showContinueVisit = canContinueVisit(patient.visit);
 
               return (
                 <Card key={patient.id} className="w-full hover:shadow-md transition-shadow">
@@ -318,16 +422,31 @@ export function PatientsList({ patients, userRole }: PatientsListProps) {
                         </div>
                       )}
 
-                      {/* Visit Status - Show for nurses */}
-                      {userRole === "nurse" && patient.visit && (
-                        <div className="space-y-2 pt-2 border-t">
-                          <div className="flex flex-wrap gap-2">
-                            {getStatusBadge(patient.visit.status)}
-                            {getAppointmentTypeBadge(patient.visit.appointmentType)}
-                          </div>
+                      {/* Footer */}
+                      <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                         <div>
+                            <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">Last Seen</span>
+                            <span className="block text-xs text-slate-600 dark:text-slate-300">
+                               {patient.visit ? formatDate(patient.visit.createdAt) : "No visits"}
+                            </span>
+                         </div>
 
-                          {/* Virtual Visit Join Button for Nurses */}
-                          {virtualReady && (
+                         <div className="flex items-center gap-2">
+                           {showContinueVisit && continueVisitHref && (
+                             <Button
+                               onClick={(e) => {
+                                 e.preventDefault();
+                                 e.stopPropagation();
+                                 router.push(continueVisitHref);
+                               }}
+                               variant="default"
+                               size="sm"
+                               className="rounded-full px-3 text-xs"
+                             >
+                               Continue Visit
+                             </Button>
+                           )}
+                           {virtualReady && (
                             <Button
                               onClick={(e) => {
                                 e.preventDefault();
@@ -345,13 +464,8 @@ export function PatientsList({ patients, userRole }: PatientsListProps) {
                               <Video className="h-4 w-4 mr-2" />
                               View Virtual Visit
                             </Button>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Added Date */}
-                      <div className="text-xs text-muted-foreground pt-1 border-t">
-                        <span>Added: {formatDate(patient.createdAt)}</span>
+                           )}
+                         </div>
                       </div>
                     </CardContent>
                   </Link>
@@ -441,7 +555,7 @@ export function PatientsList({ patients, userRole }: PatientsListProps) {
           </DialogContent>
         </Dialog>
       )}
-    </>
+    </div>
   );
 }
 
