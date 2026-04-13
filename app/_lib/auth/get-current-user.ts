@@ -1,51 +1,35 @@
-import { eq } from "drizzle-orm";
-import { createSupabaseServerClient } from "@/app/_lib/supabase/server";
-import { db } from "@/app/_lib/db/drizzle/index";
-import { users } from "@/app/_lib/db/drizzle/schema";
+import { headers } from "next/headers";
+import { auth } from "@/app/_lib/auth/auth";
 
 /**
- * Get current user from Supabase auth and load role from users table
- * Returns null if not authenticated
+ * Get current user from Better Auth session.
+ * Returns null if not authenticated.
  */
 export async function getCurrentUser() {
-  const supabase = await createSupabaseServerClient();
+  try {
+    const session = await auth.api.getSession({
+      headers: await headers(),
+    });
 
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
+    if (!session?.user) {
+      return null;
+    }
 
-  if (error || !user) {
-    return null;
-  }
+    const user = session.user;
 
-  // Get user role from users table
-  const userRecord = await db
-    .select()
-    .from(users)
-    .where(eq(users.id, user.id))
-    .limit(1);
-
-  if (!userRecord[0]) {
-    // Fallback to metadata if not in users table
-    const role = (user.user_metadata?.role as string) || "patient";
     return {
       id: user.id,
-      email: user.email || "",
-      role,
+      email: user.email,
+      role: (user as Record<string, unknown>).role as string || "patient",
     };
+  } catch {
+    return null;
   }
-
-  return {
-    id: userRecord[0].id,
-    email: userRecord[0].email,
-    role: userRecord[0].role || "patient",
-  };
 }
 
 /**
- * Require current user and role
- * Throws if not authenticated or wrong role
+ * Require current user and role.
+ * Throws if not authenticated or wrong role.
  */
 export async function requireUser(allowedRoles?: string[]) {
   const user = await getCurrentUser();
