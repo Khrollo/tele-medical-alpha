@@ -4,7 +4,10 @@ import * as React from "react";
 import { useState, useRef } from "react";
 import { Mic, Loader2, Square, AudioLines } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { _convertToMP3Internal, preloadLamejs } from "@/app/_lib/utils/audioConverter";
+import {
+  _convertToMP3Internal,
+  preloadLamejs,
+} from "@/app/_lib/utils/audioConverter";
 import { storeFile } from "@/app/_lib/offline/files";
 import { toast } from "sonner";
 import { cn } from "@/app/_lib/utils/cn";
@@ -27,8 +30,9 @@ type CaptureState =
   | "converting"
   | "uploading"
   | "transcribing"
-  | "parsing"
   | "complete";
+
+const LIVE_PARSE_INTERVAL_MS = 5000;
 
 export function AICapturePanel({
   patientId,
@@ -36,45 +40,118 @@ export function AICapturePanel({
   onParseReady,
 }: AICapturePanelProps) {
   const [state, setState] = useState<CaptureState>("idle");
+  const [isCapturing, setIsCapturing] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [previousTranscripts, setPreviousTranscripts] = useState<string[]>([]);
   const [liveTranscript, setLiveTranscript] = useState("");
   const [interimTranscript, setInterimTranscript] = useState("");
   const [isLiveMode, setIsLiveMode] = useState(isLiveSpeechSupported());
+  const [isLiveParsing, setIsLiveParsing] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const parseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const parseIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastParsedTranscriptRef = useRef("");
+  const latestFullTranscriptRef = useRef("");
   const liveControllerRef = useRef<ReturnType<typeof createLiveSpeechController> | null>(null);
+  const previousTranscriptsRef = useRef<string[]>([]);
+  const isLiveParsingRef = useRef(false);
+  const isLiveSessionActiveRef = useRef(false);
 
   const queuePendingParsing = React.useCallback(
-    async (params: { audioFileId?: string | null; audioPath?: string }) => {
+    async (audioFileId: string | null) => {
+      if (!audioFileId) {
+        return;
+      }
+
       try {
         const { getOfflineDB } = await import("@/app/_lib/offline/db");
         const db = getOfflineDB();
         const draft = await db.draftVisits.where("patientId").equals(patientId).first();
 
-        if (!draft || !params.audioFileId) {
+        if (!draft) {
           return;
         }
 
         await db.draftVisits.update(draft.draftId, {
           pendingParsing: JSON.stringify({
-            audioFileId: params.audioFileId,
-            audioPath: params.audioPath,
+            audioFileId,
             previousTranscripts:
-              previousTranscripts.length > 0 ? previousTranscripts : undefined,
+              previousTranscriptsRef.current.length > 0
+                ? previousTranscriptsRef.current
+                : undefined,
             patientId,
           }),
         });
       } catch (offlineError) {
-        console.warn("Failed to save offline draft:", offlineError);
+        console.warn("Failed to queue pending parsing:", offlineError);
       }
     },
-    [patientId, previousTranscripts]
+    [patientId]
   );
+
+  const runLiveParse = React.useCallback(
+    async (transcript: string) => {
+      const normalized = transcript.trim();
+      if (
+        !normalized ||
+        normalized === lastParsedTranscriptRef.current ||
+        isLiveParsingRef.current
+      ) {
+        return;
+      }
+
+      isLiveParsingRef.current = true;
+      setIsLiveParsing(true);
+
+      try {
+        const result = await parseTranscriptDraftAction({
+          transcript: normalized,
+          previousTranscripts: previousTranscriptsRef.current,
+        });
+
+        onParseReady(result.parsed);
+        lastParsedTranscriptRef.current = normalized;
+      } catch (error) {
+        console.error("Error parsing live transcript:", error);
+      } finally {
+        isLiveParsingRef.current = false;
+        setIsLiveParsing(false);
+      }
+    },
+    [onParseReady]
+  );
+
+  const startLiveParseLoop = React.useCallback(() => {
+    if (parseIntervalRef.current) {
+      return;
+    }
+
+    parseIntervalRef.current = setInterval(() => {
+      if (!isLiveSessionActiveRef.current || isLiveParsingRef.current) {
+        return;
+      }
+
+      const transcript = latestFullTranscriptRef.current.trim();
+      if (!transcript || transcript === lastParsedTranscriptRef.current) {
+        return;
+      }
+
+      void runLiveParse(transcript);
+    }, LIVE_PARSE_INTERVAL_MS);
+  }, [runLiveParse]);
+
+  const stopLiveParseLoop = React.useCallback(() => {
+    if (parseIntervalRef.current) {
+      clearInterval(parseIntervalRef.current);
+      parseIntervalRef.current = null;
+    }
+  }, []);
+
+  React.useEffect(() => {
+    previousTranscriptsRef.current = previousTranscripts;
+  }, [previousTranscripts]);
 
   React.useEffect(() => {
     if (navigator.onLine) {
@@ -84,11 +161,30 @@ export function AICapturePanel({
     }
   }, []);
 
+  const handleLiveSnapshot = React.useCallback(
+    async (snapshot: LiveSpeechSnapshot) => {
+      latestFullTranscriptRef.current = snapshot.fullTranscript;
+      setLiveTranscript(snapshot.finalTranscript);
+      setInterimTranscript(snapshot.interimTranscript);
+
+      if (snapshot.appendedFinalTranscript) {
+        onTranscriptReady(snapshot.fullTranscript);
+        setPreviousTranscripts((prev) => [...prev, snapshot.appendedFinalTranscript]);
+      }
+    },
+    [onTranscriptReady]
+  );
+
   React.useEffect(() => {
     liveControllerRef.current = createLiveSpeechController({
       onStateChange: (nextState) => {
         if (nextState === "listening") {
           setState("recording");
+          setIsCapturing(true);
+          return;
+        }
+        if (nextState === "stopped") {
+          setIsCapturing(false);
         }
       },
       onSnapshot: (snapshot) => {
@@ -97,71 +193,25 @@ export function AICapturePanel({
         });
       },
       onError: (message) => {
+        isLiveSessionActiveRef.current = false;
+        stopLiveParseLoop();
+        setIsCapturing(false);
         setIsLiveMode(false);
-        toast.warning(message || "Live speech is unavailable. Falling back to recorded audio.");
+        toast.warning(
+          message || "Live speech is unavailable. Falling back to recorded audio."
+        );
       },
     });
 
     return () => {
+      isLiveSessionActiveRef.current = false;
       liveControllerRef.current?.destroy();
-      if (parseTimeoutRef.current) {
-        clearTimeout(parseTimeoutRef.current);
-      }
+      stopLiveParseLoop();
       if (timerRef.current) {
         clearInterval(timerRef.current);
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const runDebouncedParse = React.useCallback(
-    (transcript: string) => {
-      if (parseTimeoutRef.current) {
-        clearTimeout(parseTimeoutRef.current);
-      }
-
-      parseTimeoutRef.current = setTimeout(async () => {
-        const normalized = transcript.trim();
-        if (!normalized || normalized === lastParsedTranscriptRef.current) {
-          return;
-        }
-
-        setState("parsing");
-
-        try {
-          const result = await parseTranscriptDraftAction({
-            transcript: normalized,
-            previousTranscripts,
-          });
-
-          onParseReady(result.parsed);
-          lastParsedTranscriptRef.current = normalized;
-          setState("recording");
-        } catch (error) {
-          console.error("Error parsing live transcript:", error);
-          setState("recording");
-        }
-      }, 900);
-    },
-    [onParseReady, previousTranscripts]
-  );
-
-  const handleLiveSnapshot = React.useCallback(
-    async (snapshot: LiveSpeechSnapshot) => {
-      setLiveTranscript(snapshot.finalTranscript);
-      setInterimTranscript(snapshot.interimTranscript);
-
-      if (snapshot.appendedFinalTranscript) {
-        onTranscriptReady(snapshot.fullTranscript);
-        setPreviousTranscripts((prev) => [...prev, snapshot.appendedFinalTranscript]);
-      }
-
-      if (snapshot.fullTranscript.trim()) {
-        runDebouncedParse(snapshot.fullTranscript);
-      }
-    },
-    [onTranscriptReady, runDebouncedParse]
-  );
+  }, [handleLiveSnapshot, stopLiveParseLoop]);
 
   const startFallbackRecording = async () => {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -187,9 +237,12 @@ export function AICapturePanel({
 
   const startRecording = async () => {
     try {
+      setIsCapturing(true);
       setRecordingTime(0);
       setLiveTranscript("");
       setInterimTranscript("");
+      setIsLiveParsing(false);
+      latestFullTranscriptRef.current = "";
       lastParsedTranscriptRef.current = "";
 
       timerRef.current = setInterval(() => {
@@ -197,6 +250,8 @@ export function AICapturePanel({
       }, 1000);
 
       if (isLiveMode && liveControllerRef.current?.isSupported) {
+        isLiveSessionActiveRef.current = true;
+        startLiveParseLoop();
         await liveControllerRef.current.start();
         return;
       }
@@ -206,6 +261,9 @@ export function AICapturePanel({
       console.error("Error starting recording:", error);
       toast.error("Failed to start recording");
       setState("idle");
+      setIsCapturing(false);
+      stopLiveParseLoop();
+      isLiveSessionActiveRef.current = false;
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
@@ -213,9 +271,14 @@ export function AICapturePanel({
     }
   };
 
-  const stopRecording = () => {
+  const stopRecording = async () => {
+    setIsCapturing(false);
+
     if (liveControllerRef.current?.isSupported && isLiveMode) {
+      isLiveSessionActiveRef.current = false;
       liveControllerRef.current.stop();
+      stopLiveParseLoop();
+      await runLiveParse(latestFullTranscriptRef.current);
       setState("complete");
       setTimeout(() => setState("idle"), 1200);
     } else if (
@@ -268,7 +331,7 @@ export function AICapturePanel({
       }
 
       if (!navigator.onLine) {
-        await queuePendingParsing({ audioFileId: fileId });
+        await queuePendingParsing(fileId);
         toast.warning("Connection lost. Audio saved locally.");
         setState("idle");
         return;
@@ -300,10 +363,7 @@ export function AICapturePanel({
           throw new Error("Upload failed");
         }
       } catch {
-        await queuePendingParsing({
-          audioFileId: fileId || fallbackId,
-          audioPath: path,
-        });
+        await queuePendingParsing(fileId);
         toast.warning("Upload failed. Audio saved locally.");
         setState("idle");
         return;
@@ -317,7 +377,9 @@ export function AICapturePanel({
           body: JSON.stringify({
             audioPath,
             previousTranscripts:
-              previousTranscripts.length > 0 ? previousTranscripts : undefined,
+              previousTranscriptsRef.current.length > 0
+                ? previousTranscriptsRef.current
+                : undefined,
           }),
         });
 
@@ -330,7 +392,9 @@ export function AICapturePanel({
         if (newTranscript && newTranscript.trim().length > 0) {
           onTranscriptReady(newTranscript);
           setPreviousTranscripts((prev) => [...prev, newTranscript]);
-          setLiveTranscript((prev) => [prev, newTranscript].filter(Boolean).join(" ").trim());
+          setLiveTranscript((prev) =>
+            [prev, newTranscript].filter(Boolean).join(" ").trim()
+          );
         }
         onParseReady(parsed);
 
@@ -341,10 +405,7 @@ export function AICapturePanel({
           setState("idle");
         }, 2000);
       } catch {
-        await queuePendingParsing({
-          audioFileId: fileId || fallbackId,
-          audioPath: audioPath || path,
-        });
+        await queuePendingParsing(fileId);
         toast.warning("Processing failed. Audio saved offline.");
         setState("idle");
       }
@@ -362,15 +423,15 @@ export function AICapturePanel({
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const isProcessing = ["converting", "uploading", "transcribing", "parsing"].includes(state);
+  const isProcessing = ["converting", "uploading", "transcribing"].includes(state);
 
   return (
     <div className="fixed bottom-24 right-8 z-[100] group flex flex-col items-end gap-3">
       {(liveTranscript || interimTranscript) && (
-        <div className="max-w-sm rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 text-sm shadow-xl dark:border-slate-800 dark:bg-slate-950/95">
+        <div className="pointer-events-none max-w-sm rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 text-sm shadow-xl dark:border-slate-800 dark:bg-slate-950/95">
           <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
             <AudioLines className="h-4 w-4" />
-            Live AI Draft
+            {isLiveParsing ? "Live AI Draft (Updating)" : "Live AI Draft"}
           </div>
           <p className="text-slate-700 dark:text-slate-200">
             {liveTranscript || "Listening..."}
@@ -382,28 +443,32 @@ export function AICapturePanel({
       )}
 
       <div className="absolute bottom-full right-0 mb-4 px-4 py-2 bg-slate-800 text-white text-sm rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none md:origin-bottom-right border border-slate-700 font-medium">
-        {isLiveMode ? "AI Clinical Scribe (Live)" : "AI Clinical Scribe"}
+        {isLiveMode
+          ? isLiveParsing
+            ? "AI Clinical Scribe (Live, syncing every 5s)"
+            : "AI Clinical Scribe (Live)"
+          : "AI Clinical Scribe"}
         <div className="absolute -bottom-2 right-6 w-0 h-0 border-l-[6px] border-l-transparent border-t-[8px] border-t-slate-800 border-r-[6px] border-r-transparent"></div>
       </div>
 
       {state === "recording" && (
-        <div className="absolute inset-x-0 bottom-0 h-14 bg-red-500 rounded-full animate-ping opacity-20" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-red-500 rounded-full animate-ping opacity-20" />
       )}
 
       <Button
-        onClick={state === "recording" ? stopRecording : startRecording}
-        disabled={isProcessing}
+        onClick={isCapturing ? stopRecording : startRecording}
+        disabled={isProcessing && !isCapturing}
         size="icon"
         className={cn(
           "relative h-14 w-14 rounded-full border-4 border-white dark:border-slate-800 overflow-hidden transition-all duration-300",
-          state === "recording"
+          isCapturing
             ? "bg-red-500 hover:bg-red-600 scale-105"
             : isProcessing
               ? "bg-slate-700 opacity-90 cursor-wait"
               : "bg-slate-900 hover:bg-slate-800 hover:scale-105"
         )}
       >
-        {state === "recording" ? (
+        {isCapturing ? (
           <div className="flex flex-col items-center gap-0.5">
             <Square className="h-4 w-4 fill-current text-white" />
             <span className="text-[9px] text-white font-bold tracking-wider">
