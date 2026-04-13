@@ -1,7 +1,8 @@
-import { eq, desc, and, gte, lte, count } from "drizzle-orm";
+import { eq, desc, and, gte, lte, count, max } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
 import { db } from "../index";
-import { visits, patients } from "../schema";
+import { visits, patients, notes } from "../schema";
+import { VisitHistoryPreviewEntry } from "@/codex-feature-split/app/_lib/db/drizzle/queries/visit-history";
 
 export interface GetVisitHistoryOptions {
   page?: number;
@@ -126,5 +127,50 @@ export async function getVisitHistory(
       revalidate: 60,
     }
   )();
+}
+
+export async function getRecentVisitHistoryPreview(
+  patientId: string,
+  limit = 5
+): Promise<VisitHistoryPreviewEntry[]> {
+  const latestNotePerVisit = db
+    .select({
+      visitId: notes.visitId,
+      latestCreatedAt: max(notes.createdAt).as("latest_created_at"),
+    })
+    .from(notes)
+    .groupBy(notes.visitId)
+    .as("latest_note_per_visit");
+
+  const visitRows = await db
+    .select({
+      id: visits.id,
+      status: visits.status,
+      createdAt: visits.createdAt,
+      appointmentType: visits.appointmentType,
+      priority: visits.priority,
+      note: notes.note,
+    })
+    .from(visits)
+    .leftJoin(latestNotePerVisit, eq(latestNotePerVisit.visitId, visits.id))
+    .leftJoin(
+      notes,
+      and(
+        eq(notes.visitId, visits.id),
+        eq(notes.createdAt, latestNotePerVisit.latestCreatedAt)
+      )
+    )
+    .where(eq(visits.patientId, patientId))
+    .orderBy(desc(visits.createdAt))
+    .limit(limit);
+
+  return visitRows.map((row) => ({
+    id: row.id,
+    status: row.status,
+    createdAt: row.createdAt,
+    appointmentType: row.appointmentType,
+    priority: row.priority,
+    note: row.note,
+  }));
 }
 
