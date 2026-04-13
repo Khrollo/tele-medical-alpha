@@ -262,16 +262,6 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
         </div>
         <div className="flex items-center gap-3">
           <Button
-            variant="outline"
-            size="icon"
-            onClick={() => setSortDirection(sortDirection === "asc" ? "desc" : "asc")}
-            title={`Sort ${sortDirection === "asc" ? "Descending" : "Ascending"}`}
-          >
-            <ArrowUpDown className="h-4 w-4" />
-          </Button>
-        </div>
-        <div className="flex items-center gap-3">
-          <Button
             variant="ghost"
             size="sm"
             onClick={handleRefresh}
@@ -281,7 +271,7 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
             <RefreshCw className={`h-4 w-4 mr-2 text-slate-500 ${isRefreshing ? "animate-spin" : ""}`} />
             <span className="text-xs font-bold text-slate-600 uppercase tracking-widest">{isRefreshing ? "Syncing..." : "Sync"}</span>
           </Button>
-          <div className="h-8 w-[1px] bg-slate-200 dark:bg-slate-800 hidden sm:block" />
+          <div className="h-8 w-px bg-slate-200 dark:bg-slate-800 hidden sm:block" />
           <div className="flex items-center gap-2">
             <Select value={sortField} onValueChange={(value) => handleSortChange(value as SortField)}>
               <SelectTrigger className="w-[160px] h-9 rounded-full bg-white dark:bg-slate-900 border border-slate-100 text-xs font-bold uppercase tracking-widest">
