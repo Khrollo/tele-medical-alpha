@@ -59,6 +59,14 @@ interface NewVisitFormProps {
   isInVideoCall?: boolean; // Flag to indicate if form is in video call context
   visitAppointmentType?: string | null; // Appointment type for virtual visit detection
   visitTwilioRoomName?: string | null; // Twilio room name for joining calls
+  previousVisits?: Array<{
+    id: string;
+    status: string | null;
+    createdAt: Date;
+    appointmentType: string | null;
+    priority: string | null;
+    note: unknown;
+  }>;
 }
 
 
@@ -79,8 +87,13 @@ export function NewVisitForm({
   isInVideoCall = false,
   visitAppointmentType,
   visitTwilioRoomName,
+  previousVisits = [],
 }: NewVisitFormProps) {
   const router = useRouter();
+  const postSaveSessionKey = React.useMemo(
+    () => `visit-post-save:${patientId}`,
+    [patientId]
+  );
   // Get sections based on role
   const roleSections = React.useMemo(() => getSectionsForRole(userRole), [userRole]);
   const [currentSection, setCurrentSection] = React.useState(roleSections[0].id);
@@ -94,6 +107,9 @@ export function NewVisitForm({
   const [isSaving, setIsSaving] = React.useState(false);
   const [visitIdRemote, setVisitIdRemote] = React.useState<string | null>(existingVisitId || null);
   const [draftLoaded, setDraftLoaded] = React.useState(false);
+  const [hasAiDraftSuggestions, setHasAiDraftSuggestions] = React.useState(false);
+  const lockedPathsRef = React.useRef<Set<string>>(new Set());
+  const [showPreviousVisitsDialog, setShowPreviousVisitsDialog] = React.useState(false);
 
   // Listen for medical panel open events from PatientChartShell
   React.useEffect(() => {
@@ -140,10 +156,84 @@ export function NewVisitForm({
   const [isProcessingAction, setIsProcessingAction] = React.useState(false);
   const appliedParsedDataRef = React.useRef<any>(null);
 
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const rawState = window.sessionStorage.getItem(postSaveSessionKey);
+    if (!rawState) return;
+
+    window.sessionStorage.removeItem(postSaveSessionKey);
+
+    try {
+      const savedState = JSON.parse(rawState) as {
+        patientId?: string;
+        visitId?: string;
+      };
+
+      if (savedState.patientId !== patientId) {
+        return;
+      }
+
+      if (savedState.visitId) {
+        setVisitIdRemote(savedState.visitId);
+      }
+
+      setShowPostSaveModal(true);
+    } catch (error) {
+      console.warn("Failed to restore post-save state:", error);
+    }
+  }, [patientId, postSaveSessionKey]);
+
   const form = useForm({
     resolver: zodResolver(visitNoteSchema),
     defaultValues: createEmptyVisitNote(),
   });
+
+  const collectLockedPaths = React.useCallback((dirtyFields: Record<string, unknown>) => {
+    const locked = new Set<string>();
+
+    const walk = (value: unknown, prefix = "") => {
+      if (!value) return;
+      if (value === true && prefix) {
+        locked.add(prefix);
+        return;
+      }
+      if (Array.isArray(value)) {
+        return;
+      }
+      if (typeof value === "object") {
+        for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+          walk(child, prefix ? `${prefix}.${key}` : key);
+        }
+      }
+    };
+
+    walk(dirtyFields);
+    return locked;
+  }, []);
+
+  React.useEffect(() => {
+    const currentLockedPaths = collectLockedPaths(
+      form.formState.dirtyFields as Record<string, unknown>
+    );
+
+    currentLockedPaths.forEach((path) => {
+      lockedPathsRef.current.add(path);
+    });
+  }, [collectLockedPaths, form.formState.dirtyFields]);
+
+  const getLockedPaths = React.useCallback(() => {
+    const currentLockedPaths = collectLockedPaths(
+      form.formState.dirtyFields as Record<string, unknown>
+    );
+    const combined = new Set<string>(lockedPathsRef.current);
+
+    currentLockedPaths.forEach((path) => {
+      combined.add(path);
+    });
+
+    return combined;
+  }, [collectLockedPaths, form.formState.dirtyFields]);
 
   // Auto-mark section as reviewed when navigated to
   const handleSectionChange = React.useCallback(async (sectionId: string) => {
@@ -329,13 +419,15 @@ export function NewVisitForm({
           // Merge with most recent (AI) values taking precedence
           const merged = mergeVisitNote(
             currentData,
-            initialParsedData as Partial<VisitNote>
+            initialParsedData as Partial<VisitNote>,
+            { lockedPaths: getLockedPaths() }
           );
 
           console.log("Merged data after merge:", merged);
 
           form.reset(merged);
           appliedParsedDataRef.current = dataKey;
+          setHasAiDraftSuggestions(true);
           toast.success("AI data applied to form");
 
           // Verify the form was updated
@@ -348,7 +440,7 @@ export function NewVisitForm({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialParsedData, draftLoaded]);
+  }, [initialParsedData, draftLoaded, getLockedPaths]);
 
   // Auto-save draft on form changes (debounced)
   React.useEffect(() => {
@@ -436,9 +528,12 @@ export function NewVisitForm({
       const currentData = form.getValues() as VisitNote;
 
       // Merge with most recent (AI) values taking precedence
-      const merged = mergeVisitNote(currentData, parsed as Partial<VisitNote>);
+      const merged = mergeVisitNote(currentData, parsed as Partial<VisitNote>, {
+        lockedPaths: getLockedPaths(),
+      });
 
       form.reset(merged);
+      setHasAiDraftSuggestions(true);
       toast.success("AI data applied to form");
     } catch (error) {
       console.error("Error merging parsed data:", error);
@@ -479,8 +574,9 @@ export function NewVisitForm({
     setIsSaving(true);
     try {
       const formData = form.getValues() as VisitNote;
+      let savedVisitId = visitIdRemote;
 
-      if (!visitIdRemote) {
+      if (!savedVisitId) {
         // Load draft to get transcript if available
         const draft = await loadDraft(patientId, userId, userRole);
 
@@ -490,6 +586,7 @@ export function NewVisitForm({
           notesJson: formData,
           transcript: draft.transcript || undefined,
         });
+        savedVisitId = result.visitId;
         setVisitIdRemote(result.visitId);
 
         // Save any transcripts from draft to database
@@ -506,21 +603,21 @@ export function NewVisitForm({
         }
       } else {
         // Update visit
-        await updateVisitDraftAction(visitIdRemote, {
+        await updateVisitDraftAction(savedVisitId, {
           notesJson: formData,
         });
       }
 
       // Save documents to database
       const documents = formData.docs?.uploadedDocuments || [];
-      if (documents.length > 0 && visitIdRemote) {
+      if (documents.length > 0 && savedVisitId) {
         const documentPromises = documents.map(async (doc: any) => {
           // Only save if it doesn't already have a DB record (check if it has storageUrl)
           // Documents uploaded during the form already have storageUrl from the upload endpoint
           if (doc.storageUrl) {
             return createDocumentAction({
               patientId,
-              visitId: visitIdRemote,
+              visitId: savedVisitId,
               filename: doc.name,
               mimeType: doc.type,
               size: doc.size.toString(),
@@ -541,6 +638,16 @@ export function NewVisitForm({
       // Don't finalize yet - keep as "In Progress" unless user clicks "Sign Note"
       // The visit status will remain "In Progress" until explicitly signed
       // Medications will be synced to patient record when the note is signed
+
+      if (typeof window !== "undefined" && savedVisitId) {
+        window.sessionStorage.setItem(
+          postSaveSessionKey,
+          JSON.stringify({
+            patientId,
+            visitId: savedVisitId,
+          })
+        );
+      }
 
       // Clear draft
       await clearDraft(patientId, userId);
@@ -581,11 +688,17 @@ export function NewVisitForm({
         // Navigate to send to waiting room page
         router.push(`/patients/${patientId}/send-to-waiting-room?visitId=${visitIdRemote}`);
       } else if (action === "sign") {
-        // Sign the note and set is_assigned to null
-        await finalizeVisitAction(visitIdRemote, "signed");
-        await updatePatientAssignedAction(patientId, null);
-        toast.success("Note signed successfully");
-        router.push(`/patients/${patientId}/visit-history`);
+        if (userRole === "nurse") {
+          await updatePatientAssignedAction(patientId, false);
+          toast.success("Note handed off to physician workflow");
+          router.push("/waiting-room");
+        } else {
+          // Sign the note and set is_assigned to null
+          await finalizeVisitAction(visitIdRemote, "signed");
+          await updatePatientAssignedAction(patientId, null);
+          toast.success("Note signed successfully");
+          router.push(`/patients/${patientId}/visit-history`);
+        }
       } else {
         // For "view" and "waiting", keep visit as "In Progress"
         // Visit status remains "In Progress" until explicitly signed
@@ -1026,7 +1139,7 @@ export function NewVisitForm({
         );
       case "orders":
         return (
-          <OrdersSection form={form} />
+          <OrdersSection form={form} userRole={userRole} />
         );
       case "documents":
         return (
@@ -1052,6 +1165,11 @@ export function NewVisitForm({
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
+      {hasAiDraftSuggestions && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/30 dark:bg-amber-950/40 dark:text-amber-200">
+          AI draft suggestions were applied. Fields you edited manually stay locked against later AI updates.
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -1198,6 +1316,16 @@ export function NewVisitForm({
           {reviewedSections.size} of {roleSections.length} sections reviewed
         </div>
         <div className="flex items-center gap-2">
+          {previousVisits.length > 0 && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowPreviousVisitsDialog(true)}
+            >
+              <Clock className="h-4 w-4 mr-2" />
+              Previous Visits
+            </Button>
+          )}
           <Button
             onClick={handleFinalize}
             disabled={isSaving || !allSectionsReviewed || !isOnline}
@@ -1254,9 +1382,11 @@ export function NewVisitForm({
             >
               <FileSignature className="h-5 w-5 mr-3" />
               <div className="text-left">
-                <div className="font-medium">Sign the Note</div>
+                <div className="font-medium">{userRole === "nurse" ? "Hand Off Note" : "Sign the Note"}</div>
                 <div className="text-sm text-muted-foreground">
-                  Mark note as signed and unassign patient
+                  {userRole === "nurse"
+                    ? "Hand this note off for physician completion"
+                    : "Mark note as signed and unassign patient"}
                 </div>
               </div>
             </Button>
@@ -1267,6 +1397,79 @@ export function NewVisitForm({
               <span className="text-sm text-muted-foreground">Processing...</span>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+      <Dialog open={showPreviousVisitsDialog} onOpenChange={setShowPreviousVisitsDialog}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Previous Visit History</DialogTitle>
+            <DialogDescription>
+              Review recent visits without leaving the active note.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-2">
+            {previousVisits.map((visit) => {
+              const noteData =
+                visit.note && typeof visit.note === "object"
+                  ? (visit.note as Record<string, any>)
+                  : null;
+
+              return (
+                <div key={visit.id} className="rounded-xl border p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="font-semibold">
+                        {new Date(visit.createdAt).toLocaleString()}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {visit.status || "Unknown status"}
+                        {visit.appointmentType ? ` • ${visit.appointmentType}` : ""}
+                        {visit.priority ? ` • ${visit.priority}` : ""}
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() =>
+                        window.open(
+                          `/patients/${patientId}/visit-history/${visit.id}`,
+                          "_blank",
+                          "noopener,noreferrer"
+                        )
+                      }
+                    >
+                      Open Full Details
+                    </Button>
+                  </div>
+                  {noteData && (
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      <div className="rounded-lg bg-muted/40 p-3">
+                        <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Subjective
+                        </div>
+                        <p className="text-sm">
+                          {noteData.subjective?.chiefComplaint ||
+                            noteData.subjective?.hpi ||
+                            "No subjective summary"}
+                        </p>
+                      </div>
+                      <div className="rounded-lg bg-muted/40 p-3">
+                        <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Assessment / Plan
+                        </div>
+                        <p className="text-sm">
+                          {Array.isArray(noteData.assessmentPlan) &&
+                          noteData.assessmentPlan[0]?.assessment
+                            ? noteData.assessmentPlan[0].assessment
+                            : "No assessment summary"}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </DialogContent>
       </Dialog>
     </div>
@@ -2857,7 +3060,7 @@ function PastMedicalHistorySection({ form }: { form: any }) {
 }
 
 // Orders Section Component
-function OrdersSection({ form }: { form: any }) {
+function OrdersSection({ form, userRole }: { form: any; userRole?: string }) {
   const ordersValue = form.watch("orders");
   // Ensure orders is always an array
   const orders = React.useMemo(() => {
@@ -2918,7 +3121,7 @@ function OrdersSection({ form }: { form: any }) {
       type: "",
       priority: "",
       details: "",
-      status: "",
+      status: userRole === "nurse" ? "Pending Physician Signature" : "",
       dateOrdered: "",
     };
     const current = getOrdersArray();
@@ -2973,6 +3176,9 @@ function OrdersSection({ form }: { form: any }) {
     const current = getOrdersArray();
     form.setValue("orders", current.filter((_, i) => i !== index));
   };
+
+  const shouldShowPendingPhysicianSignatureStatus =
+    userRole === "nurse" || editData.status === "Pending Physician Signature";
 
   return (
     <div className="space-y-4">
@@ -3046,6 +3252,9 @@ function OrdersSection({ form }: { form: any }) {
                           <SelectValue placeholder="Select..." />
                         </SelectTrigger>
                         <SelectContent>
+                          {shouldShowPendingPhysicianSignatureStatus && (
+                            <SelectItem value="Pending Physician Signature">Pending Physician Signature</SelectItem>
+                          )}
                           <SelectItem value="Pending">Pending</SelectItem>
                           <SelectItem value="Ordered">Ordered</SelectItem>
                           <SelectItem value="In Progress">In Progress</SelectItem>
@@ -3123,7 +3332,7 @@ function OrdersSection({ form }: { form: any }) {
         className="w-full"
       >
         <Plus className="h-4 w-4 mr-2" />
-        Add Order
+        {userRole === "nurse" ? "Add Draft Order" : "Add Order"}
       </Button>
     </div>
   );

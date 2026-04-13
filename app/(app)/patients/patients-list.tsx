@@ -4,15 +4,16 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useMemo } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { QRCodeSVG } from "qrcode.react";
 import { Input } from "@/components/ui/input";
-import { Video, Copy, Check, Phone, Mail, Calendar, User, Pill, AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
+import { Video, Copy, Check, User, Pill, AlertCircle, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { toast } from "sonner";
-import { formatDate, formatDateTime } from "@/app/_lib/utils/format-date";
+import { formatDate } from "@/app/_lib/utils/format-date";
+import { formatVisitStatusLabel } from "@/app/_lib/utils/visit-status-label";
 
 interface VisitInfo {
   id: string;
@@ -43,7 +44,8 @@ interface PatientsListProps {
   userRole: string;
 }
 
-export function PatientsList({ patients, userRole }: PatientsListProps) {
+export function PatientsList({ patients, userRole: _userRole }: PatientsListProps) {
+  void _userRole;
   const router = useRouter();
   const searchParams = useSearchParams();
   const [showVirtualModal, setShowVirtualModal] = useState<{ patientId: string; visitId: string; joinUrl: string } | null>(null);
@@ -52,7 +54,7 @@ export function PatientsList({ patients, userRole }: PatientsListProps) {
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
   const [currentPage, setCurrentPage] = useState(1);
 
-  const PATIENTS_PER_PAGE = 3;
+  const PATIENTS_PER_PAGE = 9;
 
   // Initialize search input from URL param on mount (run once; URL param is fixed for this mount)
   React.useEffect(() => {
@@ -96,9 +98,12 @@ export function PatientsList({ patients, userRole }: PatientsListProps) {
     try {
       const birthDate = new Date(dob);
       const today = new Date();
-      let age = today.getFullYear() - birthDate.getFullYear();
-      const monthDiff = today.getMonth() - birthDate.getMonth();
-      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      let age = today.getUTCFullYear() - birthDate.getUTCFullYear();
+      const monthDiff = today.getUTCMonth() - birthDate.getUTCMonth();
+      if (
+        monthDiff < 0 ||
+        (monthDiff === 0 && today.getUTCDate() < birthDate.getUTCDate())
+      ) {
         age--;
       }
       return age;
@@ -119,7 +124,7 @@ export function PatientsList({ patients, userRole }: PatientsListProps) {
     if (statusLower === "waiting") {
       return <Badge variant="default" className="bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500">Waiting</Badge>;
     }
-    return <Badge variant="outline">{status}</Badge>;
+    return <Badge variant="outline">{formatVisitStatusLabel(status)}</Badge>;
   };
 
   const getAppointmentTypeBadge = (type: string | null) => {
@@ -208,122 +213,123 @@ export function PatientsList({ patients, userRole }: PatientsListProps) {
   };
 
   return (
-    <>
-      {/* Results Count */}
-      {filteredPatients.length > 0 && (
-        <div className="text-sm text-muted-foreground mb-4">
-          Showing {startIndex + 1}-{Math.min(endIndex, filteredPatients.length)} of {filteredPatients.length} patients
-          {searchQuery && ` matching "${searchQuery}"`}
+    <div className="flex flex-col gap-6 p-4 md:p-6">
+      {/* Results Count & Action */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+            Patients
+            {filteredPatients.length > 0 && (
+              <span className="ml-2 text-sm font-normal text-slate-400">({filteredPatients.length})</span>
+            )}
+          </h2>
+        </div>
+        <Link href="/patients/new">
+          <Button size="sm">
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
+            Add Patient
+          </Button>
+        </Link>
+      </div>
+
+      {filteredPatients.length > 0 && searchQuery && (
+        <div className="text-sm font-medium text-slate-500 bg-slate-100 dark:bg-slate-800 w-fit px-4 py-1.5 rounded-full">
+           Results for &quot;{searchQuery}&quot;
         </div>
       )}
 
       {/* Patient Cards */}
       {paginatedPatients.length === 0 ? (
-        <Card>
-          <CardContent className="flex items-center justify-center py-12">
-            <p className="text-muted-foreground">
-              {searchQuery ? `No patients found matching "${searchQuery}"` : "No patients found"}
-            </p>
+        <Card className="rounded-2xl border-dashed border-2 bg-transparent shadow-none">
+          <CardContent className="flex items-center justify-center py-16">
+            <div className="text-center">
+              <p className="text-slate-500 font-medium">
+                {searchQuery ? `No patients found matching "${searchQuery}"` : "Your patient list is empty."}
+              </p>
+            </div>
           </CardContent>
         </Card>
       ) : (
         <>
-          <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
             {paginatedPatients.map((patient) => {
               const virtualReady = isVirtualVisitReady(patient.visit);
               const joinUrl = getJoinUrl(patient.visit);
-
               const age = calculateAge(patient.dob);
 
               return (
-                <Card key={patient.id} className="w-full hover:shadow-md transition-shadow">
-                  <Link href={`/patients/${patient.id}`}>
-                    <CardHeader>
-                      <CardTitle className="text-lg font-semibold">
-                        {patient.fullName}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      {/* Age and DOB */}
-                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                        {age !== null && (
+                <Link key={patient.id} href={`/patients/${patient.id}`} className="block group">
+                  <Card className="h-full rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden transition-all hover:shadow-md hover:translate-y-[-2px]">
+                    <CardContent className="p-5">
+                      <div className="flex justify-between items-start mb-3">
+                        <div className="h-10 w-10 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-400 group-hover:bg-slate-900 group-hover:text-white transition-all">
+                          <User className="h-5 w-5" />
+                        </div>
+                        {patient.visit && (
                           <div className="flex items-center gap-1.5">
-                            <Calendar className="h-3.5 w-3.5" />
-                            <span>{age} years old</span>
-                          </div>
-                        )}
-                        {patient.dob && (
-                          <span className="text-xs">DOB: {formatDate(patient.dob)}</span>
-                        )}
-                      </div>
-
-                      {/* Physician */}
-                      {patient.clinicianName && (
-                        <div className="flex items-center gap-1.5 text-sm">
-                          <User className="h-3.5 w-3.5 text-muted-foreground" />
-                          <span className="text-muted-foreground">Physician:</span>
-                          <span className="font-medium">{patient.clinicianName}</span>
-                        </div>
-                      )}
-
-                      {/* Contact Info */}
-                      {(patient.phone || patient.email) && (
-                        <div className="space-y-1.5 text-sm">
-                          {patient.phone && (
-                            <div className="flex items-center gap-1.5">
-                              <Phone className="h-3.5 w-3.5 text-muted-foreground" />
-                              <span className="text-muted-foreground">{patient.phone}</span>
-                            </div>
-                          )}
-                          {patient.email && (
-                            <div className="flex items-center gap-1.5">
-                              <Mail className="h-3.5 w-3.5 text-muted-foreground" />
-                              <span className="text-muted-foreground truncate">{patient.email}</span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Quick Stats */}
-                      <div className="flex items-center gap-3 pt-1 border-t">
-                        {patient.allergiesCount > 0 && (
-                          <div className="flex items-center gap-1.5 text-xs">
-                            <AlertCircle className="h-3.5 w-3.5 text-destructive" />
-                            <span className="text-muted-foreground">
-                              {patient.allergiesCount} {patient.allergiesCount === 1 ? "allergy" : "allergies"}
-                            </span>
-                          </div>
-                        )}
-                        {patient.medicationsCount > 0 && (
-                          <div className="flex items-center gap-1.5 text-xs">
-                            <Pill className="h-3.5 w-3.5 text-blue-600" />
-                            <span className="text-muted-foreground">
-                              {patient.medicationsCount} {patient.medicationsCount === 1 ? "medication" : "medications"}
-                            </span>
+                             {getStatusBadge(patient.visit.status)}
+                             {getAppointmentTypeBadge(patient.visit.appointmentType)}
                           </div>
                         )}
                       </div>
 
-                      {/* Latest Visit Date & Time */}
-                      {patient.visit && (
-                        <div className="text-xs text-muted-foreground pt-1 border-t">
-                          <div className="flex items-center gap-1.5">
-                            <Calendar className="h-3 w-3" />
-                            <span>Last visit: {formatDateTime(patient.visit.createdAt)}</span>
+                      <div className="mb-3">
+                        <h3 className="text-base font-semibold text-slate-900 dark:text-white group-hover:text-blue-600 transition-colors">
+                          {patient.fullName}
+                        </h3>
+                        <div className="flex flex-wrap gap-2 mt-1">
+                          {age !== null && (
+                            <span className="text-xs text-slate-500">
+                              {age} yrs
+                            </span>
+                          )}
+                          {age !== null && patient.dob && (
+                            <span className="text-xs text-slate-300">·</span>
+                          )}
+                          {patient.dob && (
+                             <span className="text-xs text-slate-500">
+                              {formatDate(patient.dob)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="space-y-3 mb-4">
+                        {patient.clinicianName && (
+                          <div className="flex items-center gap-2 text-xs text-slate-500">
+                             <User className="h-3.5 w-3.5 text-slate-400" />
+                             <span>{patient.clinicianName}</span>
+                          </div>
+                        )}
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50">
+                             <span className="block text-[10px] font-medium text-slate-400 uppercase tracking-wider mb-0.5">Meds</span>
+                             <div className="flex items-center gap-1.5">
+                                <Pill className="h-3 w-3 text-blue-500" />
+                                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{patient.medicationsCount}</span>
+                             </div>
+                          </div>
+                          <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50">
+                             <span className="block text-[10px] font-medium text-slate-400 uppercase tracking-wider mb-0.5">Allergies</span>
+                             <div className="flex items-center gap-1.5">
+                                <AlertCircle className="h-3 w-3 text-red-500" />
+                                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{patient.allergiesCount}</span>
+                             </div>
                           </div>
                         </div>
-                      )}
+                      </div>
 
-                      {/* Visit Status - Show for nurses */}
-                      {userRole === "nurse" && patient.visit && (
-                        <div className="space-y-2 pt-2 border-t">
-                          <div className="flex flex-wrap gap-2">
-                            {getStatusBadge(patient.visit.status)}
-                            {getAppointmentTypeBadge(patient.visit.appointmentType)}
-                          </div>
+                      {/* Footer */}
+                      <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                         <div>
+                            <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">Last Seen</span>
+                            <span className="block text-xs text-slate-600 dark:text-slate-300">
+                               {patient.visit ? formatDate(patient.visit.createdAt) : "No visits"}
+                            </span>
+                         </div>
 
-                          {/* Virtual Visit Join Button for Nurses */}
-                          {virtualReady && (
+                         {virtualReady && (
                             <Button
                               onClick={(e) => {
                                 e.preventDefault();
@@ -334,49 +340,48 @@ export function PatientsList({ patients, userRole }: PatientsListProps) {
                                   joinUrl,
                                 });
                               }}
-                              variant="outline"
-                              className="w-full"
+                              variant="secondary"
                               size="sm"
+                              className="rounded-full px-3 text-xs"
                             >
-                              <Video className="h-4 w-4 mr-2" />
-                              View Virtual Visit
+                              <Video className="h-3.5 w-3.5 mr-1.5" />
+                              Call
                             </Button>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Added Date */}
-                      <div className="text-xs text-muted-foreground pt-1 border-t">
-                        <span>Added: {formatDate(patient.createdAt)}</span>
+                         )}
                       </div>
                     </CardContent>
-                  </Link>
-                </Card>
+                  </Card>
+                </Link>
               );
             })}
           </div>
 
           {/* Pagination Controls */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between mt-6 pt-4 border-t">
-              <div className="text-sm text-muted-foreground">
+            <div className="flex items-center justify-between mt-6 pt-4 border-t border-slate-100 dark:border-slate-800">
+              <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">
                 Page {currentPage} of {totalPages}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
                   onClick={() => handlePageChange(currentPage - 1)}
                   disabled={currentPage === 1}
+                  className="rounded-full px-4 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600"
                 >
                   <ChevronLeft className="h-4 w-4 mr-1" />
-                  Previous
+                  Prev
                 </Button>
+                <div className="h-9 w-9 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs font-bold">
+                   {currentPage}
+                </div>
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
                   onClick={() => handlePageChange(currentPage + 1)}
                   disabled={currentPage === totalPages}
+                  className="rounded-full px-4 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600"
                 >
                   Next
                   <ChevronRight className="h-4 w-4 ml-1" />
@@ -437,7 +442,7 @@ export function PatientsList({ patients, userRole }: PatientsListProps) {
           </DialogContent>
         </Dialog>
       )}
-    </>
+    </div>
   );
 }
 

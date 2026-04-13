@@ -14,6 +14,7 @@ import type { VisitNote } from "@/app/_lib/visit-note/schema";
 import { db } from "@/app/_lib/db/drizzle/index";
 import { patients, notes } from "@/app/_lib/db/drizzle/schema";
 import { eq, desc } from "drizzle-orm";
+import { parseVisitNoteFromTranscript } from "@/app/_lib/ai/parse-visit";
 
 /**
  * Create a visit draft (server action)
@@ -153,7 +154,7 @@ export async function finalizeVisitAction(
       if (visitNotes.length > 0) {
         const latestNote = visitNotes[0];
         if (latestNote.note && typeof latestNote.note === "object") {
-          const noteData = latestNote.note as any;
+          const noteData = latestNote.note as Partial<VisitNote>;
 
           // Sync all sections from visit note to patient record
           const { syncVisitNoteToPatientAction } = await import(
@@ -249,6 +250,29 @@ export async function saveTranscriptAction(params: {
   });
 
   return { success: true };
+}
+
+export async function parseTranscriptDraftAction(params: {
+  transcript: string;
+  previousTranscripts?: string[];
+  patientContext?: {
+    allergies?: unknown[];
+    meds?: unknown[];
+    pmh?: unknown[];
+  };
+}) {
+  await requireUser(["doctor", "nurse"]);
+
+  const parsed = await parseVisitNoteFromTranscript({
+    transcript: params.transcript,
+    previousTranscripts: params.previousTranscripts,
+    patientContext: params.patientContext,
+  });
+
+  return {
+    success: true,
+    parsed,
+  };
 }
 
 /**
@@ -347,6 +371,15 @@ export async function updateVisitWaitingRoomAction(params: {
       `Triage: ${params.triageLevel}, Appointment: ${params.appointmentType}`
     );
   }
+
+  revalidateTag(`visit:${params.visitId}`, "max");
+  revalidateTag(`visits:${patientId}`, "max");
+  revalidateTag(`patient:${patientId}`, "max");
+  revalidateTag("waiting-room", "max");
+  revalidateTag("patients", "max");
+  const { revalidatePath } = await import("next/cache");
+  revalidatePath("/waiting-room");
+  revalidatePath("/open-notes");
 
   return { success: true };
 }
@@ -519,4 +552,26 @@ export async function getClinicianOpenVisitsAction() {
   const visits = await getClinicianOpenVisits(user.id);
 
   return { visits };
+}
+
+export async function getDoctorInboxDailySummaryAction() {
+  const user = await requireUser(["doctor"]);
+
+  const { getDoctorInboxDailySummary } = await import(
+    "@/app/_lib/db/drizzle/queries/visit"
+  );
+  const summary = await getDoctorInboxDailySummary(user.id);
+
+  return summary;
+}
+
+export async function getVisitCreatedByRoleAction(visitId: string) {
+  await requireUser(["doctor", "nurse"]);
+
+  const { getVisitCreatedByRole } = await import(
+    "@/app/_lib/db/drizzle/queries/visit"
+  );
+  const role = await getVisitCreatedByRole(visitId);
+
+  return { role };
 }

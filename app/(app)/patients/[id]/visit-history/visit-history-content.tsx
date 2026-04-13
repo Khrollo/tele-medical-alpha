@@ -3,12 +3,11 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Calendar, Search, X } from "lucide-react";
+import { Calendar, Search, X, CalendarDays, Clock, ChevronRight, Filter, ClipboardList } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { cn } from "@/app/_lib/utils/cn";
 import {
   Select,
@@ -182,26 +181,26 @@ export function VisitHistoryContent({
   };
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
+    <div className="flex flex-1 flex-col gap-8 p-4 md:p-8 bg-slate-50/30 dark:bg-transparent">
       {/* Page Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Visit History</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Review previous visits for this patient.
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Visit History</h1>
+          <p className="mt-1 text-sm font-medium text-slate-500">
+            Review detailed medical encounters for this patient.
           </p>
         </div>
-        <Link href={getNewVisitPath()}>
-          <Button>
+        <Button asChild>
+          <Link href={getNewVisitPath()}>
             Log New Visit
-          </Button>
-        </Link>
+          </Link>
+        </Button>
       </div>
 
       {/* Filters Row */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-col gap-4">
+      <Card className="rounded-[1.5rem] border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+        <CardContent className="p-6">
+          <div className="flex flex-col gap-6">
             {/* Search and Status Row */}
             <div className="flex flex-col gap-4 sm:flex-row">
               <form
@@ -209,61 +208,70 @@ export function VisitHistoryContent({
                 className="flex-1 flex gap-2"
               >
                 <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <Input
                     placeholder="Search by visit ID, location, priority, status..."
                     value={searchQuery}
                     onChange={handleSearchChange}
-                    className="pl-9"
+                    className="pl-11 rounded-xl bg-slate-50/50 border-slate-100 dark:bg-slate-800/50 dark:border-slate-800"
                   />
                 </div>
-                <Button type="submit" variant="outline" size="default">
+                <Button type="submit" variant="secondary" className="rounded-xl px-6">
                   Search
                 </Button>
               </form>
 
-              <Select value={currentStatus} onValueChange={handleStatusChange}>
-                <SelectTrigger className="w-full sm:w-[180px]">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="draft">Draft</SelectItem>
-                  <SelectItem value="In Progress">In Progress</SelectItem>
-                  <SelectItem value="Waiting">Waiting</SelectItem>
-                  <SelectItem value="Signed & Complete">Signed & Complete</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex items-center gap-2">
+                <Filter className="h-4 w-4 text-slate-400 shrink-0" />
+                <Select value={currentStatus} onValueChange={handleStatusChange}>
+                  <SelectTrigger className="w-full sm:w-[200px] rounded-xl bg-slate-50/50 border-slate-100 dark:bg-slate-800/50 dark:border-slate-800">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-xl">
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="draft">Draft</SelectItem>
+                    <SelectItem value="In Progress">In Progress</SelectItem>
+                    <SelectItem value="Waiting">Waiting</SelectItem>
+                    <SelectItem value="Signed & Complete">Signed & Complete</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             {/* Date Range Row */}
-            <div className="flex flex-col gap-4 sm:flex-row">
-              <div className="flex items-center gap-2 flex-1">
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="date"
-                  placeholder="From date"
-                  value={formatDateForInput(currentFrom)}
-                  onChange={handleFromChange}
-                  className="flex-1"
-                />
-                <span className="text-sm text-muted-foreground">to</span>
-                <Input
-                  type="date"
-                  placeholder="To date"
-                  value={formatDateForInput(currentTo)}
-                  onChange={handleToChange}
-                  className="flex-1"
-                />
-              </div>
+            <div className="flex flex-col gap-4 sm:flex-row items-center justify-between pt-0 border-t-0">
+               <div className="flex items-center gap-3 flex-1 w-full">
+                  <div className="flex items-center gap-2 flex-1 relative">
+                    <Calendar className="absolute left-3 h-4 w-4 text-slate-400 pointer-events-none" />
+                    <Input
+                      type="date"
+                      placeholder="From date"
+                      value={formatDateForInput(currentFrom)}
+                      onChange={handleFromChange}
+                      className="pl-9 rounded-xl bg-slate-50/50 border-slate-100 dark:bg-slate-800/50 dark:border-slate-800 text-xs h-9"
+                    />
+                  </div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase">to</span>
+                  <div className="flex items-center gap-2 flex-1 relative">
+                    <Calendar className="absolute left-3 h-4 w-4 text-slate-400 pointer-events-none" />
+                    <Input
+                      type="date"
+                      placeholder="To date"
+                      value={formatDateForInput(currentTo)}
+                      onChange={handleToChange}
+                      className="pl-9 rounded-xl bg-slate-50/50 border-slate-100 dark:bg-slate-800/50 dark:border-slate-800 text-xs h-9"
+                    />
+                  </div>
+               </div>
 
               <Button
-                variant="outline"
+                variant="ghost"
+                size="sm"
                 onClick={handleClearFilters}
-                className="w-full sm:w-auto"
+                className="text-slate-400 hover:text-slate-600 hover:bg-transparent"
               >
                 <X className="h-4 w-4 mr-2" />
-                Clear
+                Clear Filters
               </Button>
             </div>
           </div>
@@ -272,109 +280,125 @@ export function VisitHistoryContent({
 
       {/* Visit List */}
       {filteredVisits.length === 0 ? (
-        <Card>
-          <CardContent className="flex items-center justify-center py-12">
+        <Card className="rounded-[2rem] border-dashed border-2 bg-transparent shadow-none">
+          <CardContent className="flex items-center justify-center py-24">
             <div className="text-center">
-              <p className="text-muted-foreground">No visits yet.</p>
-              {data.total === 0 && (
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Start by logging a new visit.
-                </p>
-              )}
+              <div className="h-16 w-16 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
+                <ClipboardList className="h-8 w-8 text-slate-400" />
+              </div>
+              <p className="text-slate-500 font-medium mb-6">No visits matching your filters.</p>
+              <Button onClick={handleClearFilters} variant="outline" className="rounded-full">
+                Clear all filters
+              </Button>
             </div>
           </CardContent>
         </Card>
       ) : (
         <>
-          <div className="space-y-6">
-            {filteredVisits.map((visit) => (
-              <Link
-                key={visit.id}
-                href={`/patients/${patientId}/visit-history/${visit.id}`}
-              >
-                <Card className="hover:shadow-md transition-shadow cursor-pointer">
-                  <CardContent className="p-4">
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                      {/* Left: Date and Status */}
-                      <div className="flex-1 space-y-2">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-medium text-foreground">
-                            {formatDateTime(visit.createdAt)}
-                          </span>
-                          {(() => {
-                            const badge = getStatusBadge(visit.status);
-                            return (
-                              <Badge variant={badge.variant} className={badge.className}>
-                            {formatVisitStatusLabel(visit.status)}
-                          </Badge>
-                            );
-                          })()}
+          <div className="grid gap-6">
+            {filteredVisits.map((visit) => {
+              const statusBadge = getStatusBadge(visit.status);
+              return (
+                <Link
+                  key={visit.id}
+                  href={`/patients/${patientId}/visit-history/${visit.id}`}
+                  className="block"
+                >
+                  <Card className="rounded-[2rem] border border-slate-50 dark:border-slate-800 bg-white dark:bg-slate-900 transition-all hover:translate-x-1 group cursor-pointer">
+                    <CardContent className="p-6">
+                      <div className="flex flex-col gap-6 lg:flex-row lg:items-center">
+                        {/* Time & Icon */}
+                        <div className="flex items-center gap-4 lg:w-[220px] shrink-0">
+                          <div className="h-12 w-12 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-500 group-hover:scale-110 transition-transform">
+                            <CalendarDays className="h-6 w-6 text-slate-400" />
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Date</span>
+                            <span className="text-base font-bold text-slate-800 dark:text-slate-100">
+                              {formatDateTime(visit.createdAt)}
+                            </span>
+                          </div>
                         </div>
 
-                        {/* Metadata Row */}
-                        <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-                          {visit.appointmentType && (
-                          <span>
-                              Appointment: {visit.appointmentType === "in-person" ? "In-Person" : visit.appointmentType === "virtual" ? "Virtual" : visit.appointmentType}
-                          </span>
-                          )}
-                          {visit.priority && visit.appointmentType && (
-                            <Separator orientation="vertical" className="h-4" />
-                          )}
+                        {/* Status & Type */}
+                        <div className="flex flex-wrap items-center gap-6 flex-1 min-w-0">
+                          <div className="flex flex-col gap-1.5 shrink-0">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Clinical Status</span>
+                            <Badge
+                              variant={statusBadge.variant}
+                              className={cn("rounded-full px-4 py-1 text-[10px] font-bold uppercase tracking-wider h-6", statusBadge.className)}
+                            >
+                              {formatVisitStatusLabel(visit.status)}
+                            </Badge>
+                          </div>
+
+                          <div className="flex flex-col gap-1 shrink-0">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Type</span>
+                            <div className="flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-300">
+                               <Clock className="h-3.5 w-3.5 text-slate-400" />
+                               {visit.appointmentType === "in-person" ? "Clinic" : "Virtual"}
+                            </div>
+                          </div>
+
                           {visit.priority && (
-                            <>
-                          <Separator orientation="vertical" className="h-4" />
-                              <span className="flex items-center gap-1">
-                                Priority:{" "}
-                                <Badge
-                                  variant="outline"
-                                  className={cn(
-                                    "text-xs",
-                                    visit.priority.toLowerCase() === "high" || visit.priority.toLowerCase() === "urgent"
-                                      ? "bg-red-500/10 text-red-700 dark:text-red-400 border-red-500 dark:border-red-400"
-                                      : visit.priority.toLowerCase() === "medium"
-                                      ? "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-yellow-500 dark:border-yellow-400"
-                                      : "bg-green-500/10 text-green-700 dark:text-green-400 border-green-500 dark:border-green-400"
-                                  )}
-                                >
-                                  {visit.priority}
-                                </Badge>
-                          </span>
-                            </>
+                            <div className="flex flex-col gap-1 shrink-0">
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Priority</span>
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  "text-[10px] uppercase font-bold tracking-wider rounded-full px-3",
+                                  visit.priority.toLowerCase() === "high" || visit.priority.toLowerCase() === "urgent"
+                                    ? "bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20"
+                                    : visit.priority.toLowerCase() === "medium"
+                                    ? "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-yellow-500/20"
+                                    : "bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20"
+                                )}
+                              >
+                                {visit.priority}
+                              </Badge>
+                            </div>
                           )}
+
+                        {/* Note: chiefComplaint is not in the schema for visits table currently */}
+                        </div>
+
+                        {/* Right: View Button */}
+                        <div className="flex items-center justify-end lg:pl-4">
+                           <div className="h-10 w-10 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-400 group-hover:bg-slate-900 group-hover:text-white transition-all">
+                              <ChevronRight className="h-5 w-5" />
+                           </div>
                         </div>
                       </div>
-
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
-            ))}
+                    </CardContent>
+                  </Card>
+                </Link>
+              );
+            })}
           </div>
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between">
-              <div className="text-sm text-muted-foreground">
-                Showing {((data.page - 1) * data.pageSize) + 1} to{" "}
-                {Math.min(data.page * data.pageSize, data.total)} of{" "}
-                {data.total} visits
+            <div className="flex items-center justify-between pt-6">
+              <div className="text-sm font-medium text-slate-400">
+                Found {data.total} records
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
+                  className="rounded-full px-4 hover:bg-slate-100 text-slate-600"
                   onClick={() => handlePageChange(data.page - 1)}
                   disabled={!hasPrevPage}
                 >
-                  Previous
+                  Prev
                 </Button>
-                <div className="text-sm text-muted-foreground">
-                  Page {data.page} of {totalPages}
+                <div className="h-8 w-8 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs font-bold">
+                   {data.page}
                 </div>
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
+                  className="rounded-full px-4 hover:bg-slate-100 text-slate-600"
                   onClick={() => handlePageChange(data.page + 1)}
                   disabled={!hasNextPage}
                 >

@@ -7,7 +7,7 @@ import * as z from "zod";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Save, Phone, Mail, Calendar, UserPlus, Cross, FileText, X, Clock, User, AlertCircle, Search, ChevronDown, Check } from "lucide-react";
+import { Save, Phone, Mail, Calendar, UserPlus, Cross, FileText, X, Clock, User, AlertCircle, Search, ChevronDown, Check, Mic, Square, AudioLines } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,10 +29,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { createPatientAction, updatePatientAssignmentAction, updatePatientConsentSignatureAction } from "@/app/_actions/patients";
+import { createPatientAction, updatePatientAssignmentAction, updatePatientConsentSignatureAction, extractPatientIntakeFromTranscriptAction } from "@/app/_actions/patients";
 import { createVisitDraftAction, updateVisitWaitingRoomAction } from "@/app/_actions/visits";
 import { cn } from "@/app/_lib/utils/cn";
 import { ConsentFormDialog } from "@/app/_components/patient-chart/consent-form-dialog";
+import { createLiveSpeechController, isLiveSpeechSupported } from "@/app/_lib/ai/live-speech";
 
 // Phone number validation helper
 const phoneRegex = /^[\d\s\-\(\)\+\.]+$/;
@@ -355,6 +356,34 @@ export function CreatePatientForm() {
   const [isHandlingAction, setIsHandlingAction] = React.useState(false);
   const [showDuplicateModal, setShowDuplicateModal] = React.useState(false);
   const [existingPatients, setExistingPatients] = React.useState<ExistingPatient[]>([]);
+  const [showAiConfirmDialog, setShowAiConfirmDialog] = React.useState(false);
+  const [pendingSubmitData, setPendingSubmitData] = React.useState<CreatePatientFormData | null>(null);
+  const [isVoiceRecording, setIsVoiceRecording] = React.useState(false);
+  const [voiceTranscript, setVoiceTranscript] = React.useState("");
+  const [voiceInterimTranscript, setVoiceInterimTranscript] = React.useState("");
+  const [isParsingVoice, setIsParsingVoice] = React.useState(false);
+  const [aiPrefilledFields, setAiPrefilledFields] = React.useState<string[]>([]);
+  const [aiPrefillConfirmed, setAiPrefillConfirmed] = React.useState(false);
+  const voiceControllerRef = React.useRef<ReturnType<typeof createLiveSpeechController> | null>(null);
+
+  React.useEffect(() => {
+    voiceControllerRef.current = createLiveSpeechController({
+      onStateChange: (state) => {
+        setIsVoiceRecording(state === "listening");
+      },
+      onSnapshot: (snapshot) => {
+        setVoiceTranscript(snapshot.finalTranscript);
+        setVoiceInterimTranscript(snapshot.interimTranscript);
+      },
+      onError: (message) => {
+        toast.warning(message || "Live voice intake is unavailable in this browser.");
+      },
+    });
+
+    return () => {
+      voiceControllerRef.current?.destroy();
+    };
+  }, []);
 
   const form = useForm<CreatePatientFormData>({
     resolver: zodResolver(createPatientSchema),
@@ -381,7 +410,7 @@ export function CreatePatientForm() {
     },
   });
 
-  const onSubmit = async (data: CreatePatientFormData) => {
+  const continueSubmit = async (data: CreatePatientFormData) => {
     // Validate form and show toast errors
     const isValid = await form.trigger();
     if (!isValid) {
@@ -457,8 +486,170 @@ export function CreatePatientForm() {
     }
   };
 
+  const onSubmit = async (data: CreatePatientFormData) => {
+    if (aiPrefilledFields.length > 0 && !aiPrefillConfirmed) {
+      setPendingSubmitData(data);
+      setShowAiConfirmDialog(true);
+      return;
+    }
+
+    await continueSubmit(data);
+  };
+
+  const handleApplyVoicePrefill = React.useCallback(
+    async (transcript: string) => {
+      const normalized = transcript.trim();
+      if (!normalized) {
+        return;
+      }
+
+      setIsParsingVoice(true);
+
+      try {
+        const result = await extractPatientIntakeFromTranscriptAction({
+          transcript: normalized,
+        });
+
+        const prefill = result.prefill || {};
+        const appliedFields: string[] = [];
+
+        const applyValue = (
+          field: keyof CreatePatientFormData,
+          value: string | undefined
+        ) => {
+          if (!value || form.getFieldState(field).isDirty) {
+            return;
+          }
+          form.setValue(field, value as never, {
+            shouldDirty: false,
+            shouldTouch: true,
+            shouldValidate: true,
+          });
+          appliedFields.push(String(field));
+        };
+
+        applyValue("firstName", prefill.firstName);
+        applyValue("lastName", prefill.lastName);
+        applyValue("dob", prefill.dob);
+        applyValue("sexAtBirth", prefill.sexAtBirth);
+        applyValue("genderIdentity", prefill.genderIdentity);
+        applyValue("email", prefill.email);
+        applyValue("streetAddress", prefill.streetAddress);
+        applyValue("city", prefill.city);
+        applyValue("state", prefill.state);
+        applyValue("primaryLanguage", prefill.primaryLanguage);
+        applyValue("emergencyContactName", prefill.emergencyContactName);
+        applyValue(
+          "emergencyContactRelationship",
+          prefill.emergencyContactRelationship
+        );
+        applyValue("primaryCareProvider", prefill.primaryCareProvider);
+
+        if (prefill.phone && !form.getFieldState("phone").isDirty) {
+          form.setValue("phone", prefill.phone, {
+            shouldDirty: false,
+            shouldTouch: true,
+            shouldValidate: true,
+          });
+          appliedFields.push("phone");
+        }
+
+        if (
+          prefill.emergencyContactPhone &&
+          !form.getFieldState("emergencyContactPhone").isDirty
+        ) {
+          form.setValue("emergencyContactPhone", prefill.emergencyContactPhone, {
+            shouldDirty: false,
+            shouldTouch: true,
+            shouldValidate: true,
+          });
+          appliedFields.push("emergencyContactPhone");
+        }
+
+        if (appliedFields.length > 0) {
+          setAiPrefilledFields(appliedFields);
+          setAiPrefillConfirmed(false);
+          toast.success("AI intake draft applied. Review before saving.");
+        } else {
+          toast.info("No new intake fields were applied from voice input.");
+        }
+      } catch (error) {
+        console.error("Error applying patient voice prefill:", error);
+        toast.error("Failed to parse patient voice intake");
+      } finally {
+        setIsParsingVoice(false);
+      }
+    },
+    [form]
+  );
+
+  const toggleVoiceIntake = async () => {
+    if (!voiceControllerRef.current?.isSupported) {
+      toast.warning("Live voice intake is not supported in this browser.");
+      return;
+    }
+
+    if (isVoiceRecording) {
+      const snapshot = await voiceControllerRef.current.stop();
+      await handleApplyVoicePrefill(snapshot.fullTranscript);
+      return;
+    }
+
+    setVoiceTranscript("");
+    setVoiceInterimTranscript("");
+    await voiceControllerRef.current.start();
+  };
+
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between gap-4">
+            <span className="flex items-center gap-2">
+              <AudioLines className="h-5 w-5" />
+              AI Intake Assist
+            </span>
+            <Button
+              type="button"
+              variant={isVoiceRecording ? "destructive" : "secondary"}
+              onClick={toggleVoiceIntake}
+              disabled={isParsingVoice || !isLiveSpeechSupported()}
+            >
+              {isVoiceRecording ? (
+                <>
+                  <Square className="mr-2 h-4 w-4 fill-current" />
+                  Stop Intake
+                </>
+              ) : (
+                <>
+                  <Mic className="mr-2 h-4 w-4" />
+                  Voice Intake
+                </>
+              )}
+            </Button>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Capture spoken demographics and intake details, then review the AI draft before saving.
+          </p>
+          {(voiceTranscript || voiceInterimTranscript) && (
+            <div className="rounded-lg border bg-muted/40 p-3 text-sm">
+              <span className="font-medium text-foreground">Live transcript: </span>
+              <span>{voiceTranscript || "Listening..."}</span>
+              {voiceInterimTranscript && (
+                <span className="text-muted-foreground"> {voiceInterimTranscript}</span>
+              )}
+            </div>
+          )}
+          {aiPrefilledFields.length > 0 && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
+              AI prefilled: {aiPrefilledFields.join(", ")}. Review these fields before saving.
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left Column */}
         <div className="space-y-6">
@@ -599,7 +790,7 @@ export function CreatePatientForm() {
                       {...form.register("phone", {
                         onChange: (e) => {
                           // Allow international format - just clean and validate length
-                          let value = e.target.value;
+                          const value = e.target.value;
                           // Don't auto-format for international numbers, just allow digits and common separators
                           form.setValue("phone", value, { shouldValidate: true });
                         },
@@ -781,7 +972,7 @@ export function CreatePatientForm() {
                       {...form.register("emergencyContactPhone", {
                         onChange: (e) => {
                           // Allow international format
-                          let value = e.target.value;
+                          const value = e.target.value;
                           form.setValue("emergencyContactPhone", value, { shouldValidate: true });
                         },
                       })}
@@ -889,6 +1080,7 @@ export function CreatePatientForm() {
 
             // Now create the patient with the signature URL and the pre-generated ID
             const result = await createPatientAction({
+              patientId,
               firstName: pendingPatientData.firstName,
               lastName: pendingPatientData.lastName,
               dob: pendingPatientData.dob || undefined,
@@ -1101,6 +1293,40 @@ export function CreatePatientForm() {
           <DialogFooter>
             <Button onClick={() => setShowDuplicateModal(false)} variant="outline">
               Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showAiConfirmDialog} onOpenChange={setShowAiConfirmDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm AI-Prefilled Patient Data</DialogTitle>
+            <DialogDescription>
+              Review the AI-filled identity and contact fields before creating this patient record.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-lg border bg-muted/40 px-4 py-3 text-sm">
+            Fields to review: {aiPrefilledFields.join(", ")}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowAiConfirmDialog(false)}
+            >
+              Review Again
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!pendingSubmitData) {
+                  return;
+                }
+                setAiPrefillConfirmed(true);
+                setShowAiConfirmDialog(false);
+                await continueSubmit(pendingSubmitData);
+              }}
+            >
+              Confirm And Continue
             </Button>
           </DialogFooter>
         </DialogContent>

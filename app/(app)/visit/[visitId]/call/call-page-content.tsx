@@ -761,7 +761,7 @@ export function CallPageContent({
                 isRecording={isRecording}
                 onStartRecording={handleStartRecording}
                 onStopRecording={handleStopRecording}
-                hideAICapture={true}
+                  hideAICapture={false}
                 initialParsedData={parsedNoteData}
                 onSaveReadyRef={saveVisitRef}
                 isInVideoCall={true}
@@ -796,7 +796,7 @@ export function CallPageContent({
                 isRecording={isRecording}
                 onStartRecording={handleStartRecording}
                 onStopRecording={handleStopRecording}
-                hideAICapture={true}
+                  hideAICapture={false}
                 initialParsedData={parsedNoteData}
                 onSaveReadyRef={saveVisitRef}
                 isInVideoCall={true}
@@ -831,7 +831,7 @@ export function CallPageContent({
               isRecording={isRecording}
               onStartRecording={handleStartRecording}
               onStopRecording={handleStopRecording}
-              hideAICapture={true}
+                hideAICapture={false}
               initialParsedData={parsedNoteData}
               onParseReadyRef={parseReadyCallbackRef}
               onSaveReadyRef={saveVisitRef}

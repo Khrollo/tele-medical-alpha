@@ -4,11 +4,19 @@ interface ParseVisitOptions {
   transcript: string;
   prompt?: string;
   patientContext?: {
-    allergies?: any[];
-    meds?: any[];
-    pmh?: any[];
+    allergies?: unknown[];
+    meds?: unknown[];
+    pmh?: unknown[];
   };
   previousTranscripts?: string[];
+}
+
+export function getOpenRouterTextModel() {
+  if (process.env.NODE_ENV !== "production") {
+    return "openrouter/free";
+  }
+
+  return "openai/gpt-oss-120b";
 }
 
 /**
@@ -102,7 +110,7 @@ function parseJsonWithFallback(content: string): unknown {
 
     try {
       return JSON.parse(jsonContent);
-    } catch (firstError) {
+    } catch {
       // Try removing duplicate keys
       jsonContent = removeDuplicateKeys(jsonContent);
       jsonContent = cleanJsonContent(jsonContent);
@@ -199,10 +207,10 @@ export async function parseVisitNoteFromTranscript(
     throw new Error("Missing or invalid transcript");
   }
 
-  const replicateApiKey = process.env.REPLICATE_API_KEY;
+  const openRouterApiKey = process.env.OPENROUTER_API_KEY;
 
-  if (!replicateApiKey) {
-    throw new Error("Missing REPLICATE_API_KEY environment variable");
+  if (!openRouterApiKey) {
+    throw new Error("Missing OPENROUTER_API_KEY environment variable");
   }
 
   // Build the system prompt with schema
@@ -493,112 +501,47 @@ Schema:
   // Combine prompts
   const combinedUserPrompt = `${basePrompt}\n\nNEW Transcript (takes precedence - extract all information from this):\n${transcript}\n\nNow extract all information from the transcript above and populate the JSON schema. Be thorough and extract ALL mentioned information including vitals, measurements, medications, diagnoses, point of care test results (diabetes, HIV, syphilis), etc.`;
 
-  const fullPrompt = `${systemPrompt}\n\n${combinedUserPrompt}\n\nRemember: Return ONLY valid JSON with no comments, no duplicate keys, and no explanatory text. Just the raw JSON object starting with { and ending with }.`;
-
-  const deepSeekModel = "deepseek-ai/deepseek-v3.1";
-
-  const combinedInput = {
-    prompt: fullPrompt,
-    max_tokens: 3000,
-    response_format: "json",
-    temperature: 0.2,
-  };
-
-  const response = await fetch("https://api.replicate.com/v1/predictions", {
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
-      Authorization: `Token ${replicateApiKey}`,
+      Authorization: `Bearer ${openRouterApiKey}`,
       "Content-Type": "application/json",
+      "HTTP-Referer":
+        process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+      "X-Title": "Tele-Medical",
     },
     body: JSON.stringify({
-      version: deepSeekModel, // Replicate will resolve the model version
-      input: combinedInput,
+      model: getOpenRouterTextModel(),
+      messages: [
+        {
+          role: "system",
+          content: systemPrompt,
+        },
+        {
+          role: "user",
+          content: combinedUserPrompt,
+        },
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.1,
+      max_tokens: 16000,
     }),
   });
 
   if (!response.ok) {
-    let errorMessage = `Replicate API error: ${response.status} ${response.statusText}`;
-    try {
-      const errorData = await response.json();
-      errorMessage = errorData.detail || errorData.error || errorMessage;
-      console.error("Replicate API error details:", errorData);
-    } catch {
-      const errorText = await response.text();
-      errorMessage = errorText || errorMessage;
-    }
-    throw new Error(errorMessage);
-  }
-
-  const prediction = await response.json();
-  const predictionId = prediction.id;
-
-  // Poll for completion
-  let completed = false;
-  let attempts = 0;
-  const maxAttempts = 60; // 5 minutes max
-  const pollInterval = 5000; // 5 seconds
-
-  while (!completed && attempts < maxAttempts) {
-    await new Promise((resolve) => setTimeout(resolve, pollInterval));
-
-    const statusResponse = await fetch(
-      `https://api.replicate.com/v1/predictions/${predictionId}`,
-      {
-        headers: {
-          Authorization: `Token ${replicateApiKey}`,
-        },
-      }
+    const errorText = await response.text();
+    throw new Error(
+      `OpenRouter API error: ${response.status} ${response.statusText} - ${errorText}`
     );
-
-    if (!statusResponse.ok) {
-      const errorText = await statusResponse.text();
-      console.error(
-        `Failed to check prediction status: ${statusResponse.status} ${statusResponse.statusText}`,
-        errorText
-      );
-      throw new Error(
-        `Failed to check prediction status: ${statusResponse.status} ${
-          errorText || statusResponse.statusText
-        }`
-      );
-    }
-
-    const status = await statusResponse.json();
-
-    if (status.status === "succeeded") {
-      completed = true;
-      let content = "";
-
-      // Extract content from output
-      const output = status.output;
-      if (typeof output === "string") {
-        content = output;
-      } else if (Array.isArray(output)) {
-        content = output.join("");
-      } else {
-        content = JSON.stringify(output);
-      }
-
-      if (!content) {
-        throw new Error("Parsing timed out or returned empty result");
-      }
-
-      // Parse and validate JSON
-      const parsed = parseJsonWithFallback(content);
-      return parseVisitNote(parsed);
-    } else if (status.status === "failed" || status.status === "canceled") {
-      const errorDetails =
-        status.error || status.logs?.join("\n") || "Unknown error";
-      console.error("Replicate prediction failed:", {
-        status: status.status,
-        error: status.error,
-        logs: status.logs,
-      });
-      throw new Error(`Parsing failed: ${errorDetails}`);
-    }
-
-    attempts++;
   }
 
-  throw new Error("Parsing timed out");
+  const result = await response.json();
+  const content = result.choices?.[0]?.message?.content || "";
+
+  if (!content) {
+    throw new Error("OpenRouter returned empty response");
+  }
+
+  const parsed = parseJsonWithFallback(content);
+  return parseVisitNote(parsed);
 }

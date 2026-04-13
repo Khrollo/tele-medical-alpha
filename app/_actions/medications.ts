@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { getServerSession } from "@/app/_lib/supabase/server";
 import {
@@ -69,6 +69,8 @@ export async function addMedicationAction(
 
     revalidatePath(`/patients/${patientId}/medications`);
     revalidatePath(`/patients/${patientId}`);
+    revalidateTag(`patient:${patientId}`, "max");
+    revalidateTag("patients", "max");
 
     return { success: true };
   } catch (error) {
@@ -105,6 +107,8 @@ export async function updateMedicationAction(
 
     revalidatePath(`/patients/${patientId}/medications`);
     revalidatePath(`/patients/${patientId}`);
+    revalidateTag(`patient:${patientId}`, "max");
+    revalidateTag("patients", "max");
 
     return { success: true };
   } catch (error) {
@@ -135,6 +139,8 @@ export async function deleteMedicationAction(patientId: string, medicationId: st
 
     revalidatePath(`/patients/${patientId}/medications`);
     revalidatePath(`/patients/${patientId}`);
+    revalidateTag(`patient:${patientId}`, "max");
+    revalidateTag("patients", "max");
 
     return { success: true };
   } catch (error) {
@@ -266,6 +272,8 @@ export async function syncVisitMedicationsToPatientAction(
 
     revalidatePath(`/patients/${patientId}/medications`);
     revalidatePath(`/patients/${patientId}`);
+    revalidateTag(`patient:${patientId}`, "max");
+    revalidateTag("patients", "max");
 
     return { success: true, added, updated };
   } catch (error) {
