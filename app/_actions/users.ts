@@ -1,33 +1,12 @@
 "use server";
 
-import { createClient } from "@supabase/supabase-js";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getServerSession } from "@/app/_lib/supabase/server";
+import { auth } from "@/app/_lib/auth/auth";
 import { db } from "@/app/_lib/db/drizzle/index";
 import { users } from "@/app/_lib/db/drizzle/schema";
 import { eq } from "drizzle-orm";
-
-/**
- * Create a Supabase admin client using service role key
- * This bypasses RLS and allows creating users
- */
-function createSupabaseAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !supabaseServiceRoleKey) {
-    throw new Error(
-      "Missing Supabase environment variables. Please check your .env.local file."
-    );
-  }
-
-  return createClient(supabaseUrl, supabaseServiceRoleKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  });
-}
 
 export interface CreateUserPayload {
   email: string;
@@ -37,94 +16,59 @@ export interface CreateUserPayload {
 }
 
 /**
- * Create a new user (doctor or nurse) in Supabase auth and users table
+ * Create a new user (doctor or nurse) via Better Auth admin API,
+ * then update the role in our users table via Drizzle.
  */
 export async function createUserAction(payload: CreateUserPayload) {
-  // Check authentication - only allow doctors and nurses to create users
   const session = await getServerSession();
 
   if (!session) {
     redirect("/sign-in");
   }
 
-  // Only doctors and nurses can create users
   if (session.role !== "doctor" && session.role !== "nurse") {
     throw new Error("Unauthorized: Only doctors and nurses can create users");
   }
 
   try {
-    const supabaseAdmin = createSupabaseAdminClient();
+    const existing = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, payload.email))
+      .limit(1);
 
-    // Check if user already exists by listing users and filtering by email
-    // Note: This is a workaround since getUserByEmail doesn't exist in the admin API
-    const { data: usersList, error: listError } = await supabaseAdmin.auth.admin.listUsers();
-    
-    if (listError) {
-      console.error("Error listing users:", listError);
-      // Continue anyway - we'll catch duplicate email error during creation
-    } else {
-      const existingUser = usersList?.users?.find((u: any) => u.email === payload.email);
-      if (existingUser) {
-        return {
-          success: false,
-          error: "A user with this email already exists",
-        };
-      }
+    if (existing.length > 0) {
+      return {
+        success: false,
+        error: "A user with this email already exists",
+      };
     }
 
-    // Create user in Supabase Auth
-    const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email: payload.email,
-      password: payload.password,
-      email_confirm: true, // Auto-confirm email
-      user_metadata: {
-        role: payload.role,
+    const newUser = await auth.api.createUser({
+      headers: await headers(),
+      body: {
+        email: payload.email,
+        password: payload.password,
         name: payload.name,
+        role: "user",
       },
     });
 
-    if (authError || !authUser.user) {
-      // Check if error is due to duplicate email
-      if (authError?.message?.toLowerCase().includes("already registered") || 
-          authError?.message?.toLowerCase().includes("already exists") ||
-          authError?.message?.toLowerCase().includes("user already")) {
-        return {
-          success: false,
-          error: "A user with this email already exists",
-        };
-      }
-      
+    if (!newUser?.user) {
       return {
         success: false,
-        error: authError?.message || "Failed to create user in authentication system",
+        error: "Failed to create user",
       };
     }
 
-    // Insert user into users table
-    try {
-      await db.insert(users).values({
-        id: authUser.user.id,
-        email: payload.email,
-        name: payload.name,
-        role: payload.role,
-      });
-    } catch (dbError: any) {
-      // If database insert fails, try to clean up the auth user
-      try {
-        await supabaseAdmin.auth.admin.deleteUser(authUser.user.id);
-      } catch (cleanupError) {
-        console.error("Failed to cleanup auth user after DB error:", cleanupError);
-      }
-
-      return {
-        success: false,
-        error: dbError?.message || "Failed to create user record in database",
-      };
-    }
+    await db
+      .update(users)
+      .set({ role: payload.role })
+      .where(eq(users.id, newUser.user.id));
 
     return {
       success: true,
-      userId: authUser.user.id,
+      userId: newUser.user.id,
     };
   } catch (error) {
     console.error("Error creating user:", error);

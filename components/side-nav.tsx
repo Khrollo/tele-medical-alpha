@@ -7,7 +7,7 @@ import { X, LogOut, Clock, Users, FileText, UserPlus, ChevronLeft, ChevronRight,
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "./theme-toggle";
 import { cn } from "@/app/_lib/utils/cn";
-import { createSupabaseBrowserClient } from "@/app/_lib/supabase/client";
+import { authClient } from "@/app/_lib/auth/auth-client";
 
 interface SideNavProps {
     userRole?: string;
@@ -75,20 +75,11 @@ export function SideNav({ userRole, userName, patientId, patientName, onMobileSt
     const handleSignOut = async () => {
         try {
             setIsSigningOut(true);
-            const supabase = createSupabaseBrowserClient();
-            const { error } = await supabase.auth.signOut();
-
-            if (error) {
-                console.error("Error signing out:", error);
-                // Still redirect even if there's an error
-            }
-
-            // Redirect to sign-in page
+            await authClient.signOut();
             router.push("/sign-in");
             router.refresh();
         } catch (err) {
             console.error("Unexpected error during sign out:", err);
-            // Still redirect even if there's an error
             router.push("/sign-in");
             router.refresh();
         } finally {
