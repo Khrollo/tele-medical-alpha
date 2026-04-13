@@ -1,4 +1,4 @@
-import { eq, and, or, desc } from "drizzle-orm";
+import { eq, and, or, desc, asc, gte, lt } from "drizzle-orm";
 import { db } from "../index";
 import { visits, notes, transcripts, patients, users } from "../schema";
 import type { VisitNote } from "@/app/_lib/visit-note/schema";
@@ -258,15 +258,6 @@ export async function finalizeVisit(
     .limit(1);
   const userName = userResult[0]?.name || userResult[0]?.email || null;
 
-  // Get current visit status
-  const currentVisit = await db
-    .select()
-    .from(visits)
-    .where(eq(visits.id, visitId))
-    .limit(1);
-
-  const fromStatus = currentVisit[0]?.status || null;
-
   // Map old status values to new ones
   const newStatus =
     status === "signed" ? "Signed & Complete" : "Signed & Complete";
@@ -344,8 +335,6 @@ export async function markVisitInProgress(
   if (!currentVisit[0]) {
     throw new Error("Visit not found");
   }
-
-  const fromStatus = currentVisit[0].status;
 
   // Update visit status
   await db
@@ -594,6 +583,7 @@ export async function getClinicianOpenVisits(clinicianId: string) {
       patient: {
         id: patients.id,
         fullName: patients.fullName,
+        vitals: patients.vitals,
       },
     })
     .from(visits)
@@ -621,5 +611,105 @@ export async function getClinicianOpenVisits(clinicianId: string) {
     createdAt: row.visit.createdAt,
     patientJoinToken: row.visit.patientJoinToken,
     twilioRoomName: row.visit.twilioRoomName,
+    vitals: row.patient.vitals,
   }));
+}
+
+export async function getVisitCreatedByRole(visitId: string): Promise<"doctor" | "nurse" | null> {
+  const earliestNote = await db
+    .select({
+      authorId: notes.authorId,
+      authorRole: users.role,
+    })
+    .from(notes)
+    .leftJoin(users, eq(notes.authorId, users.id))
+    .where(eq(notes.visitId, visitId))
+    .orderBy(asc(notes.createdAt))
+    .limit(1);
+
+  const role = earliestNote[0]?.authorRole;
+  if (role === "doctor" || role === "nurse") {
+    return role;
+  }
+
+  const fallback = await db
+    .select({
+      clinicianRole: users.role,
+    })
+    .from(visits)
+    .leftJoin(users, eq(visits.clinicianId, users.id))
+    .where(eq(visits.id, visitId))
+    .limit(1);
+
+  const fallbackRole = fallback[0]?.clinicianRole;
+  if (fallbackRole === "doctor" || fallbackRole === "nurse") {
+    return fallbackRole;
+  }
+
+  return null;
+}
+
+export async function getDoctorInboxDailySummary(clinicianId: string) {
+  const now = new Date();
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const endOfDay = new Date(startOfDay);
+  endOfDay.setDate(endOfDay.getDate() + 1);
+
+  const todayRows = await db
+    .select({
+      visitId: visits.id,
+      patientId: visits.patientId,
+      patientName: patients.fullName,
+      createdAt: notes.createdAt,
+      updatedAt: notes.updatedAt,
+      status: visits.status,
+      notesStatus: visits.notesStatus,
+      authorId: notes.authorId,
+      authorRole: users.role,
+    })
+    .from(notes)
+    .innerJoin(visits, eq(notes.visitId, visits.id))
+    .innerJoin(patients, eq(visits.patientId, patients.id))
+    .leftJoin(users, eq(notes.authorId, users.id))
+    .where(
+      and(
+        eq(visits.clinicianId, clinicianId),
+        gte(notes.updatedAt, startOfDay),
+        lt(notes.updatedAt, endOfDay)
+      )
+    )
+    .orderBy(desc(notes.updatedAt));
+
+  // One row per visit for summary cards; keep newest note activity for that visit.
+  const uniqueByVisit = new Map<string, (typeof todayRows)[number]>();
+  for (const row of todayRows) {
+    if (!uniqueByVisit.has(row.visitId)) {
+      uniqueByVisit.set(row.visitId, row);
+    }
+  }
+
+  const todayNotes = Array.from(uniqueByVisit.values()).map((row) => ({
+    visitId: row.visitId,
+    patientId: row.patientId,
+    patientName: row.patientName,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    status: row.status,
+    notesStatus: row.notesStatus,
+    authorId: row.authorId,
+    authorRole: row.authorRole,
+  }));
+
+  const isClosed = (status: string | null) => status === "Signed & Complete";
+
+  const closedTodayCount = todayNotes.filter((note) =>
+    isClosed(note.status)
+  ).length;
+  const unclosedTodayCount = todayNotes.length - closedTodayCount;
+
+  return {
+    closedTodayCount,
+    unclosedTodayCount,
+    todayNotes,
+  };
 }
