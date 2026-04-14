@@ -10,7 +10,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Save, CheckCircle2, ChevronLeft, ChevronRight, ChevronDown, Plus, Pencil, Trash2, CheckCircle, AlertCircle, XCircle, Camera, X, Loader2, User, Clock, FileSignature, Video } from "lucide-react";
+import { Save, CheckCircle2, ChevronLeft, ChevronRight, ChevronDown, Plus, Pencil, Trash2, CheckCircle, AlertCircle, XCircle, Camera, X, Loader2, User, Clock, FileSignature, Video, Mic, Stethoscope } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -110,6 +110,7 @@ export function NewVisitForm({
   const [expandedSections, setExpandedSections] = React.useState<Set<string>>(new Set());
   const [medicalPanelOpen, setMedicalPanelOpen] = React.useState(false);
   const [medicalPanelSection, setMedicalPanelSection] = React.useState<string | null>(null);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = React.useState(false);
   const [isOnline, setIsOnline] = React.useState(typeof navigator !== "undefined" ? navigator.onLine : true);
   const [pendingCount, setPendingCount] = React.useState(0);
   const [isSyncing, setIsSyncing] = React.useState(false);
@@ -1389,6 +1390,48 @@ export function NewVisitForm({
           </div>
         </div>
       </div>
+
+      {/* Mobile: floating toggle for sidebar tools (AI capture + medical info) */}
+      {!hideAICapture && (
+        <Button
+          variant="default"
+          size="icon"
+          className="fixed bottom-20 right-4 z-40 h-12 w-12 rounded-full shadow-lg lg:hidden"
+          onClick={() => setMobileSidebarOpen(true)}
+        >
+          <Mic className="h-5 w-5" />
+          <span className="sr-only">Open tools panel</span>
+        </Button>
+      )}
+
+      {/* Mobile: sidebar tools dialog */}
+      <Dialog open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
+        <DialogContent className="sm:max-w-sm max-h-[85vh] overflow-y-auto lg:hidden">
+          <DialogHeader>
+            <DialogTitle>Visit Tools</DialogTitle>
+            <DialogDescription>AI capture and medical info panels</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {medicalPanelOpen && medicalPanelSection && (
+              <MedicalInfoPanel
+                patientBasics={patientBasics}
+                sectionId={medicalPanelSection}
+                onClose={() => {
+                  setMedicalPanelOpen(false);
+                  setMedicalPanelSection(null);
+                }}
+              />
+            )}
+            {!hideAICapture && (
+              <AICapturePanel
+                patientId={patientId}
+                onTranscriptReady={handleTranscriptReady}
+                onParseReady={handleParseReady}
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Post-Save Modal */}
       <Dialog open={showPostSaveModal} onOpenChange={setShowPostSaveModal}>
