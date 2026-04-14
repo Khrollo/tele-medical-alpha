@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { cn } from "@/app/_lib/utils/cn";
-import { Check, Circle } from "lucide-react";
+import { Check, Circle, MessageSquare, Activity, Heart, Syringe, Users, AlertTriangle, Scissors, Clock, FileText, Pill, ClipboardList, Stethoscope } from "lucide-react";
 
 export interface VisitSection {
   id: string;
@@ -24,26 +24,49 @@ const allSections: VisitSection[] = [
   { id: "assessmentPlan", label: "Assessment & Plan" },
 ];
 
+const sectionIcons: Record<string, React.ElementType> = {
+  subjective: MessageSquare,
+  objective: Activity,
+  pointOfCare: Heart,
+  vaccines: Syringe,
+  familyHistory: Users,
+  riskFlags: AlertTriangle,
+  surgicalHistory: Scissors,
+  pastMedicalHistory: Clock,
+  documents: FileText,
+  medications: Pill,
+  orders: ClipboardList,
+  assessmentPlan: Stethoscope,
+};
+
+const sectionShortLabels: Record<string, string> = {
+  subjective: "Subjective",
+  objective: "Objective",
+  pointOfCare: "Point of Care",
+  vaccines: "Vaccines",
+  familyHistory: "Family",
+  riskFlags: "Risks",
+  surgicalHistory: "Surgical",
+  pastMedicalHistory: "Past Med",
+  documents: "Docs",
+  medications: "Meds",
+  orders: "Orders",
+  assessmentPlan: "A&P",
+};
+
 /**
  * Get sections filtered and ordered based on user role
  */
 export function getSectionsForRole(userRole?: string): VisitSection[] {
   if (userRole === "nurse") {
-    // For nurses: exclude assessmentPlan, and reorder so objective is 2nd to last, subjective is last
-    // Filter out assessmentPlan, objective, and subjective
     const otherSections = allSections.filter(
       s => s.id !== "assessmentPlan" && s.id !== "objective" && s.id !== "subjective"
     );
-    
-    // Build result: other sections, then objective (2nd to last), then subjective (last)
     const result = [...otherSections];
     result.push({ id: "objective", label: "Objective" });
     result.push({ id: "subjective", label: "Subjective" });
-    
     return result;
   }
-  
-  // For doctors: return all sections in original order
   return allSections;
 }
 
@@ -53,6 +76,7 @@ interface SectionStepperProps {
   onSectionClick: (sectionId: string) => void;
   userRole?: string;
   className?: string;
+  variant?: "vertical" | "horizontal";
 }
 
 export function SectionStepper({
@@ -61,9 +85,72 @@ export function SectionStepper({
   onSectionClick,
   userRole,
   className,
+  variant = "vertical",
 }: SectionStepperProps) {
   const sections = getSectionsForRole(userRole);
-  
+
+  if (variant === "horizontal") {
+    return (
+      <div className={cn("flex items-center overflow-x-auto px-4 py-3 gap-0 min-w-0 scrollbar-none", className)}>
+        {sections.map((section, idx) => {
+          const isCurrent = currentSection === section.id;
+          const isReviewed = reviewedSections.has(section.id);
+          const Icon = sectionIcons[section.id] ?? Circle;
+
+          return (
+            <React.Fragment key={section.id}>
+              <button
+                onClick={() => onSectionClick(section.id)}
+                className="flex flex-col items-center gap-1.5 shrink-0 group"
+                title={section.label}
+              >
+                <div
+                  className={cn(
+                    "h-9 w-9 rounded-full flex items-center justify-center border-2 transition-all",
+                    isCurrent
+                      ? "bg-foreground border-foreground text-background"
+                      : isReviewed
+                      ? "border-emerald-500 text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40"
+                      : "border-muted-foreground/30 text-muted-foreground group-hover:border-muted-foreground/60 group-hover:text-foreground"
+                  )}
+                >
+                  {isReviewed && !isCurrent ? (
+                    <Check className="h-4 w-4" />
+                  ) : (
+                    <Icon className="h-4 w-4" />
+                  )}
+                </div>
+                <span
+                  className={cn(
+                    "text-[9px] font-semibold uppercase tracking-wider whitespace-nowrap",
+                    isCurrent
+                      ? "text-foreground"
+                      : isReviewed
+                      ? "text-emerald-600 dark:text-emerald-400"
+                      : "text-muted-foreground group-hover:text-foreground"
+                  )}
+                >
+                  {sectionShortLabels[section.id] ?? section.label}
+                </span>
+              </button>
+
+              {idx < sections.length - 1 && (
+                <div
+                  className={cn(
+                    "flex-1 h-[2px] mx-1 min-w-[6px] shrink rounded-full transition-colors",
+                    reviewedSections.has(section.id)
+                      ? "bg-emerald-400 dark:bg-emerald-600"
+                      : "bg-muted-foreground/20"
+                  )}
+                />
+              )}
+            </React.Fragment>
+          );
+        })}
+      </div>
+    );
+  }
+
   return (
     <div className={cn("space-y-1", className)}>
       <h3 className="text-sm font-semibold text-foreground mb-3">
@@ -73,7 +160,7 @@ export function SectionStepper({
         {sections.map((section) => {
           const isCurrent = currentSection === section.id;
           const isReviewed = reviewedSections.has(section.id);
-          
+
           return (
             <button
               key={section.id}
@@ -102,4 +189,3 @@ export function SectionStepper({
 
 // Export all sections for backward compatibility (used in other places)
 export { allSections as visitSections };
-
