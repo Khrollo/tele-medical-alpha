@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { QRCodeSVG } from "qrcode.react";
 import { Input } from "@/components/ui/input";
-import { Video, Copy, Check, User, Pill, AlertCircle, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { Video, Copy, Check, User, Pill, AlertCircle, ChevronLeft, ChevronRight, Plus, Calendar, Mail, Phone } from "lucide-react";
 import { toast } from "sonner";
 import { formatDate } from "@/app/_lib/utils/format-date";
 import { formatVisitStatusLabel } from "@/app/_lib/utils/visit-status-label";

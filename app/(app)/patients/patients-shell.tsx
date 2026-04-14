@@ -3,8 +3,8 @@
 import * as React from "react";
 import { SideNav } from "@/components/side-nav";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Menu } from "lucide-react";
+import { WorkflowCommandSearch } from "@/components/workflow-command-search";
 
 interface PatientsShellProps {
     children: React.ReactNode;
@@ -43,15 +43,7 @@ export function PatientsShell({ children, userRole, userName }: PatientsShellPro
                         <span className="sr-only">Open menu</span>
                     </Button>
                     <div className="flex-1 min-w-0 max-w-md relative">
-                        <Input
-                            placeholder="Search patients..."
-                            className="w-full pl-9 h-9 text-sm"
-                            id="patients-search"
-                            autoComplete="off"
-                        />
-                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                        </div>
+                        <WorkflowCommandSearch placeholder="Search patients, visits, or workflows..." />
                     </div>
                 </div>
 

@@ -10,7 +10,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Save, CheckCircle2, ChevronLeft, ChevronRight, ChevronDown, Plus, Pencil, Trash2, CheckCircle, AlertCircle, XCircle, Camera, X, Loader2, User, Clock, FileSignature, Video } from "lucide-react";
+import { Save, CheckCircle2, ChevronLeft, ChevronRight, ChevronDown, Plus, Pencil, Trash2, CheckCircle, AlertCircle, XCircle, Camera, X, Loader2, User, Clock, FileSignature, Video, Mic, Stethoscope } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -110,6 +110,7 @@ export function NewVisitForm({
   const [expandedSections, setExpandedSections] = React.useState<Set<string>>(new Set());
   const [medicalPanelOpen, setMedicalPanelOpen] = React.useState(false);
   const [medicalPanelSection, setMedicalPanelSection] = React.useState<string | null>(null);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = React.useState(false);
   const [isOnline, setIsOnline] = React.useState(typeof navigator !== "undefined" ? navigator.onLine : true);
   const [pendingCount, setPendingCount] = React.useState(0);
   const [isSyncing, setIsSyncing] = React.useState(false);
@@ -1280,103 +1281,157 @@ export function NewVisitForm({
         </div>
       </div>
 
-      {/* Medical Info Panel - renders as overlay drawer when open */}
-      {medicalPanelOpen && medicalPanelSection && (
-        <div className="fixed inset-y-0 left-0 z-40 w-80 bg-white dark:bg-slate-950 shadow-2xl border-r border-slate-200 dark:border-slate-800 overflow-y-auto">
-          <MedicalInfoPanel
-            patientBasics={patientBasics}
-            sectionId={medicalPanelSection}
-            onClose={() => {
-              setMedicalPanelOpen(false);
-              setMedicalPanelSection(null);
-            }}
-          />
-        </div>
-      )}
+      {/* Body: left sidebar + main content */}
+      <div className="flex flex-1 overflow-hidden">
 
-      {/* Centered content area */}
-      <div className="flex-1 overflow-y-auto">
-        {/* Section stepper - full width bar with centered items */}
-        <div className="w-full border-b border-slate-200/60 dark:border-slate-800 py-4">
-          <SectionStepper
-            currentSection={currentSection}
-            reviewedSections={reviewedSections}
-            onSectionClick={handleSectionChange}
-            userRole={userRole}
-            className="pb-0 pt-0"
-          />
-        </div>
-
-        <div className="max-w-3xl mx-auto w-full px-4 md:px-6 py-6 space-y-6">
-
-          {/* Section header with icon, title, and description */}
-          <div className="text-center space-y-1">
-            <div className="flex items-center justify-center gap-3">
-              <h1 className="text-2xl font-bold text-foreground">
-                {roleSections.find(s => s.id === currentSection)?.label}
-              </h1>
+        {/* Left sidebar — stepper + AI capture (hidden on mobile) */}
+        <div className="hidden lg:flex flex-col w-64 shrink-0 border-r border-slate-200/60 dark:border-slate-800 overflow-y-auto bg-background">
+          {medicalPanelOpen && medicalPanelSection && (
+            <MedicalInfoPanel
+              patientBasics={patientBasics}
+              sectionId={medicalPanelSection}
+              onClose={() => {
+                setMedicalPanelOpen(false);
+                setMedicalPanelSection(null);
+              }}
+            />
+          )}
+          {!hideAICapture && (
+            <div className="p-3 border-b border-slate-200/60 dark:border-slate-800">
+              <AICapturePanel
+                patientId={patientId}
+                onTranscriptReady={handleTranscriptReady}
+                onParseReady={handleParseReady}
+              />
             </div>
-            <p className="text-sm text-muted-foreground max-w-md mx-auto">
-              {sectionDescriptions[currentSection] || ""}
-            </p>
-            <p className="text-xs text-muted-foreground/60">
-              Step {currentSectionIndex + 1} of {roleSections.length}
-            </p>
+          )}
+          <div className="p-3 flex-1">
+            <SectionStepper
+              currentSection={currentSection}
+              reviewedSections={reviewedSections}
+              onSectionClick={handleSectionChange}
+              userRole={userRole}
+            />
+          </div>
+        </div>
+
+        {/* Main content area */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex-1 overflow-y-auto">
+            <div className="max-w-3xl mx-auto w-full px-4 md:px-6 py-6 space-y-6">
+
+              {/* Section header */}
+              <div className="text-center space-y-1">
+                <h1 className="text-2xl font-bold text-foreground">
+                  {roleSections.find(s => s.id === currentSection)?.label}
+                </h1>
+                <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                  {sectionDescriptions[currentSection] || ""}
+                </p>
+                <p className="text-xs text-muted-foreground/60">
+                  Step {currentSectionIndex + 1} of {roleSections.length}
+                </p>
+              </div>
+
+              {/* Form card */}
+              <Card className="shadow-sm">
+                <CardContent className="p-6 md:p-8">{renderSection()}</CardContent>
+              </Card>
+
+              {/* Inline prev / next navigation */}
+              <div className="flex items-center justify-between pb-6">
+                <Button
+                  variant="outline"
+                  className="h-11 px-5 text-sm font-medium gap-2"
+                  onClick={goToPrev}
+                  disabled={!canGoPrev}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  {canGoPrev ? roleSections[currentSectionIndex - 1]?.label : "Previous"}
+                </Button>
+
+                {canGoNext ? (
+                  <Button
+                    className="h-11 px-5 text-sm font-medium gap-2"
+                    onClick={goToNext}
+                  >
+                    {roleSections[currentSectionIndex + 1]?.label}
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={handleFinalize}
+                    disabled={isSaving || !allSectionsReviewed || !isOnline}
+                    className="h-11 px-6 text-sm font-semibold"
+                  >
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        Saving...
+                      </>
+                    ) : (
+                      "Complete Visit"
+                    )}
+                  </Button>
+                )}
+              </div>
+            </div>
           </div>
 
-          {/* Form card - focused, centered content */}
-          <Card className="shadow-sm">
-            <CardContent className="p-6 md:p-8">{renderSection()}</CardContent>
-          </Card>
-
-          {/* Inline navigation - prev / next below the form */}
-          <div className="flex items-center justify-between pb-6">
-            <Button
-              variant="outline"
-              className="h-11 px-5 text-sm font-medium gap-2"
-              onClick={goToPrev}
-              disabled={!canGoPrev}
-            >
-              <ChevronLeft className="h-4 w-4" />
-              {canGoPrev ? roleSections[currentSectionIndex - 1]?.label : "Previous"}
-            </Button>
-
-            {canGoNext ? (
-              <Button
-                className="h-11 px-5 text-sm font-medium gap-2"
-                onClick={goToNext}
-              >
-                {roleSections[currentSectionIndex + 1]?.label}
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            ) : (
-              <Button
-                onClick={handleFinalize}
-                disabled={isSaving || !allSectionsReviewed || !isOnline}
-                className="h-11 px-6 text-sm font-semibold"
-              >
-                {isSaving ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    Saving...
-                  </>
-                ) : (
-                  "Complete Visit"
-                )}
-              </Button>
-            )}
+          {/* Mobile: show stepper as bottom sheet strip */}
+          <div className="lg:hidden border-t border-slate-200/60 dark:border-slate-800 overflow-x-auto">
+            <SectionStepper
+              currentSection={currentSection}
+              reviewedSections={reviewedSections}
+              onSectionClick={handleSectionChange}
+              userRole={userRole}
+              className="flex-row py-2 px-3"
+            />
           </div>
         </div>
       </div>
 
-      {/* Floating AI Capture Panel */}
+      {/* Mobile: floating toggle for sidebar tools (AI capture + medical info) */}
       {!hideAICapture && (
-        <AICapturePanel
-          patientId={patientId}
-          onTranscriptReady={handleTranscriptReady}
-          onParseReady={handleParseReady}
-        />
+        <Button
+          variant="default"
+          size="icon"
+          className="fixed bottom-20 right-4 z-40 h-12 w-12 rounded-full shadow-lg lg:hidden"
+          onClick={() => setMobileSidebarOpen(true)}
+        >
+          <Mic className="h-5 w-5" />
+          <span className="sr-only">Open tools panel</span>
+        </Button>
       )}
+
+      {/* Mobile: sidebar tools dialog */}
+      <Dialog open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
+        <DialogContent className="sm:max-w-sm max-h-[85vh] overflow-y-auto lg:hidden">
+          <DialogHeader>
+            <DialogTitle>Visit Tools</DialogTitle>
+            <DialogDescription>AI capture and medical info panels</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {medicalPanelOpen && medicalPanelSection && (
+              <MedicalInfoPanel
+                patientBasics={patientBasics}
+                sectionId={medicalPanelSection}
+                onClose={() => {
+                  setMedicalPanelOpen(false);
+                  setMedicalPanelSection(null);
+                }}
+              />
+            )}
+            {!hideAICapture && (
+              <AICapturePanel
+                patientId={patientId}
+                onTranscriptReady={handleTranscriptReady}
+                onParseReady={handleParseReady}
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Post-Save Modal */}
       <Dialog open={showPostSaveModal} onOpenChange={setShowPostSaveModal}>

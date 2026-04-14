@@ -22,6 +22,7 @@ export function SignInForm() {
     setError(null);
     setIsLoading(true);
 
+    // Basic validation
     if (!email.trim()) {
       setError("Email is required");
       setIsLoading(false);
@@ -52,6 +53,7 @@ export function SignInForm() {
           ? requestedRedirect
           : "/";
 
+      // Full navigation so the server reads the real session after Better Auth sets cookies.
       window.location.assign(safeRedirect);
     } catch (err) {
       setError(err instanceof Error ? err.message : "An unexpected error occurred");

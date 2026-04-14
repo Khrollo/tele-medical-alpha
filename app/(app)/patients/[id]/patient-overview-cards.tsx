@@ -476,7 +476,7 @@ export function PatientOverviewCards({
         <div className="lg:col-span-4">
             <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-8 border border-slate-100 dark:border-slate-800 h-full min-h-[400px]">
               <div className="flex items-center justify-between mb-8">
-                <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-slate-800 to-slate-500">Recent Visits</h2>
+                <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-linear-to-r from-slate-800 to-slate-500">Recent Visits</h2>
                 <div className="h-10 w-10 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center">
                   <History className="h-5 w-5 text-slate-500" />
                 </div>

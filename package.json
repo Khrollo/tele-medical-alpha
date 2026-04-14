@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:seed-demo-users": "bun scripts/seed-better-auth-users.ts"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",

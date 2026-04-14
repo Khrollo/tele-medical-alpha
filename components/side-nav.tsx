@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { X, LogOut, Clock, Users, FileText, ChevronLeft, ChevronRight } from "lucide-react";
+import { X, LogOut, Clock, Users, FileText, ChevronLeft, ChevronRight, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "./theme-toggle";
 import { cn } from "@/app/_lib/utils/cn";

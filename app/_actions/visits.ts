@@ -7,8 +7,6 @@ import {
   updateVisitDraft,
   finalizeVisit,
   getPatientOpenVisit,
-  type CreateVisitDraftParams,
-  type UpdateVisitDraftParams,
 } from "@/app/_lib/db/drizzle/queries/visit";
 import type { VisitNote } from "@/app/_lib/visit-note/schema";
 import { db } from "@/app/_lib/db/drizzle/index";

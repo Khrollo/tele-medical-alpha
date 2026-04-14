@@ -251,9 +251,13 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
       {/* Header Area */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Waiting Room</h2>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+            Schedule
+          </h2>
           <p className="mt-0.5 text-sm text-slate-500">
-            Monitor and assign incoming patient visits.
+            {userRole === "nurse"
+              ? "Review today’s assigned schedule and incoming visits."
+              : "Review the physician schedule and assign incoming patient visits."}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -267,7 +271,7 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
             <RefreshCw className={`h-4 w-4 mr-2 text-slate-500 ${isRefreshing ? "animate-spin" : ""}`} />
             <span className="text-xs font-bold text-slate-600 uppercase tracking-widest">{isRefreshing ? "Syncing..." : "Sync"}</span>
           </Button>
-          <div className="h-8 w-[1px] bg-slate-200 dark:bg-slate-800 hidden sm:block" />
+          <div className="h-8 w-px bg-slate-200 dark:bg-slate-800 hidden sm:block" />
           <div className="flex items-center gap-2">
             <Select value={sortField} onValueChange={(value) => handleSortChange(value as SortField)}>
               <SelectTrigger className="w-[160px] h-9 rounded-full bg-white dark:bg-slate-900 border border-slate-100 text-xs font-bold uppercase tracking-widest">
@@ -385,13 +389,18 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
       </div>
 
       {filteredAndSortedPatients.length === 0 && (
-        <Card>
-          <CardContent className="flex items-center justify-center py-12">
-            <p className="text-muted-foreground">
-              {userRole === "nurse"
-                ? "No patients currently scheduled or waiting"
-                : "No patients found matching your search"}
-            </p>
+        <Card className="rounded-2xl border-dashed border-2 bg-transparent shadow-none">
+          <CardContent className="flex items-center justify-center py-16">
+            <div className="text-center">
+              <div className="h-12 w-12 bg-white dark:bg-slate-900 rounded-full border border-slate-100 flex items-center justify-center mx-auto mb-3">
+                 <RefreshCw className="h-5 w-5 text-slate-300" />
+              </div>
+              <p className="text-sm text-slate-500">
+                {userRole === "nurse"
+                  ? "No patients currently scheduled or waiting."
+                  : "No patients currently scheduled or awaiting assignment."}
+              </p>
+            </div>
           </CardContent>
         </Card>
       )}

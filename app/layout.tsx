@@ -44,10 +44,10 @@ export default function RootLayout({
           defaultTheme="system"
           enableSystem
           disableTransitionOnChange
-      >
-        <OfflineProvider>
-          {children}
-        </OfflineProvider>
+        >
+          <OfflineProvider>
+            {children}
+          </OfflineProvider>
           <Toaster />
         </ThemeProvider>
       </body>
