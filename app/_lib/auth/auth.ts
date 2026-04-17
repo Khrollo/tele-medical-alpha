@@ -17,6 +17,19 @@ export const auth = betterAuth({
       generateId: () => crypto.randomUUID(),
     },
   },
+  socialProviders: {
+    google: {
+      clientId: process.env.GOOGLE_CLIENT_ID as string,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
+      scope: ["email", "profile"],
+      mapProfileToUser: (profile) => ({
+        name: profile.name,
+        image: profile.picture,
+        avatarUrl: profile.picture,
+        emailVerified: true,
+      }),
+    },
+  },
   emailAndPassword: {
     enabled: true,
   },
