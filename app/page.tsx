@@ -20,6 +20,10 @@ export default async function Home() {
     redirect("/patients");
   }
 
+  if (session.role === "admin") {
+    redirect("/admin/users/new");
+  }
+
   // Fallback: if authenticated but unknown role, redirect to sign in
   redirect("/sign-in");
 }

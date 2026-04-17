@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "./_providers/theme-provider";
 import { OfflineProvider } from "./_components/providers/offline-provider";
+import { OfflineSyncIndicator } from "./_components/offline-sync-indicator";
 import { Toaster } from "@/components/ui/toaster";
 
 const geistSans = Geist({
@@ -47,6 +48,9 @@ export default function RootLayout({
         >
           <OfflineProvider>
             {children}
+            <div className="fixed bottom-4 right-4 z-50">
+              <OfflineSyncIndicator />
+            </div>
           </OfflineProvider>
           <Toaster />
         </ThemeProvider>

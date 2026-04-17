@@ -12,6 +12,7 @@ export interface VisitSection {
 const allSections: VisitSection[] = [
   { id: "subjective", label: "Subjective" },
   { id: "objective", label: "Objective" },
+  { id: "reviewOfSystems", label: "Review of Systems" },
   { id: "pointOfCare", label: "Point of Care" },
   { id: "vaccines", label: "Vaccines" },
   { id: "familyHistory", label: "Family History" },
@@ -21,7 +22,10 @@ const allSections: VisitSection[] = [
   { id: "documents", label: "Documents" },
   { id: "medications", label: "Medications" },
   { id: "orders", label: "Orders" },
+  { id: "visitActions", label: "Visit Actions" },
+  { id: "differentialDiagnoses", label: "Differential" },
   { id: "assessmentPlan", label: "Assessment & Plan" },
+  { id: "coding", label: "Coding & Sign-off" },
 ];
 
 /**
@@ -32,7 +36,12 @@ export function getSectionsForRole(userRole?: string): VisitSection[] {
     // For nurses: exclude assessmentPlan, and reorder so objective is 2nd to last, subjective is last
     // Filter out assessmentPlan, objective, and subjective
     const otherSections = allSections.filter(
-      s => s.id !== "assessmentPlan" && s.id !== "objective" && s.id !== "subjective"
+      s =>
+        s.id !== "assessmentPlan" &&
+        s.id !== "differentialDiagnoses" &&
+        s.id !== "coding" &&
+        s.id !== "objective" &&
+        s.id !== "subjective"
     );
     
     // Build result: other sections, then objective (2nd to last), then subjective (last)

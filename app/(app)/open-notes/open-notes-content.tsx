@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileText, Clock } from "lucide-react";
 import { formatDateTime } from "@/app/_lib/utils/format-date";
 import { formatVisitStatusLabel } from "@/app/_lib/utils/visit-status-label";
@@ -48,6 +49,7 @@ function isClosedStatus(status: string | null): boolean {
 
 export function OpenNotesContent({ visits, dailySummary }: OpenNotesContentProps) {
   const [searchQuery, setSearchQuery] = useState("");
+  const [bucket, setBucket] = useState<"open" | "closed" | "all">("open");
 
   React.useEffect(() => {
     const topBarSearch = document.getElementById("open-notes-search") as HTMLInputElement | null;
@@ -81,7 +83,14 @@ export function OpenNotesContent({ visits, dailySummary }: OpenNotesContentProps
       );
     });
 
-    return filtered.sort((a, b) => {
+    return filtered
+      .filter((note) => {
+        if (bucket === "all") return true;
+        return bucket === "closed"
+          ? isClosedStatus(note.status)
+          : !isClosedStatus(note.status);
+      })
+      .sort((a, b) => {
       const aClosed = isClosedStatus(a.status);
       const bClosed = isClosedStatus(b.status);
 
@@ -92,22 +101,43 @@ export function OpenNotesContent({ visits, dailySummary }: OpenNotesContentProps
       const aTime = new Date(a.updatedAt).getTime();
       const bTime = new Date(b.updatedAt).getTime();
       return bTime - aTime;
-    });
-  }, [dailySummary.todayNotes, searchQuery]);
+      });
+  }, [bucket, dailySummary.todayNotes, searchQuery]);
+
+  const openCount = dailySummary.todayNotes.filter(
+    (note) => !isClosedStatus(note.status)
+  ).length;
+  const closedCount = dailySummary.todayNotes.filter((note) =>
+    isClosedStatus(note.status)
+  ).length;
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
       <div>
         <h1 className="text-3xl font-bold text-foreground">Inbox</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Daily physician note queue, ordered by what still needs attention first.
+          Open and closed notes are grouped separately so unfinished documentation
+          stays visible first.
         </p>
       </div>
+
+      <Tabs
+        value={bucket}
+        onValueChange={(value) => setBucket(value as "open" | "closed" | "all")}
+      >
+        <TabsList>
+          <TabsTrigger value="open">Open ({openCount})</TabsTrigger>
+          <TabsTrigger value="closed">Closed ({closedCount})</TabsTrigger>
+          <TabsTrigger value="all">All ({dailySummary.todayNotes.length})</TabsTrigger>
+        </TabsList>
+      </Tabs>
 
       {sortedNotes.length === 0 && dailySummary.todayNotes.length > 0 ? (
         <Card>
           <CardContent className="flex items-center justify-center py-12">
-            <p className="text-muted-foreground">No notes found matching your search</p>
+            <p className="text-muted-foreground">
+              No {bucket === "all" ? "" : bucket} notes found matching your search
+            </p>
           </CardContent>
         </Card>
       ) : dailySummary.todayNotes.length === 0 ? (

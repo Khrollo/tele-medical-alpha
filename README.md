@@ -1,36 +1,64 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Tele-Medical
+
+Tele-Medical is a clinician-facing telehealth application built for role-based care delivery across doctor, nurse, and admin workflows. The current product focuses on the core visit lifecycle: authentication, schedule and waiting room triage, patient chart review, active visit documentation, orders and actions, note management, and irreversible sign-off.
+
+## Stack
+
+- Next.js App Router
+- TypeScript
+- Tailwind CSS and shadcn/ui
+- Supabase auth and platform services
+- Drizzle ORM
+- Better Auth for application auth flows
+- Dexie-based offline draft and outbox support
 
 ## Getting Started
 
-First, run the development server:
+Run the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Then open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Workflow Overview
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The primary clinician journey is:
 
-## Learn More
+1. Sign in
+2. Review the waiting room / schedule
+3. Open the patient chart
+4. Complete the active visit note
+5. Place labs, imaging, prescriptions, referrals, and follow-up steps
+6. Review coding and sign the visit
 
-To learn more about Next.js, take a look at the following resources:
+Supporting screens also include open notes, admin user management, patient vitals history, labs and results, and role-aware navigation.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Recent Clinical Workflow Updates
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Recent changes in this branch deepen the end-to-end visit workflow without changing auth, offline sync, or the AI transcription pipeline:
 
-## Deploy on Vercel
+- Google OAuth is wired in as the primary sign-in path, with email/password retained as fallback.
+- Waiting room rows now expose richer schedule context, day navigation, urgent alert acknowledgement, and quick patient snapshot access.
+- Global command search uses clinician-friendly groups for patients, notes, and schedules.
+- Patient chart navigation includes a dedicated labs and results view.
+- The active visit form now includes expanded note structure for ROS, differential diagnoses, visit actions, coding prep, nurse intake review, mini schedule access, and objective abnormal-vital flags.
+- Visit actions are structured for prescriptions, labs, imaging, referrals, and next steps rather than plain free-text entry.
+- The vitals tab now includes a multi-series progression chart with abnormal markers and date filtering.
+- Doctors can complete visit close from a dedicated sign-off screen with ICD-10 and CPT review, attestation, co-sign request flow, and validation before close-out.
+- Open notes now distinguish open, closed, and all notes more clearly.
+- Admin users have role-aware landing and navigation support, including user provisioning access.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Verification
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The current working changes were verified locally with:
+
+```bash
+npx tsc --noEmit
+npm exec eslint -- "app/(app)/patients/[id]/vitals/vitals-content.tsx" "app/_components/visit/new-visit-form.tsx" "app/_components/visit/visit-close-content.tsx" "app/_actions/users.ts" "app/_lib/visit-note/schema.ts" "app/api/visits/[visitId]/cosign-request/route.ts"
+```
+
+## Deployment
+
+Production deploys are managed through Vercel. The active production domain currently remains the existing Vercel-hosted domain until custom-domain ownership changes are completed.

@@ -4,7 +4,11 @@ import { requireUser } from "@/app/_lib/auth/get-current-user";
 import { getAllPatients, getUnassignedPatientsWithVisits } from "@/app/_lib/db/drizzle/queries/patients";
 import { getClinicianOpenVisits } from "@/app/_lib/db/drizzle/queries/visit";
 
-export type WorkflowSearchGroup = "patients" | "visits" | "tasks" | "destinations";
+export type WorkflowSearchGroup =
+  | "patients"
+  | "notes"
+  | "schedules"
+  | "destinations";
 
 export interface WorkflowSearchItem {
   id: string;
@@ -17,8 +21,8 @@ export interface WorkflowSearchItem {
 
 export interface WorkflowSearchResults {
   patients: WorkflowSearchItem[];
-  visits: WorkflowSearchItem[];
-  tasks: WorkflowSearchItem[];
+  notes: WorkflowSearchItem[];
+  schedules: WorkflowSearchItem[];
   destinations: WorkflowSearchItem[];
 }
 
@@ -85,20 +89,20 @@ export async function searchWorkflowAction(rawQuery?: string): Promise<WorkflowS
       badge: "Chart",
     }));
 
-  const visitResults = sortByScore(
+  const noteResults = sortByScore(
     patients.flatMap((patient) => {
       const items: WorkflowSearchItem[] = [
         {
           id: `history:${patient.id}`,
-          group: "visits",
+          group: "notes",
           title: `${patient.fullName} visit history`,
-          subtitle: "Open encounter history",
+          subtitle: "Review prior signed and unsigned documentation",
           href: `/patients/${patient.id}/visit-history`,
-          badge: "History",
+          badge: "Notes",
         },
         {
           id: `log:${patient.id}`,
-          group: "visits",
+          group: "notes",
           title: `${patient.fullName} visit log`,
           subtitle: "Open operational log timeline",
           href: `/patients/${patient.id}/log-history`,
@@ -109,18 +113,18 @@ export async function searchWorkflowAction(rawQuery?: string): Promise<WorkflowS
       if (patient.visit?.id) {
         items.unshift({
           id: `active:${patient.visit.id}`,
-          group: "visits",
-          title: `${patient.fullName} active visit`,
-          subtitle: `${patient.visit.status || "In Progress"} • open note editor`,
+          group: "notes",
+          title: `${patient.fullName} active note`,
+          subtitle: `${patient.visit.status || "In Progress"} • continue open documentation`,
           href: `/patients/${patient.id}/new-visit?visitId=${patient.visit.id}`,
           badge: "Active",
         });
       } else {
         items.unshift({
           id: `new:${patient.id}`,
-          group: "visits",
-          title: `${patient.fullName} new visit`,
-          subtitle: "Start a new encounter",
+          group: "notes",
+          title: `${patient.fullName} new note`,
+          subtitle: "Start a new encounter note",
           href: `/patients/${patient.id}/new-visit`,
           badge: "New",
         });
@@ -131,11 +135,11 @@ export async function searchWorkflowAction(rawQuery?: string): Promise<WorkflowS
     (item) => getMatchScore(query, item.title, item.subtitle, item.badge)
   ).slice(0, query ? 8 : 5);
 
-  const taskResults = sortByScore(
+  const scheduleResults = sortByScore(
     [
       ...schedulePatients.map((patient) => ({
         id: `schedule:${patient.visit?.id || patient.id}`,
-        group: "tasks" as const,
+        group: "schedules" as const,
         title: `${patient.fullName} schedule item`,
         subtitle: patient.visit
           ? `${patient.visit.priority || "Not set"} • ${patient.visit.appointmentType || "Visit"}`
@@ -147,11 +151,11 @@ export async function searchWorkflowAction(rawQuery?: string): Promise<WorkflowS
       })),
       ...clinicianOpenVisits.map((visit) => ({
         id: `inbox:${visit.id}`,
-        group: "tasks" as const,
-        title: `${visit.patientName} inbox task`,
+        group: "schedules" as const,
+        title: `${visit.patientName} assigned slot`,
         subtitle: `${visit.status || "In Progress"} • continue assigned note`,
         href: `/patients/${visit.patientId}/new-visit?visitId=${visit.id}`,
-        badge: "Inbox",
+        badge: "Assigned",
       })),
     ].filter((item) => matchesQuery(query, item.title, item.subtitle, item.badge)),
     (item) => getMatchScore(query, item.title, item.subtitle, item.badge)
@@ -197,8 +201,8 @@ export async function searchWorkflowAction(rawQuery?: string): Promise<WorkflowS
 
   return {
     patients: patientResults,
-    visits: visitResults,
-    tasks: taskResults,
+    notes: noteResults,
+    schedules: scheduleResults,
     destinations,
   };
 }

@@ -6,13 +6,13 @@ import { getServerSession } from "@/app/_lib/supabase/server";
 import { auth } from "@/app/_lib/auth/auth";
 import { db } from "@/app/_lib/db/drizzle/index";
 import { users } from "@/app/_lib/db/drizzle/schema";
-import { eq } from "drizzle-orm";
+import { and, eq, ilike, or } from "drizzle-orm";
 
 export interface CreateUserPayload {
   email: string;
   password: string;
   name: string;
-  role: "doctor" | "nurse";
+  role: "doctor" | "nurse" | "admin";
 }
 
 /**
@@ -26,8 +26,14 @@ export async function createUserAction(payload: CreateUserPayload) {
     redirect("/sign-in");
   }
 
-  if (session.role !== "doctor" && session.role !== "nurse") {
-    throw new Error("Unauthorized: Only doctors and nurses can create users");
+  if (
+    session.role !== "doctor" &&
+    session.role !== "nurse" &&
+    session.role !== "admin"
+  ) {
+    throw new Error(
+      "Unauthorized: Only doctors, nurses, and admins can create users"
+    );
   }
 
   try {
@@ -77,4 +83,43 @@ export async function createUserAction(payload: CreateUserPayload) {
       error: error instanceof Error ? error.message : "Failed to create user",
     };
   }
+}
+
+export async function searchProvidersAction(query: string) {
+  const session = await getServerSession();
+
+  if (!session) {
+    redirect("/sign-in");
+  }
+
+  if (
+    session.role !== "doctor" &&
+    session.role !== "nurse" &&
+    session.role !== "admin"
+  ) {
+    throw new Error("Unauthorized");
+  }
+
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery) {
+    return [];
+  }
+
+  const likeQuery = `%${normalizedQuery}%`;
+
+  return db
+    .select({
+      id: users.id,
+      name: users.name,
+      email: users.email,
+      role: users.role,
+    })
+    .from(users)
+    .where(
+      and(
+        eq(users.role, "doctor"),
+        or(ilike(users.name, likeQuery), ilike(users.email, likeQuery))
+      )
+    )
+    .limit(5);
 }

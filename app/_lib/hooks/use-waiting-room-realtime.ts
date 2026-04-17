@@ -12,6 +12,7 @@ interface VisitInfo {
   clinicianId: string | null;
   twilioRoomName: string | null;
   patientJoinToken: string | null;
+  chiefComplaint: string | null;
 }
 
 interface Patient {
@@ -75,6 +76,7 @@ export function useWaitingRoomRealtime({
               clinicianId: patient.visit.clinicianId,
               twilioRoomName: patient.visit.twilioRoomName,
               patientJoinToken: patient.visit.patientJoinToken,
+              chiefComplaint: patient.visit.chiefComplaint,
             }
           : null,
       }));

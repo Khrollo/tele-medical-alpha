@@ -125,6 +125,7 @@ export function PatientChartShell({
                         { label: "Social", icon: Speech, href: `/patients/${patientId}/social-history` },
                         { label: "Surgical", icon: Stethoscope, href: `/patients/${patientId}/surgical-history` },
                         { label: "Medical", icon: FileText, href: `/patients/${patientId}/past-medical-history` },
+                        { label: "Labs", icon: ClipboardList, href: `/patients/${patientId}/labs-results` },
                         { label: "Orders", icon: ClipboardList, href: `/patients/${patientId}/orders` },
                         { label: "Documents", icon: Folder, href: `/patients/${patientId}/documents` },
                         { label: "Messages", icon: MessageSquare, href: `/patients/${patientId}/messages` },

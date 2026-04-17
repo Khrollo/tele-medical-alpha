@@ -19,6 +19,7 @@ export const visitNoteSchema = z.object({
       bp: z.string().default(""),
       hr: z.string().default(""),
       temp: z.string().default(""),
+      spo2: z.string().default(""),
       weight: z.string().default(""),
       height: z.string().default(""),
       bmi: z.string().default(""),
@@ -60,6 +61,7 @@ export const visitNoteSchema = z.object({
       bp: "",
       hr: "",
       temp: "",
+      spo2: "",
       weight: "",
       height: "",
       bmi: "",
@@ -83,6 +85,33 @@ export const visitNoteSchema = z.object({
       visionFloaters: "",
       visionPain: "",
       visionLastExamDate: "",
+    }),
+
+  // Review of Systems
+  reviewOfSystems: z
+    .object({
+      constitutional: z.object({ status: z.string().default("not-reviewed"), notes: z.string().default("") }).default({ status: "not-reviewed", notes: "" }),
+      heent: z.object({ status: z.string().default("not-reviewed"), notes: z.string().default("") }).default({ status: "not-reviewed", notes: "" }),
+      cardiovascular: z.object({ status: z.string().default("not-reviewed"), notes: z.string().default("") }).default({ status: "not-reviewed", notes: "" }),
+      respiratory: z.object({ status: z.string().default("not-reviewed"), notes: z.string().default("") }).default({ status: "not-reviewed", notes: "" }),
+      gastrointestinal: z.object({ status: z.string().default("not-reviewed"), notes: z.string().default("") }).default({ status: "not-reviewed", notes: "" }),
+      genitourinary: z.object({ status: z.string().default("not-reviewed"), notes: z.string().default("") }).default({ status: "not-reviewed", notes: "" }),
+      musculoskeletal: z.object({ status: z.string().default("not-reviewed"), notes: z.string().default("") }).default({ status: "not-reviewed", notes: "" }),
+      neurologic: z.object({ status: z.string().default("not-reviewed"), notes: z.string().default("") }).default({ status: "not-reviewed", notes: "" }),
+      psychiatric: z.object({ status: z.string().default("not-reviewed"), notes: z.string().default("") }).default({ status: "not-reviewed", notes: "" }),
+      skin: z.object({ status: z.string().default("not-reviewed"), notes: z.string().default("") }).default({ status: "not-reviewed", notes: "" }),
+    })
+    .default({
+      constitutional: { status: "not-reviewed", notes: "" },
+      heent: { status: "not-reviewed", notes: "" },
+      cardiovascular: { status: "not-reviewed", notes: "" },
+      respiratory: { status: "not-reviewed", notes: "" },
+      gastrointestinal: { status: "not-reviewed", notes: "" },
+      genitourinary: { status: "not-reviewed", notes: "" },
+      musculoskeletal: { status: "not-reviewed", notes: "" },
+      neurologic: { status: "not-reviewed", notes: "" },
+      psychiatric: { status: "not-reviewed", notes: "" },
+      skin: { status: "not-reviewed", notes: "" },
     }),
 
   // Point of Care
@@ -198,6 +227,16 @@ export const visitNoteSchema = z.object({
     )
     .default([]),
 
+  differentialDiagnoses: z
+    .array(
+      z.object({
+        diagnosis: z.string().default(""),
+        rationale: z.string().default(""),
+        source: z.enum(["ai", "manual"]).default("manual"),
+      })
+    )
+    .default([]),
+
   // Vaccines (array of vaccine records)
   vaccines: z
     .array(
@@ -284,6 +323,53 @@ export const visitNoteSchema = z.object({
     )
     .default([]),
 
+  visitActions: z
+    .object({
+      prescriptions: z.array(z.object({
+        medication: z.string().default(""),
+        dosage: z.string().default(""),
+        instructions: z.string().default(""),
+        pharmacy: z.string().default(""),
+        frequency: z.string().default(""),
+        durationValue: z.string().default(""),
+        durationUnit: z.string().default("days"),
+        notes: z.string().default(""),
+      })).default([]),
+      labs: z.array(z.object({
+        test: z.string().default(""),
+        priority: z.string().default("routine"),
+        notes: z.string().default(""),
+        urgency: z.string().default("Routine"),
+        clinicalIndication: z.string().default(""),
+      })).default([]),
+      imaging: z.array(z.object({
+        study: z.string().default(""),
+        priority: z.string().default("routine"),
+        notes: z.string().default(""),
+        bodyRegion: z.string().default(""),
+        urgency: z.string().default("Routine"),
+        clinicalIndication: z.string().default(""),
+      })).default([]),
+      referrals: z.array(z.object({
+        specialty: z.string().default(""),
+        reason: z.string().default(""),
+        urgency: z.string().default("routine"),
+        providerName: z.string().default(""),
+      })).default([]),
+      nextSteps: z.array(z.object({
+        task: z.string().default(""),
+        owner: z.string().default("care-team"),
+        dueBy: z.string().default(""),
+      })).default([]),
+    })
+    .default({
+      prescriptions: [],
+      labs: [],
+      imaging: [],
+      referrals: [],
+      nextSteps: [],
+    }),
+
   // Documents (array)
   docs: z
     .object({
@@ -304,6 +390,66 @@ export const visitNoteSchema = z.object({
     .default({ uploadedDocuments: [] }),
 
   // Metadata
+  coding: z
+    .object({
+      suggestedIcd10Codes: z.array(z.string()).default([]),
+      icd10Codes: z.array(z.string()).default([]),
+      suggestedCptCodes: z.array(z.string()).default([]),
+      cptCodes: z.array(z.string()).default([]),
+      mdmComplexity: z.string().default(""),
+      visitDurationMinutes: z.string().default(""),
+      codingNotes: z.string().default(""),
+    })
+    .default({
+      suggestedIcd10Codes: [],
+      icd10Codes: [],
+      suggestedCptCodes: [],
+      cptCodes: [],
+      mdmComplexity: "",
+      visitDurationMinutes: "",
+      codingNotes: "",
+    }),
+  consents: z
+    .object({
+      aiTranscript: z.boolean().default(false),
+      aiTranscriptConfirmedAt: z.string().default(""),
+      aiTranscriptConfirmedBy: z.string().default(""),
+    })
+    .default({
+      aiTranscript: false,
+      aiTranscriptConfirmedAt: "",
+      aiTranscriptConfirmedBy: "",
+    }),
+  coSign: z
+    .object({
+      requested: z.boolean().default(false),
+      requestedFrom: z.string().default(""),
+      requestedFromUserId: z.string().default(""),
+      reason: z.string().default(""),
+      status: z.string().default("not-requested"),
+      requestedAt: z.string().default(""),
+    })
+    .default({
+      requested: false,
+      requestedFrom: "",
+      requestedFromUserId: "",
+      reason: "",
+      status: "not-requested",
+      requestedAt: "",
+    }),
+  signOff: z
+    .object({
+      attestationAccepted: z.boolean().default(false),
+      signedBy: z.string().default(""),
+      signedAt: z.string().default(""),
+      amendmentReason: z.string().default(""),
+    })
+    .default({
+      attestationAccepted: false,
+      signedBy: "",
+      signedAt: "",
+      amendmentReason: "",
+    }),
   transcript: z.string().optional(),
   audioPath: z.string().optional(),
   aiGeneratedAt: z.string().optional(),
@@ -322,12 +468,12 @@ export function createEmptyVisitNote(): VisitNote {
  * Migrate old format data to new format
  * Handles backward compatibility for examFindings (string -> object)
  */
-function migrateVisitNoteData(data: any): any {
+function migrateVisitNoteData(data: unknown): unknown {
   if (!data || typeof data !== "object") {
     return data;
   }
 
-  const migrated = { ...data };
+  const migrated = { ...(data as Record<string, unknown>) };
 
   // Ensure objective exists
   if (!migrated.objective) {
@@ -335,14 +481,15 @@ function migrateVisitNoteData(data: any): any {
   }
 
   // Migrate examFindings from string to object format
-  if (typeof migrated.objective === "object") {
-    const examFindings = migrated.objective.examFindings;
+  if (migrated.objective && typeof migrated.objective === "object") {
+    const objective = migrated.objective as Record<string, unknown>;
+    const examFindings = objective.examFindings;
     
     if (typeof examFindings === "string") {
       // Convert old string format to new object format
       // Put the old string in the "general" category
       migrated.objective = {
-        ...migrated.objective,
+        ...objective,
         examFindings: {
           general: examFindings || "",
           heent: "",
@@ -355,27 +502,60 @@ function migrateVisitNoteData(data: any): any {
           skin: "",
         },
       };
-    } else if (
-      !examFindings ||
-      typeof examFindings !== "object" ||
-      examFindings.general === undefined
-    ) {
-      // Ensure examFindings exists and has the correct structure
-      migrated.objective = {
-        ...migrated.objective,
-        examFindings: {
-          general: examFindings?.general || "",
-          heent: examFindings?.heent || "",
-          neck: examFindings?.neck || "",
-          cardiovascular: examFindings?.cardiovascular || "",
-          lungs: examFindings?.lungs || "",
-          abdomen: examFindings?.abdomen || "",
-          musculoskeletal: examFindings?.musculoskeletal || "",
-          neurologic: examFindings?.neurologic || "",
-          skin: examFindings?.skin || "",
-          psychological: examFindings?.psychological || "",
-        },
-      };
+    } else {
+      const examFindingsRecord =
+        examFindings && typeof examFindings === "object"
+          ? (examFindings as Record<string, unknown>)
+          : null;
+
+      if (examFindingsRecord?.general === undefined) {
+        // Ensure examFindings exists and has the correct structure
+        migrated.objective = {
+          ...objective,
+          examFindings: {
+            general:
+              typeof examFindingsRecord?.general === "string"
+                ? examFindingsRecord.general
+                : "",
+            heent:
+              typeof examFindingsRecord?.heent === "string"
+                ? examFindingsRecord.heent
+                : "",
+            neck:
+              typeof examFindingsRecord?.neck === "string"
+                ? examFindingsRecord.neck
+                : "",
+            cardiovascular:
+              typeof examFindingsRecord?.cardiovascular === "string"
+                ? examFindingsRecord.cardiovascular
+                : "",
+            lungs:
+              typeof examFindingsRecord?.lungs === "string"
+                ? examFindingsRecord.lungs
+                : "",
+            abdomen:
+              typeof examFindingsRecord?.abdomen === "string"
+                ? examFindingsRecord.abdomen
+                : "",
+            musculoskeletal:
+              typeof examFindingsRecord?.musculoskeletal === "string"
+                ? examFindingsRecord.musculoskeletal
+                : "",
+            neurologic:
+              typeof examFindingsRecord?.neurologic === "string"
+                ? examFindingsRecord.neurologic
+                : "",
+            skin:
+              typeof examFindingsRecord?.skin === "string"
+                ? examFindingsRecord.skin
+                : "",
+            psychological:
+              typeof examFindingsRecord?.psychological === "string"
+                ? examFindingsRecord.psychological
+                : "",
+          },
+        };
+      }
     }
   }
 
@@ -401,15 +581,23 @@ function migrateVisitNoteData(data: any): any {
       }
     } else if (Array.isArray(migrated.assessmentPlan)) {
       // Ensure all entries have the new structure
-      migrated.assessmentPlan = migrated.assessmentPlan.map((entry: any) => ({
-        assessment: entry.assessment || "",
-        plan: entry.plan || "",
-        medications: entry.medications || [],
-        orders: entry.orders || [],
-        followUp: entry.followUp || "",
-        education: entry.education || "",
-        coordination: entry.coordination || "",
-      }));
+      migrated.assessmentPlan = migrated.assessmentPlan.map((entry) => {
+        const record =
+          entry && typeof entry === "object"
+            ? (entry as Record<string, unknown>)
+            : {};
+
+        return {
+          assessment: typeof record.assessment === "string" ? record.assessment : "",
+          plan: typeof record.plan === "string" ? record.plan : "",
+          medications: Array.isArray(record.medications) ? record.medications : [],
+          orders: Array.isArray(record.orders) ? record.orders : [],
+          followUp: typeof record.followUp === "string" ? record.followUp : "",
+          education: typeof record.education === "string" ? record.education : "",
+          coordination:
+            typeof record.coordination === "string" ? record.coordination : "",
+        };
+      });
     }
   } else {
     migrated.assessmentPlan = [];

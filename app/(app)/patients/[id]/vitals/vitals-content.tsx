@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -27,6 +28,16 @@ import {
 } from "@/app/_actions/vitals";
 import type { VitalEntry } from "@/app/_lib/db/drizzle/queries/vitals";
 import { cn } from "@/app/_lib/utils/cn";
+import {
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 const vitalSchema = z.object({
   date: z.string().min(1, "Date is required"),
@@ -48,6 +59,141 @@ interface VitalsContentProps {
   vitals: VitalEntry[];
 }
 
+type ChartSeriesKey =
+  | "bpSystolic"
+  | "bpDiastolic"
+  | "hr"
+  | "tempC"
+  | "weight"
+  | "spo2";
+
+interface ChartDataPoint {
+  id: string;
+  date: string;
+  displayDate: string;
+  bpSystolic: number | null;
+  bpDiastolic: number | null;
+  hr: number | null;
+  tempC: number | null;
+  weight: number | null;
+  spo2: number | null;
+  bpSystolicAbnormal: boolean;
+  bpDiastolicAbnormal: boolean;
+  hrAbnormal: boolean;
+  tempCAbnormal: boolean;
+  weightAbnormal: boolean;
+  spo2Abnormal: boolean;
+}
+
+const SERIES_CONFIG: Array<{
+  key: ChartSeriesKey;
+  label: string;
+  colorClass: string;
+  stroke: string;
+  abnormalKey: keyof ChartDataPoint;
+}> = [
+  {
+    key: "bpSystolic",
+    label: "BP Systolic",
+    colorClass: "text-blue-600 dark:text-blue-400",
+    stroke: "hsl(var(--chart-1, 221.2 83.2% 53.3%))",
+    abnormalKey: "bpSystolicAbnormal",
+  },
+  {
+    key: "bpDiastolic",
+    label: "BP Diastolic",
+    colorClass: "text-cyan-600 dark:text-cyan-400",
+    stroke: "hsl(var(--chart-2, 188 94% 43%))",
+    abnormalKey: "bpDiastolicAbnormal",
+  },
+  {
+    key: "hr",
+    label: "HR",
+    colorClass: "text-rose-600 dark:text-rose-400",
+    stroke: "hsl(var(--chart-3, 346.8 77.2% 49.8%))",
+    abnormalKey: "hrAbnormal",
+  },
+  {
+    key: "tempC",
+    label: "Temp (C)",
+    colorClass: "text-orange-600 dark:text-orange-400",
+    stroke: "hsl(var(--chart-4, 24.6 95% 53.1%))",
+    abnormalKey: "tempCAbnormal",
+  },
+  {
+    key: "weight",
+    label: "Weight",
+    colorClass: "text-violet-600 dark:text-violet-400",
+    stroke: "hsl(var(--chart-5, 262.1 83.3% 57.8%))",
+    abnormalKey: "weightAbnormal",
+  },
+  {
+    key: "spo2",
+    label: "SpO2",
+    colorClass: "text-emerald-600 dark:text-emerald-400",
+    stroke: "hsl(142 72% 40%)",
+    abnormalKey: "spo2Abnormal",
+  },
+];
+
+function parseNumericValue(value?: string) {
+  if (!value) return null;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseBloodPressure(bp?: string) {
+  if (!bp) return { systolic: null, diastolic: null };
+  const [systolicRaw, diastolicRaw] = bp.split("/");
+  const systolic = parseNumericValue(systolicRaw);
+  const diastolic = parseNumericValue(diastolicRaw);
+  return { systolic, diastolic };
+}
+
+function fahrenheitToCelsius(value: number | null) {
+  if (value === null) return null;
+  return Number.parseFloat((((value - 32) * 5) / 9).toFixed(1));
+}
+
+function formatInputDate(date: Date) {
+  return date.toISOString().split("T")[0];
+}
+
+function formatShortDate(dateString: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+  }).format(new Date(dateString));
+}
+
+function CustomAbnormalDot(props: {
+  cx?: number;
+  cy?: number;
+  payload?: ChartDataPoint;
+  abnormalKey: keyof ChartDataPoint;
+}) {
+  const { cx, cy, payload, abnormalKey } = props;
+  if (cx === undefined || cy === undefined || !payload) {
+    return null;
+  }
+
+  const isAbnormal = Boolean(payload[abnormalKey]);
+  const fill = isAbnormal
+    ? "hsl(var(--destructive))"
+    : "hsl(var(--primary))";
+
+  return (
+    <circle
+      cx={cx}
+      cy={cy}
+      r={isAbnormal ? 5 : 3}
+      fill={fill}
+      stroke="hsl(var(--background))"
+      strokeWidth={2}
+    />
+  );
+}
+
 export function VitalsContent({
   patientId,
   patientName,
@@ -59,6 +205,20 @@ export function VitalsContent({
   const [editingVital, setEditingVital] = React.useState<VitalEntry | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
+  const [selectedSeries, setSelectedSeries] = React.useState<Record<ChartSeriesKey, boolean>>({
+    bpSystolic: true,
+    bpDiastolic: true,
+    hr: true,
+    tempC: true,
+    weight: true,
+    spo2: true,
+  });
+  const [startDate, setStartDate] = React.useState(() => {
+    const date = new Date();
+    date.setDate(date.getDate() - 90);
+    return formatInputDate(date);
+  });
+  const [endDate, setEndDate] = React.useState(() => formatInputDate(new Date()));
 
   React.useEffect(() => {
     setVitals(initialVitals);
@@ -175,6 +335,59 @@ export function VitalsContent({
     }
   };
 
+  const chartData = React.useMemo<ChartDataPoint[]>(() => {
+    return [...vitals]
+      .map((vital) => {
+        const { systolic, diastolic } = parseBloodPressure(vital.bp);
+        const hr = parseNumericValue(vital.hr);
+        const tempF = parseNumericValue(vital.temp);
+        const tempC = fahrenheitToCelsius(tempF);
+        const weight = parseNumericValue(vital.weight);
+        const spo2 = parseNumericValue(vital.spo2);
+
+        const bpAbnormal = Boolean(
+          systolic !== null && (systolic > 140 || systolic < 90)
+        );
+        const hrAbnormal = Boolean(hr !== null && (hr > 100 || hr < 60));
+        const tempAbnormal = Boolean(
+          tempC !== null && (tempC > 38.3 || tempC < 36)
+        );
+        const spo2Abnormal = Boolean(spo2 !== null && spo2 < 95);
+
+        return {
+          id: vital.id,
+          date: vital.date,
+          displayDate: formatShortDate(vital.date),
+          bpSystolic: systolic,
+          bpDiastolic: diastolic,
+          hr,
+          tempC,
+          weight,
+          spo2,
+          bpSystolicAbnormal: bpAbnormal,
+          bpDiastolicAbnormal: bpAbnormal,
+          hrAbnormal,
+          tempCAbnormal: tempAbnormal,
+          weightAbnormal: false,
+          spo2Abnormal,
+        };
+      })
+      .filter((entry) => {
+        const entryDate = new Date(entry.date).getTime();
+        const start = new Date(startDate).getTime();
+        const end = new Date(endDate).getTime();
+        return entryDate >= start && entryDate <= end;
+      })
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }, [endDate, startDate, vitals]);
+
+  const toggleSeries = (series: ChartSeriesKey, checked: boolean) => {
+    setSelectedSeries((current) => ({
+      ...current,
+      [series]: checked,
+    }));
+  };
+
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
       {/* Header */}
@@ -190,6 +403,98 @@ export function VitalsContent({
           Add Vital Entry
         </Button>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Vital Progression</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {SERIES_CONFIG.map((series) => (
+                <label
+                  key={series.key}
+                  className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"
+                >
+                  <Checkbox
+                    checked={selectedSeries[series.key]}
+                    onCheckedChange={(checked) =>
+                      toggleSeries(series.key, checked === true)
+                    }
+                  />
+                  <span className={cn("font-medium", series.colorClass)}>
+                    {series.label}
+                  </span>
+                </label>
+              ))}
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <div className="space-y-1">
+                <Label htmlFor="vitals-range-start">Start</Label>
+                <Input
+                  id="vitals-range-start"
+                  type="date"
+                  value={startDate}
+                  onChange={(event) => setStartDate(event.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="vitals-range-end">End</Label>
+                <Input
+                  id="vitals-range-end"
+                  type="date"
+                  value={endDate}
+                  onChange={(event) => setEndDate(event.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
+          {chartData.length === 0 ? (
+            <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+              No vital data available in the selected date range.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="h-[360px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis dataKey="displayDate" />
+                    <YAxis />
+                    <Tooltip />
+                    <Legend />
+                    {SERIES_CONFIG.map((series) =>
+                      selectedSeries[series.key] ? (
+                        <Line
+                          key={series.key}
+                          type="monotone"
+                          dataKey={series.key}
+                          name={series.label}
+                          connectNulls
+                          stroke={series.stroke}
+                          strokeWidth={2}
+                          dot={(props) => (
+                            <CustomAbnormalDot
+                              {...props}
+                              abnormalKey={series.abnormalKey}
+                            />
+                          )}
+                          activeDot={{ r: 6 }}
+                        />
+                      ) : null
+                    )}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Red dots indicate abnormal values based on configured thresholds.
+                Temperature is plotted in Celsius for thresholding.
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Vitals List */}
       {vitals.length === 0 ? (

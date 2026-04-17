@@ -15,8 +15,12 @@ export default async function CreateUserPage() {
     redirect("/sign-in");
   }
 
-  // Only doctors and nurses can create users
-  if (session.role !== "doctor" && session.role !== "nurse") {
+  // Allow clinical leadership and admin staff to create users
+  if (
+    session.role !== "doctor" &&
+    session.role !== "nurse" &&
+    session.role !== "admin"
+  ) {
     redirect("/");
   }
 
@@ -48,7 +52,7 @@ export default async function CreateUserPage() {
           <div>
             <h1 className="text-2xl font-bold text-foreground">Create User</h1>
             <p className="text-sm text-muted-foreground">
-              Create a new doctor or nurse account
+              Create a new doctor, nurse, or admin account
             </p>
           </div>
         </div>

@@ -18,15 +18,15 @@ interface WorkflowCommandSearchProps {
 
 const GROUP_ORDER: Array<keyof WorkflowSearchResults> = [
   "patients",
-  "visits",
-  "tasks",
+  "notes",
+  "schedules",
   "destinations",
 ];
 
 const GROUP_LABELS: Record<keyof WorkflowSearchResults, string> = {
   patients: "Patients",
-  visits: "Visits",
-  tasks: "Tasks",
+  notes: "Notes",
+  schedules: "Schedules",
   destinations: "Destinations",
 };
 
@@ -42,8 +42,8 @@ export function WorkflowCommandSearch({
   const [query, setQuery] = React.useState("");
   const [results, setResults] = React.useState<WorkflowSearchResults>({
     patients: [],
-    visits: [],
-    tasks: [],
+    notes: [],
+    schedules: [],
     destinations: [],
   });
   const [highlightedIndex, setHighlightedIndex] = React.useState(0);

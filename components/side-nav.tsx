@@ -104,6 +104,14 @@ export function SideNav({ userRole, userName, patientId, patientName, onMobileSt
             });
         }
 
+        if (userRole === "admin") {
+            items.push({
+                href: "/admin/users/new",
+                label: "User Admin",
+                icon: <UserPlus className="h-4 w-4" />,
+            });
+        }
+
         return items;
     }, [userRole]);
 

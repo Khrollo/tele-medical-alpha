@@ -10,7 +10,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Save, CheckCircle2, ChevronLeft, ChevronRight, ChevronDown, Plus, Pencil, Trash2, CheckCircle, AlertCircle, XCircle, Camera, X, Loader2, User, Clock, FileSignature, Video, Mic, Stethoscope } from "lucide-react";
+import { Save, CheckCircle2, ChevronLeft, ChevronRight, ChevronDown, Plus, Pencil, Trash2, CheckCircle, AlertCircle, XCircle, Camera, X, Loader2, User, Clock, FileSignature, Video, Mic, Stethoscope, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -42,7 +42,7 @@ import { preloadLamejs } from "@/app/_lib/utils/audioConverter";
 import type { z } from "zod";
 import { mergeVisitNote } from "@/app/_lib/visit-note/merge-with-conflicts";
 import { loadDraft, saveDraft, getReviewedSections, clearDraft } from "@/app/_lib/offline/draft";
-import { createVisitDraftAction, updateVisitDraftAction, finalizeVisitAction, updatePatientAssignedAction, saveTranscriptAction } from "@/app/_actions/visits";
+import { createVisitDraftAction, updateVisitDraftAction, updatePatientAssignedAction, saveTranscriptAction } from "@/app/_actions/visits";
 import { createDocumentAction } from "@/app/_actions/documents";
 import { cn } from "@/app/_lib/utils/cn";
 import type { PatientBasics } from "@/app/_lib/db/drizzle/queries/patient";
@@ -73,6 +73,90 @@ interface NewVisitFormProps {
     priority: string | null;
     note: unknown;
   }>;
+}
+
+type VitalAlertTone = "amber" | "red";
+
+interface VitalAlert {
+  tone: VitalAlertTone;
+  label: string;
+}
+
+function parseBpSystolic(value?: string) {
+  if (!value) {
+    return null;
+  }
+
+  const systolic = Number.parseFloat(value.split("/")[0] || "");
+  return Number.isFinite(systolic) ? systolic : null;
+}
+
+function parseNumericVital(value?: string) {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getVitalAlert(field: "bp" | "hr" | "temp" | "spo2", value?: string): VitalAlert | null {
+  if (field === "bp") {
+    const systolic = parseBpSystolic(value);
+    if (systolic === null) {
+      return null;
+    }
+    if (systolic > 140) {
+      return { tone: "amber", label: "Elevated BP" };
+    }
+    if (systolic < 90) {
+      return { tone: "red", label: "Low BP" };
+    }
+    return null;
+  }
+
+  const numericValue = parseNumericVital(value);
+  if (numericValue === null) {
+    return null;
+  }
+
+  if (field === "hr") {
+    if (numericValue > 100) {
+      return { tone: "amber", label: "Tachycardia" };
+    }
+    if (numericValue < 60) {
+      return { tone: "amber", label: "Bradycardia" };
+    }
+  }
+
+  if (field === "temp") {
+    const celsius = ((numericValue - 32) * 5) / 9;
+    if (celsius > 38.3) {
+      return { tone: "amber", label: "Fever" };
+    }
+  }
+
+  if (field === "spo2" && numericValue < 95) {
+    return { tone: "red", label: "Low SpO2" };
+  }
+
+  return null;
+}
+
+function VitalAlertBadge({ alert }: { alert: VitalAlert }) {
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        "ml-2",
+        alert.tone === "red"
+          ? "border-destructive/40 bg-destructive/10 text-destructive"
+          : "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+      )}
+    >
+      {alert.label}
+    </Badge>
+  );
 }
 
 
@@ -203,6 +287,25 @@ export function NewVisitForm({
     defaultValues: createEmptyVisitNote(),
   });
 
+  const aiTranscriptConsent = form.watch("consents.aiTranscript");
+  const hasConsentOnFile = Boolean(patientBasics.consentSignatureUrl);
+
+  React.useEffect(() => {
+    if (!aiTranscriptConsent) {
+      form.setValue("consents.aiTranscriptConfirmedAt", "");
+      form.setValue("consents.aiTranscriptConfirmedBy", "");
+      return;
+    }
+
+    if (!form.getValues("consents.aiTranscriptConfirmedAt")) {
+      form.setValue("consents.aiTranscriptConfirmedAt", new Date().toISOString());
+    }
+
+    if (!form.getValues("consents.aiTranscriptConfirmedBy")) {
+      form.setValue("consents.aiTranscriptConfirmedBy", userId);
+    }
+  }, [aiTranscriptConsent, form, userId]);
+
   const collectLockedPaths = React.useCallback((dirtyFields: Record<string, unknown>) => {
     const locked = new Set<string>();
 
@@ -281,6 +384,26 @@ export function NewVisitForm({
   // Watch weight and height for BMI calculation
   const weight = useWatch({ control: form.control, name: "objective.weight" });
   const height = useWatch({ control: form.control, name: "objective.height" });
+  const intakeChiefComplaint = useWatch({
+    control: form.control,
+    name: "subjective.chiefComplaint",
+  });
+  const intakeBp = useWatch({ control: form.control, name: "objective.bp" });
+  const intakeHr = useWatch({ control: form.control, name: "objective.hr" });
+  const intakeTemp = useWatch({ control: form.control, name: "objective.temp" });
+  const intakeSpo2 = useWatch({ control: form.control, name: "objective.spo2" });
+  const intakeWeight = useWatch({
+    control: form.control,
+    name: "objective.weight",
+  });
+  const intakeTriageNotes = useWatch({
+    control: form.control,
+    name: "subjective.hpi",
+  });
+  const [nurseIntakeExpanded, setNurseIntakeExpanded] = React.useState(false);
+  const [blurredVitals, setBlurredVitals] = React.useState<
+    Partial<Record<"bp" | "hr" | "temp" | "spo2", boolean>>
+  >({});
 
   // Calculate BMI when weight or height changes
   React.useEffect(() => {
@@ -739,11 +862,7 @@ export function NewVisitForm({
           toast.success("Note handed off to physician workflow");
           router.push(`/waiting-room`);
         } else {
-          // Sign the note and set is_assigned to null
-          await finalizeVisitAction(visitIdRemote, "signed");
-          await updatePatientAssignedAction(patientId, null);
-          toast.success("Note signed successfully");
-          router.push(`/patients/${patientId}/visit-history`);
+          router.push(`/patients/${patientId}/visit-close?visitId=${visitIdRemote}`);
         }
       } else {
         // For "view" and "waiting", keep visit as "In Progress"
@@ -808,22 +927,45 @@ export function NewVisitForm({
             <div className="space-y-6">
               <div className="flex items-center gap-2">
                 <Label className="text-base">Blood Pressure</Label>
+                {blurredVitals.bp && getVitalAlert("bp", intakeBp) && (
+                  <VitalAlertBadge alert={getVitalAlert("bp", intakeBp)!} />
+                )}
               </div>
               <Input
                 {...form.register("objective.bp")}
+                placeholder="e.g., 120/80"
+                onBlur={() =>
+                  setBlurredVitals((current) => ({ ...current, bp: true }))
+                }
               />
             </div>
             <div className="space-y-6">
-              <Label className="text-base">Heart Rate</Label>
+              <div className="flex items-center gap-2">
+                <Label className="text-base">Heart Rate</Label>
+                {blurredVitals.hr && getVitalAlert("hr", intakeHr) && (
+                  <VitalAlertBadge alert={getVitalAlert("hr", intakeHr)!} />
+                )}
+              </div>
               <Input
                 {...form.register("objective.hr")}
+                onBlur={() =>
+                  setBlurredVitals((current) => ({ ...current, hr: true }))
+                }
               />
             </div>
             <div className="space-y-6">
-              <Label className="text-base">Temperature</Label>
+              <div className="flex items-center gap-2">
+                <Label className="text-base">Temperature</Label>
+                {blurredVitals.temp && getVitalAlert("temp", intakeTemp) && (
+                  <VitalAlertBadge alert={getVitalAlert("temp", intakeTemp)!} />
+                )}
+              </div>
               <Input
                 {...form.register("objective.temp")}
                 placeholder="e.g., 98.6"
+                onBlur={() =>
+                  setBlurredVitals((current) => ({ ...current, temp: true }))
+                }
               />
               {form.watch("objective.temp") && (
                 <p className="text-xs text-muted-foreground">
@@ -838,6 +980,21 @@ export function NewVisitForm({
                   })()}
                 </p>
               )}
+            </div>
+            <div className="space-y-6">
+              <div className="flex items-center gap-2">
+                <Label className="text-base">SpO2 (%)</Label>
+                {blurredVitals.spo2 && getVitalAlert("spo2", intakeSpo2) && (
+                  <VitalAlertBadge alert={getVitalAlert("spo2", intakeSpo2)!} />
+                )}
+              </div>
+              <Input
+                {...form.register("objective.spo2")}
+                placeholder="e.g., 98"
+                onBlur={() =>
+                  setBlurredVitals((current) => ({ ...current, spo2: true }))
+                }
+              />
             </div>
             <div className="space-y-6">
               <Label className="text-base">Weight (lbs)</Label>
@@ -933,6 +1090,8 @@ export function NewVisitForm({
             ))}
           </div>
         );
+      case "reviewOfSystems":
+        return <ReviewOfSystemsSection form={form} />;
       case "pointOfCare":
         return (
           <div className="space-y-8">
@@ -1187,10 +1346,14 @@ export function NewVisitForm({
         return (
           <OrdersSection form={form} userRole={userRole} />
         );
+      case "visitActions":
+        return <VisitActionsSection form={form} patientBasics={patientBasics} />;
       case "documents":
         return (
           <DocumentsSection form={form} patientId={patientId} visitId={visitIdRemote} />
         );
+      case "differentialDiagnoses":
+        return <DifferentialDiagnosesSection form={form} />;
       case "assessmentPlan":
         // Hide assessment & plan for nurses
         if (userRole === "nurse") {
@@ -1199,6 +1362,11 @@ export function NewVisitForm({
         return (
           <AssessmentPlanSection form={form} />
         );
+      case "coding":
+        if (userRole === "nurse") {
+          return null;
+        }
+        return <CodingPreparationSection form={form} patientId={patientId} visitId={visitIdRemote} />;
       // Add other sections similarly...
       default:
         return <div>Section: {section.label}</div>;
@@ -1213,6 +1381,8 @@ export function NewVisitForm({
   const sectionDescriptions: Record<string, string> = {
     subjective: "Document the patient's reported symptoms and history of present illness.",
     objective: "Record vitals, physical examination findings, and vision assessment.",
+    reviewOfSystems:
+      "Capture a structured, body-system review before final assessment and coding.",
     pointOfCare: "Capture point-of-care test results for diabetes, HIV, and syphilis.",
     vaccines: "Review and document vaccine administration records.",
     familyHistory: "Record relevant family medical history and conditions.",
@@ -1222,7 +1392,13 @@ export function NewVisitForm({
     documents: "Upload and manage visit-related documents and images.",
     medications: "Review, add, or update the patient's medication list.",
     orders: "Place and manage lab, imaging, and procedure orders.",
+    visitActions:
+      "Stage prescriptions, labs, imaging, referrals, and next-step tasks without closing the visit.",
+    differentialDiagnoses:
+      "Track AI-supported and manual differentials before finalizing the assessment.",
     assessmentPlan: "Formulate diagnoses, treatment plans, and follow-up instructions.",
+    coding:
+      "Prepare ICD-10, CPT, co-sign, and sign-off details before the dedicated close-out step.",
   };
 
   return (
@@ -1282,7 +1458,25 @@ export function NewVisitForm({
       </div>
 
       {/* Body: left sidebar + main content */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 flex-col overflow-hidden">
+        {userRole === "doctor" && visitCreatedByRole === "nurse" && (
+          <div className="border-b border-slate-200/70 bg-background px-4 py-4 dark:border-slate-800 md:px-6">
+            <NurseIntakeSummaryCard
+              isExpanded={nurseIntakeExpanded}
+              onToggle={() => setNurseIntakeExpanded((current) => !current)}
+              chiefComplaint={intakeChiefComplaint}
+              bp={intakeBp}
+              hr={intakeHr}
+              temp={intakeTemp}
+              weight={intakeWeight}
+              triageNotes={intakeTriageNotes}
+              allergies={patientBasics.allergies}
+              currentMedications={patientBasics.currentMedications}
+            />
+          </div>
+        )}
+
+        <div className="flex flex-1 overflow-hidden">
 
         {/* Left sidebar — stepper + AI capture (hidden on mobile) */}
         <div className="hidden lg:flex flex-col w-64 shrink-0 border-r border-slate-200/60 dark:border-slate-800 overflow-y-auto bg-background">
@@ -1298,11 +1492,48 @@ export function NewVisitForm({
           )}
           {!hideAICapture && (
             <div className="p-3 border-b border-slate-200/60 dark:border-slate-800">
-              <AICapturePanel
-                patientId={patientId}
-                onTranscriptReady={handleTranscriptReady}
-                onParseReady={handleParseReady}
-              />
+              <div className="mb-3 rounded-xl border border-slate-200/70 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-900/70">
+                <div className="text-sm font-semibold text-foreground">
+                  AI transcript consent
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  AI capture stays disabled until consent is confirmed for this
+                  visit.
+                </p>
+                <div className="mt-3 flex items-start gap-2">
+                  <Checkbox
+                    id="ai-transcript-consent"
+                    checked={aiTranscriptConsent}
+                    onCheckedChange={(checked) =>
+                      form.setValue("consents.aiTranscript", checked === true)
+                    }
+                  />
+                  <Label
+                    htmlFor="ai-transcript-consent"
+                    className="text-xs leading-5 text-foreground"
+                  >
+                    Patient consent for AI-assisted transcription has been
+                    confirmed.
+                  </Label>
+                </div>
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  {hasConsentOnFile
+                    ? "Signed treatment consent is already on file."
+                    : "No signature is on file yet. Capture is allowed only after you confirm verbal consent for this visit."}
+                </p>
+              </div>
+              {aiTranscriptConsent ? (
+                <AICapturePanel
+                  patientId={patientId}
+                  onTranscriptReady={handleTranscriptReady}
+                  onParseReady={handleParseReady}
+                />
+              ) : (
+                <div className="rounded-xl border border-dashed border-slate-300 bg-white/70 p-4 text-xs text-muted-foreground dark:border-slate-700 dark:bg-slate-950/70">
+                  Confirm consent to enable live transcript capture and AI
+                  parsing.
+                </div>
+              )}
             </div>
           )}
           <div className="p-3 flex-1">
@@ -1319,6 +1550,21 @@ export function NewVisitForm({
         <div className="flex-1 flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto">
             <div className="max-w-3xl mx-auto w-full px-4 md:px-6 py-6 space-y-6">
+              <div className="grid gap-4 md:grid-cols-2">
+                <EncounterSummaryCard
+                  patientBasics={patientBasics}
+                  visitAppointmentType={visitAppointmentType}
+                  visitCreatedByRole={visitCreatedByRole}
+                  consentConfirmed={Boolean(aiTranscriptConsent)}
+                />
+                <MiniScheduleWidget
+                  patientId={patientId}
+                  userRole={userRole}
+                  visitAppointmentType={visitAppointmentType}
+                  visitTwilioRoomName={visitTwilioRoomName}
+                  existingVisitId={existingVisitId}
+                />
+              </div>
 
               {/* Section header */}
               <div className="text-center space-y-1">
@@ -1388,6 +1634,7 @@ export function NewVisitForm({
               className="flex-row py-2 px-3"
             />
           </div>
+        </div>
         </div>
       </div>
 
@@ -4415,6 +4662,1177 @@ function DocumentsSection({ form, patientId, visitId }: { form: any; patientId: 
       )}
 
 
+    </div>
+  );
+}
+
+function countCollectionItems(value: unknown) {
+  if (Array.isArray(value)) {
+    return value.length;
+  }
+
+  if (value && typeof value === "object") {
+    return Object.keys(value as Record<string, unknown>).length;
+  }
+
+  return 0;
+}
+
+function NurseIntakeSummaryCard({
+  isExpanded,
+  onToggle,
+  chiefComplaint,
+  bp,
+  hr,
+  temp,
+  weight,
+  triageNotes,
+  allergies,
+  currentMedications,
+}: {
+  isExpanded: boolean;
+  onToggle: () => void;
+  chiefComplaint?: string;
+  bp?: string;
+  hr?: string;
+  temp?: string;
+  weight?: string;
+  triageNotes?: string;
+  allergies: unknown;
+  currentMedications: unknown;
+}) {
+  const medicationCount = countCollectionItems(currentMedications);
+  const allergyCount = countCollectionItems(allergies);
+
+  return (
+    <Card className="shadow-sm">
+      <CardHeader className="gap-3 pb-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <CardTitle className="text-base">Nurse Intake Summary</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Reference-only snapshot of the nurse-entered intake.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary">Read-only</Badge>
+            <Button type="button" variant="ghost" size="sm" onClick={onToggle}>
+              {isExpanded ? "Collapse" : "Expand"}
+              <ChevronDown
+                className={cn(
+                  "ml-2 h-4 w-4 transition-transform",
+                  isExpanded && "rotate-180"
+                )}
+              />
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      {isExpanded && (
+        <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="rounded-lg border bg-muted/20 p-4">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">
+              Chief Complaint
+            </div>
+            <div className="mt-2 text-sm font-medium text-foreground">
+              {chiefComplaint?.trim() || "Not entered"}
+            </div>
+          </div>
+          <div className="rounded-lg border bg-muted/20 p-4">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">
+              Intake Vitals
+            </div>
+            <div className="mt-2 grid gap-2 text-sm">
+              <div>BP: {bp?.trim() || "Not entered"}</div>
+              <div>HR: {hr?.trim() || "Not entered"}</div>
+              <div>Temp: {temp?.trim() || "Not entered"}</div>
+              <div>Weight: {weight?.trim() || "Not entered"}</div>
+            </div>
+          </div>
+          <div className="rounded-lg border bg-muted/20 p-4">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">
+              Medication / Allergy Profile
+            </div>
+            <div className="mt-2 grid gap-2 text-sm">
+              <div>Current Medications: {medicationCount}</div>
+              <div>Allergies: {allergyCount}</div>
+            </div>
+          </div>
+          <div className="rounded-lg border bg-muted/20 p-4 md:col-span-2 xl:col-span-3">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">
+              Triage Notes
+            </div>
+            <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">
+              {triageNotes?.trim() || "No triage notes documented."}
+            </p>
+          </div>
+        </CardContent>
+      )}
+    </Card>
+  );
+}
+
+function EncounterSummaryCard({
+  patientBasics,
+  visitAppointmentType,
+  visitCreatedByRole,
+  consentConfirmed,
+}: {
+  patientBasics: PatientBasics;
+  visitAppointmentType?: string | null;
+  visitCreatedByRole?: "doctor" | "nurse" | null;
+  consentConfirmed: boolean;
+}) {
+  const latestVitals =
+    patientBasics.vitals && typeof patientBasics.vitals === "object"
+      ? (patientBasics.vitals as Record<string, unknown>)
+      : null;
+
+  return (
+    <Card className="shadow-sm">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">Encounter Snapshot</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div>
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">
+              Visit type
+            </div>
+            <div className="font-medium">
+              {visitAppointmentType || "General encounter"}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">
+              Intake owner
+            </div>
+            <div className="font-medium">
+              {visitCreatedByRole
+                ? `${visitCreatedByRole.charAt(0).toUpperCase()}${visitCreatedByRole.slice(1)} workflow`
+                : "Direct charting"}
+            </div>
+          </div>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div>
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">
+              Latest BP / HR
+            </div>
+            <div className="font-medium">
+              {(typeof latestVitals?.bp === "string" && latestVitals.bp) || "Not charted"} /{" "}
+              {(typeof latestVitals?.hr === "string" && latestVitals.hr) || "Not charted"}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">
+              AI transcript
+            </div>
+            <Badge variant={consentConfirmed ? "default" : "outline"}>
+              {consentConfirmed ? "Consent confirmed" : "Consent required"}
+            </Badge>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function MiniScheduleWidget({
+  patientId,
+  userRole,
+  visitAppointmentType,
+  visitTwilioRoomName,
+  existingVisitId,
+}: {
+  patientId: string;
+  userRole: string;
+  visitAppointmentType?: string | null;
+  visitTwilioRoomName?: string | null;
+  existingVisitId?: string;
+}) {
+  return (
+    <Card className="shadow-sm">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Clock className="h-4 w-4" />
+          Mini Schedule
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        <div className="rounded-lg bg-muted/50 p-3">
+          <div className="font-medium">{visitAppointmentType || "Current encounter"}</div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            Keep schedule context visible while documenting.
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild size="sm" variant="outline">
+            <Link href="/waiting-room">Open Schedule</Link>
+          </Button>
+          {userRole === "doctor" && (
+            <Button asChild size="sm" variant="outline">
+              <Link href="/open-notes">Open Notes</Link>
+            </Button>
+          )}
+          <Button asChild size="sm" variant="outline">
+            <Link href={`/patients/${patientId}`}>Chart</Link>
+          </Button>
+          {visitTwilioRoomName && existingVisitId && (
+            <Button asChild size="sm">
+              <Link href={`/visit/${existingVisitId}/call`}>Return to Call</Link>
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ReviewOfSystemsSection({ form }: { form: any }) {
+  const systems = [
+    ["constitutional", "Constitutional"],
+    ["heent", "HEENT"],
+    ["cardiovascular", "Cardiovascular"],
+    ["respiratory", "Respiratory"],
+    ["gastrointestinal", "Gastrointestinal"],
+    ["genitourinary", "Genitourinary"],
+    ["musculoskeletal", "Musculoskeletal"],
+    ["neurologic", "Neurologic"],
+    ["psychiatric", "Psychiatric"],
+    ["skin", "Skin"],
+  ] as const;
+
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      {systems.map(([key, label]) => (
+        <div key={key} className="space-y-3 rounded-xl border p-4">
+          <div className="flex items-center justify-between gap-3">
+            <Label className="text-base font-semibold">{label}</Label>
+            <Select
+              value={form.watch(`reviewOfSystems.${key}.status`) || "not-reviewed"}
+              onValueChange={(value) =>
+                form.setValue(`reviewOfSystems.${key}.status`, value)
+              }
+            >
+              <SelectTrigger className="w-[160px]">
+                <SelectValue placeholder="Select status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="not-reviewed">Not reviewed</SelectItem>
+                <SelectItem value="negative">Negative</SelectItem>
+                <SelectItem value="positive">Positive</SelectItem>
+                <SelectItem value="deferred">Deferred</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Textarea
+            {...form.register(`reviewOfSystems.${key}.notes`)}
+            rows={3}
+            placeholder={`ROS notes for ${label.toLowerCase()}...`}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DifferentialDiagnosesSection({ form }: { form: any }) {
+  const entries = (form.watch("differentialDiagnoses") || []) as Array<{
+    diagnosis?: string;
+    rationale?: string;
+    source?: "ai" | "manual";
+  }>;
+
+  const updateEntries = (next: typeof entries) => {
+    form.setValue("differentialDiagnoses", next);
+  };
+
+  return (
+    <div className="space-y-4">
+      {entries.length === 0 && (
+        <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+          No differential diagnoses added yet.
+        </div>
+      )}
+      {entries.map((entry, index) => (
+        <div key={index} className="space-y-3 rounded-xl border p-4">
+          <div className="flex items-center justify-between gap-3">
+            <Label className="text-base font-semibold">
+              Differential #{index + 1}
+            </Label>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                updateEntries(entries.filter((_, entryIndex) => entryIndex !== index))
+              }
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+          <Input
+            value={entry.diagnosis || ""}
+            onChange={(event) => {
+              const next = [...entries];
+              next[index] = { ...entry, diagnosis: event.target.value };
+              updateEntries(next);
+            }}
+            placeholder="Possible diagnosis"
+          />
+          <Textarea
+            value={entry.rationale || ""}
+            onChange={(event) => {
+              const next = [...entries];
+              next[index] = { ...entry, rationale: event.target.value };
+              updateEntries(next);
+            }}
+            placeholder="Why this remains on the differential"
+            rows={3}
+          />
+          <Select
+            value={entry.source || "manual"}
+            onValueChange={(value: "ai" | "manual") => {
+              const next = [...entries];
+              next[index] = { ...entry, source: value };
+              updateEntries(next);
+            }}
+          >
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Source" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="manual">Manual</SelectItem>
+              <SelectItem value="ai">AI suggested</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      ))}
+      <Button
+        type="button"
+        variant="outline"
+        className="w-full"
+        onClick={() =>
+          updateEntries([
+            ...entries,
+            { diagnosis: "", rationale: "", source: "manual" },
+          ])
+        }
+      >
+        <Plus className="mr-2 h-4 w-4" />
+        Add Differential
+      </Button>
+    </div>
+  );
+}
+
+function VisitActionsSection({
+  form,
+  patientBasics,
+}: {
+  form: any;
+  patientBasics: PatientBasics;
+}) {
+  type VisitActionGroup =
+    | "prescriptions"
+    | "labs"
+    | "imaging"
+    | "referrals"
+    | "nextSteps";
+
+  type PrescriptionEntry = {
+    medication?: string;
+    dosage?: string;
+    frequency?: string;
+    durationValue?: string;
+    durationUnit?: string;
+    notes?: string;
+  };
+
+  type LabEntry = {
+    test?: string;
+    urgency?: string;
+    clinicalIndication?: string;
+  };
+
+  type ImagingEntry = {
+    study?: string;
+    bodyRegion?: string;
+    urgency?: string;
+    clinicalIndication?: string;
+  };
+
+  type ReferralEntry = {
+    specialty?: string;
+    providerName?: string;
+    reason?: string;
+  };
+
+  const visitActions = form.watch("visitActions") || {
+    prescriptions: [],
+    labs: [],
+    imaging: [],
+    referrals: [],
+    nextSteps: [],
+  };
+
+  const frequencyOptions = [
+    "Once daily",
+    "Twice daily",
+    "Three times daily",
+    "Four times daily",
+    "As needed",
+    "Weekly",
+    "Other",
+  ];
+  const durationUnits = ["days", "weeks", "months"];
+  const urgencyOptions = ["Routine", "STAT", "ASAP"];
+
+  const allergyNames = React.useMemo(() => {
+    if (!Array.isArray(patientBasics.allergies)) {
+      return [];
+    }
+
+    return patientBasics.allergies
+      .map((entry) => {
+        if (typeof entry === "string") {
+          return entry;
+        }
+        if (entry && typeof entry === "object" && "name" in entry) {
+          return String((entry as { name?: unknown }).name || "");
+        }
+        return "";
+      })
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }, [patientBasics.allergies]);
+
+  const updateGroup = (group: VisitActionGroup, next: unknown[]) => {
+    form.setValue(`visitActions.${group}`, next);
+  };
+
+  const updateItem = <T extends Record<string, string | undefined>>(
+    group: VisitActionGroup,
+    items: T[],
+    index: number,
+    key: keyof T,
+    value: string
+  ) => {
+    const next = [...items];
+    next[index] = {
+      ...items[index],
+      [key]: value,
+    };
+    updateGroup(group, next);
+  };
+
+  const removeItem = (group: VisitActionGroup, index: number, items: unknown[]) => {
+    updateGroup(
+      group,
+      items.filter((_, itemIndex) => itemIndex !== index)
+    );
+  };
+
+  const canAddAnother = (
+    items: Array<Record<string, string | undefined>>,
+    requiredKeys: string[]
+  ) =>
+    items.every((item) =>
+      requiredKeys.every((key) => Boolean(item[key]?.trim()))
+    );
+
+  const prescriptions = (visitActions.prescriptions || []) as PrescriptionEntry[];
+  const labs = (visitActions.labs || []) as LabEntry[];
+  const imaging = (visitActions.imaging || []) as ImagingEntry[];
+  const referrals = (visitActions.referrals || []) as ReferralEntry[];
+  const nextSteps = (visitActions.nextSteps || []) as Array<Record<string, string>>;
+
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <div className="space-y-4 rounded-xl border p-4">
+        <div className="flex items-center justify-between">
+          <Label className="text-base font-semibold">Prescriptions</Label>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() =>
+              updateGroup("prescriptions", [
+                ...prescriptions,
+                {
+                  medication: "",
+                  dosage: "",
+                  frequency: "",
+                  durationValue: "",
+                  durationUnit: "days",
+                  notes: "",
+                },
+              ])
+            }
+          >
+            <Plus className="mr-1 h-3 w-3" />
+            Add
+          </Button>
+        </div>
+        {prescriptions.length === 0 && (
+          <div className="text-sm text-muted-foreground">
+            No prescriptions staged yet.
+          </div>
+        )}
+        {prescriptions.map((item, index) => {
+          const medicationValue = item.medication?.trim().toLowerCase() || "";
+          const allergyMatch = allergyNames.find((allergy) => {
+            const allergyValue = allergy.toLowerCase();
+            return (
+              medicationValue.includes(allergyValue) ||
+              allergyValue.includes(medicationValue)
+            );
+          });
+
+          return (
+            <div key={index} className="space-y-4 rounded-lg bg-muted/40 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="font-medium">Prescription #{index + 1}</div>
+                  {allergyMatch ? (
+                    <Badge
+                      variant="destructive"
+                      className="mt-2 inline-flex items-center gap-1"
+                    >
+                      <AlertTriangle className="h-3 w-3" />
+                      Possible allergy match - verify before prescribing
+                    </Badge>
+                  ) : null}
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => removeItem("prescriptions", index, prescriptions)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Medication</Label>
+                  <Input
+                    value={item.medication || ""}
+                    onChange={(event) =>
+                      updateItem(
+                        "prescriptions",
+                        prescriptions,
+                        index,
+                        "medication",
+                        event.target.value
+                      )
+                    }
+                    placeholder="Medication"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Dose</Label>
+                  <Input
+                    value={item.dosage || ""}
+                    onChange={(event) =>
+                      updateItem(
+                        "prescriptions",
+                        prescriptions,
+                        index,
+                        "dosage",
+                        event.target.value
+                      )
+                    }
+                    placeholder="Dose"
+                  />
+                </div>
+              </div>
+              <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
+                <div className="space-y-2">
+                  <Label>Frequency</Label>
+                  <Select
+                    value={item.frequency || ""}
+                    onValueChange={(value) =>
+                      updateItem("prescriptions", prescriptions, index, "frequency", value)
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select frequency" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {frequencyOptions.map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid grid-cols-[minmax(0,1fr)_120px] gap-2">
+                  <div className="space-y-2">
+                    <Label>Duration</Label>
+                    <Input
+                      value={item.durationValue || ""}
+                      onChange={(event) =>
+                        updateItem(
+                          "prescriptions",
+                          prescriptions,
+                          index,
+                          "durationValue",
+                          event.target.value
+                        )
+                      }
+                      placeholder="Duration"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Unit</Label>
+                    <Select
+                      value={item.durationUnit || "days"}
+                      onValueChange={(value) =>
+                        updateItem(
+                          "prescriptions",
+                          prescriptions,
+                          index,
+                          "durationUnit",
+                          value
+                        )
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Unit" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {durationUnits.map((option) => (
+                          <SelectItem key={option} value={option}>
+                            {option}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Notes</Label>
+                <Textarea
+                  value={item.notes || ""}
+                  onChange={(event) =>
+                    updateItem("prescriptions", prescriptions, index, "notes", event.target.value)
+                  }
+                  placeholder="Optional prescribing notes"
+                  rows={3}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="space-y-4 rounded-xl border p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <Label className="text-base font-semibold">Labs</Label>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Lab orders save independently and do not block sign-off.
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={!canAddAnother(labs, ["clinicalIndication"])}
+            onClick={() =>
+              updateGroup("labs", [
+                ...labs,
+                { test: "", urgency: "Routine", clinicalIndication: "" },
+              ])
+            }
+          >
+            <Plus className="mr-1 h-3 w-3" />
+            Add
+          </Button>
+        </div>
+        {labs.length === 0 && (
+          <div className="text-sm text-muted-foreground">No labs staged yet.</div>
+        )}
+        {labs.map((item, index) => (
+          <div key={index} className="space-y-4 rounded-lg bg-muted/40 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="font-medium">Lab #{index + 1}</div>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => removeItem("labs", index, labs)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Test</Label>
+                <Input
+                  value={item.test || ""}
+                  onChange={(event) =>
+                    updateItem("labs", labs, index, "test", event.target.value)
+                  }
+                  placeholder="Test"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Urgency</Label>
+                <Select
+                  value={item.urgency || "Routine"}
+                  onValueChange={(value) =>
+                    updateItem("labs", labs, index, "urgency", value)
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select urgency" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {urgencyOptions.map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {option}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>
+                Clinical Indication <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                value={item.clinicalIndication || ""}
+                onChange={(event) =>
+                  updateItem(
+                    "labs",
+                    labs,
+                    index,
+                    "clinicalIndication",
+                    event.target.value
+                  )
+                }
+                placeholder="Why this lab is being ordered"
+              />
+              {!item.clinicalIndication?.trim() && (
+                <p className="text-xs text-destructive">
+                  Clinical indication is required before adding another lab.
+                </p>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="space-y-4 rounded-xl border p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <Label className="text-base font-semibold">Imaging</Label>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Imaging orders save independently and do not block sign-off.
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={!canAddAnother(imaging, ["clinicalIndication"])}
+            onClick={() =>
+              updateGroup("imaging", [
+                ...imaging,
+                {
+                  study: "",
+                  bodyRegion: "",
+                  urgency: "Routine",
+                  clinicalIndication: "",
+                },
+              ])
+            }
+          >
+            <Plus className="mr-1 h-3 w-3" />
+            Add
+          </Button>
+        </div>
+        {imaging.length === 0 && (
+          <div className="text-sm text-muted-foreground">No imaging studies staged yet.</div>
+        )}
+        {imaging.map((item, index) => (
+          <div key={index} className="space-y-4 rounded-lg bg-muted/40 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="font-medium">Imaging #{index + 1}</div>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => removeItem("imaging", index, imaging)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Study / Modality</Label>
+                <Input
+                  value={item.study || ""}
+                  onChange={(event) =>
+                    updateItem("imaging", imaging, index, "study", event.target.value)
+                  }
+                  placeholder="Study / Modality"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Body Region / Area</Label>
+                <Input
+                  value={item.bodyRegion || ""}
+                  onChange={(event) =>
+                    updateItem("imaging", imaging, index, "bodyRegion", event.target.value)
+                  }
+                  placeholder="Body Region / Area"
+                />
+              </div>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Urgency</Label>
+                <Select
+                  value={item.urgency || "Routine"}
+                  onValueChange={(value) =>
+                    updateItem("imaging", imaging, index, "urgency", value)
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select urgency" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {urgencyOptions.map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {option}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>
+                  Clinical Indication <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  value={item.clinicalIndication || ""}
+                  onChange={(event) =>
+                    updateItem(
+                      "imaging",
+                      imaging,
+                      index,
+                      "clinicalIndication",
+                      event.target.value
+                    )
+                  }
+                  placeholder="Why this study is needed"
+                />
+              </div>
+            </div>
+            {!item.clinicalIndication?.trim() && (
+              <p className="text-xs text-destructive">
+                Clinical indication is required before adding another imaging order.
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="space-y-4 rounded-xl border p-4">
+        <div className="flex items-center justify-between">
+          <Label className="text-base font-semibold">Referrals</Label>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={!canAddAnother(referrals, ["reason"])}
+            onClick={() =>
+              updateGroup("referrals", [
+                ...referrals,
+                { specialty: "", providerName: "", reason: "" },
+              ])
+            }
+          >
+            <Plus className="mr-1 h-3 w-3" />
+            Add
+          </Button>
+        </div>
+        {referrals.length === 0 && (
+          <div className="text-sm text-muted-foreground">No referrals staged yet.</div>
+        )}
+        {referrals.map((item, index) => (
+          <div key={index} className="space-y-4 rounded-lg bg-muted/40 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="font-medium">Referral #{index + 1}</div>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => removeItem("referrals", index, referrals)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Specialty</Label>
+                <Input
+                  value={item.specialty || ""}
+                  onChange={(event) =>
+                    updateItem("referrals", referrals, index, "specialty", event.target.value)
+                  }
+                  placeholder="Specialty"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Provider Name (if known)</Label>
+                <Input
+                  value={item.providerName || ""}
+                  onChange={(event) =>
+                    updateItem(
+                      "referrals",
+                      referrals,
+                      index,
+                      "providerName",
+                      event.target.value
+                    )
+                  }
+                  placeholder="Provider Name (if known)"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>
+                Reason for Referral <span className="text-destructive">*</span>
+              </Label>
+              <Textarea
+                value={item.reason || ""}
+                onChange={(event) =>
+                  updateItem("referrals", referrals, index, "reason", event.target.value)
+                }
+                placeholder="Reason for Referral"
+                rows={3}
+              />
+              {!item.reason?.trim() && (
+                <p className="text-xs text-destructive">
+                  A reason is required before adding another referral.
+                </p>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="rounded-xl border p-4 md:col-span-2">
+        <div className="mb-3 flex items-center justify-between">
+          <Label className="text-base font-semibold">Next Steps</Label>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() =>
+              updateGroup("nextSteps", [
+                ...nextSteps,
+                { task: "", owner: "", dueBy: "" },
+              ])
+            }
+          >
+            <Plus className="mr-1 h-3 w-3" />
+            Add
+          </Button>
+        </div>
+        {nextSteps.map((step, index) => (
+          <div
+            key={index}
+            className="mb-3 grid gap-2 rounded-lg bg-muted/40 p-3 md:grid-cols-3"
+          >
+            <Input
+              value={step.task || ""}
+              onChange={(event) => {
+                const next = [...nextSteps];
+                next[index] = { ...step, task: event.target.value };
+                updateGroup("nextSteps", next);
+              }}
+              placeholder="Next step"
+            />
+            <Input
+              value={step.owner || ""}
+              onChange={(event) => {
+                const next = [...nextSteps];
+                next[index] = { ...step, owner: event.target.value };
+                updateGroup("nextSteps", next);
+              }}
+              placeholder="Owner"
+            />
+            <div className="flex gap-2">
+              <Input
+                value={step.dueBy || ""}
+                onChange={(event) => {
+                  const next = [...nextSteps];
+                  next[index] = { ...step, dueBy: event.target.value };
+                  updateGroup("nextSteps", next);
+                }}
+                placeholder="Due by"
+              />
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                onClick={() => removeItem("nextSteps", index, nextSteps)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        ))}
+        {!nextSteps.length && (
+          <div className="text-sm text-muted-foreground">
+            No next steps recorded yet.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CodingPreparationSection({
+  form,
+  patientId,
+  visitId,
+}: {
+  form: any;
+  patientId: string;
+  visitId: string | null;
+}) {
+  const coding = form.watch("coding");
+  const coSign = form.watch("coSign");
+
+  const updateCodeList = (field: "icd10Codes" | "cptCodes", value: string) => {
+    const next = value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    form.setValue(`coding.${field}`, next);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
+        Final sign-off happens on the dedicated close-out screen. Prepare codes,
+        complexity, and co-sign information here first.
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="space-y-2">
+          <Label>ICD-10 Codes</Label>
+          <Input
+            value={(coding?.icd10Codes || []).join(", ")}
+            onChange={(event) => updateCodeList("icd10Codes", event.target.value)}
+            placeholder="e.g. K35.80, R10.9"
+          />
+          {(coding?.suggestedIcd10Codes || []).length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Suggested: {(coding.suggestedIcd10Codes || []).join(", ")}
+            </p>
+          )}
+        </div>
+        <div className="space-y-2">
+          <Label>CPT Codes</Label>
+          <Input
+            value={(coding?.cptCodes || []).join(", ")}
+            onChange={(event) => updateCodeList("cptCodes", event.target.value)}
+            placeholder="e.g. 99214"
+          />
+          {(coding?.suggestedCptCodes || []).length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Suggested: {(coding.suggestedCptCodes || []).join(", ")}
+            </p>
+          )}
+        </div>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="space-y-2">
+          <Label>MDM Complexity</Label>
+          <Select
+            value={coding?.mdmComplexity || ""}
+            onValueChange={(value) => form.setValue("coding.mdmComplexity", value)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select MDM level" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="straightforward">Straightforward</SelectItem>
+              <SelectItem value="low">Low</SelectItem>
+              <SelectItem value="moderate">Moderate</SelectItem>
+              <SelectItem value="high">High</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Visit Duration (minutes)</Label>
+          <Input
+            value={coding?.visitDurationMinutes || ""}
+            onChange={(event) =>
+              form.setValue("coding.visitDurationMinutes", event.target.value)
+            }
+            placeholder="e.g. 35"
+          />
+        </div>
+      </div>
+      <div className="space-y-2">
+        <Label>Coding Notes</Label>
+        <Textarea
+          value={coding?.codingNotes || ""}
+          onChange={(event) =>
+            form.setValue("coding.codingNotes", event.target.value)
+          }
+          rows={4}
+          placeholder="Capture coding rationale, complexity, and documentation notes."
+        />
+      </div>
+      <div className="rounded-xl border p-4">
+        <div className="mb-3 flex items-center gap-2">
+          <Checkbox
+            id="co-sign-requested"
+            checked={coSign?.requested || false}
+            onCheckedChange={(checked) =>
+              form.setValue("coSign.requested", checked === true)
+            }
+          />
+          <Label htmlFor="co-sign-requested">Request co-sign at close-out</Label>
+        </div>
+        {coSign?.requested && (
+          <div className="grid gap-3 md:grid-cols-2">
+            <Input
+              value={coSign?.requestedFrom || ""}
+              onChange={(event) =>
+                form.setValue("coSign.requestedFrom", event.target.value)
+              }
+              placeholder="Requested from"
+            />
+            <Input
+              value={coSign?.reason || ""}
+              onChange={(event) =>
+                form.setValue("coSign.reason", event.target.value)
+              }
+              placeholder="Reason for co-sign"
+            />
+          </div>
+        )}
+      </div>
+      {visitId && (
+        <Button asChild className="w-full">
+          <Link href={`/patients/${patientId}/visit-close?visitId=${visitId}`}>
+            Continue to sign-off
+          </Link>
+        </Button>
+      )}
     </div>
   );
 }
