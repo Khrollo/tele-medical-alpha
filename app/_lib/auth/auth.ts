@@ -22,6 +22,61 @@ export const auth = betterAuth({
   secret: process.env.BETTER_AUTH_SECRET,
   baseURL,
   trustedOrigins,
+  logger: {
+    level: "debug",
+    disabled: false,
+    log: (level, message, ...args) => {
+      const safeArgs = args.map((arg) => {
+        if (arg instanceof Error) {
+          return {
+            name: arg.name,
+            message: arg.message,
+            stack: arg.stack,
+            ...(arg as unknown as Record<string, unknown>),
+          };
+        }
+        return arg;
+      });
+      // eslint-disable-next-line no-console
+      console.log(
+        `[BetterAuth][${level}] ${message}`,
+        safeArgs.length ? JSON.stringify(safeArgs, null, 2) : "",
+      );
+    },
+  },
+  databaseHooks: {
+    user: {
+      create: {
+        before: async (user) => {
+          // eslint-disable-next-line no-console
+          console.log(
+            "[BetterAuth] user.create.before payload:",
+            JSON.stringify(user, null, 2),
+          );
+          return { data: user };
+        },
+        after: async (user) => {
+          // eslint-disable-next-line no-console
+          console.log(
+            "[BetterAuth] user.create.after success, id:",
+            (user as { id?: string })?.id,
+          );
+        },
+      },
+    },
+    account: {
+      create: {
+        before: async (account) => {
+          // eslint-disable-next-line no-console
+          console.log(
+            "[BetterAuth] account.create.before payload:",
+            JSON.stringify(account, null, 2),
+          );
+          return { data: account };
+        },
+      },
+    },
+  },
   database: drizzleAdapter(db, {
     provider: "pg",
     usePlural: true,

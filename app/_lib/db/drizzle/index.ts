@@ -49,11 +49,58 @@ function getDb(): PostgresJsDatabase<typeof schema> {
   return global.drizzleDb;
 }
 
+function logDbError(prop: string | symbol, error: unknown) {
+  const propName = typeof prop === "symbol" ? prop.toString() : prop;
+  // eslint-disable-next-line no-console
+  console.error(`[db] error during db.${propName}:`, error);
+  if (error instanceof Error) {
+    // eslint-disable-next-line no-console
+    console.error(`[db] stack:`, error.stack);
+    const cause = (error as Error & { cause?: unknown }).cause;
+    if (cause) {
+      // eslint-disable-next-line no-console
+      console.error(`[db] cause:`, cause);
+    }
+    const pgError = error as Error & {
+      code?: string;
+      detail?: string;
+      table?: string;
+      column?: string;
+      constraint?: string;
+    };
+    if (pgError.code || pgError.detail || pgError.table) {
+      // eslint-disable-next-line no-console
+      console.error(`[db] pg fields:`, {
+        code: pgError.code,
+        detail: pgError.detail,
+        table: pgError.table,
+        column: pgError.column,
+        constraint: pgError.constraint,
+      });
+    }
+  }
+}
+
 export const db = new Proxy({} as PostgresJsDatabase<typeof schema>, {
   get(_target, prop, receiver) {
     const target = getDb();
     const value = Reflect.get(target, prop, receiver);
-    return typeof value === "function" ? value.bind(target) : value;
+    if (typeof value !== "function") return value;
+    return (...args: unknown[]) => {
+      try {
+        const result = (value as (...a: unknown[]) => unknown).apply(target, args);
+        if (result && typeof (result as PromiseLike<unknown>).then === "function") {
+          return (result as Promise<unknown>).catch((err) => {
+            logDbError(prop, err);
+            throw err;
+          });
+        }
+        return result;
+      } catch (err) {
+        logDbError(prop, err);
+        throw err;
+      }
+    };
   },
 });
 
