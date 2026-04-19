@@ -46,6 +46,12 @@ import { createVisitDraftAction, updateVisitDraftAction, updatePatientAssignedAc
 import { createDocumentAction } from "@/app/_actions/documents";
 import { cn } from "@/app/_lib/utils/cn";
 import type { PatientBasics } from "@/app/_lib/db/drizzle/queries/patient";
+import {
+  Avatar,
+  Btn as ClearingBtn,
+  ClearingCard as ClearingCardWrap,
+  Pill as ClearingPill,
+} from "@/components/ui/clearing";
 
 interface NewVisitFormProps {
   patientId: string;
@@ -1402,52 +1408,83 @@ export function NewVisitForm({
   };
 
   return (
-    <div className="flex flex-col min-h-full pb-0">
+    <div
+      className="flex flex-col min-h-full pb-0"
+      style={{ background: "var(--paper)" }}
+    >
       {hasAiDraftSuggestions && (
-        <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/30 dark:bg-amber-950/40 dark:text-amber-200">
+        <div
+          className="px-4 py-2.5 text-[13px]"
+          style={{
+            background: "var(--warn-soft)",
+            borderBottom: "1px solid var(--line)",
+            color: "oklch(0.35 0.1 70)",
+          }}
+        >
           AI draft suggestions were applied. Manually edited fields stay locked until you change them yourself.
         </div>
       )}
-      {/* Compact top bar: back + patient info + status */}
-      <div className="flex items-center justify-between px-4 md:px-6 py-3 border-b border-slate-200/60 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur-sm">
-        <div className="flex items-center gap-3">
+
+      {/* Visit top bar: back + patient ribbon-lite + status */}
+      <div
+        className="flex items-center justify-between gap-3 px-4 md:px-6 py-3"
+        style={{
+          background: "var(--paper)",
+          borderBottom: "1px solid var(--line)",
+        }}
+      >
+        <div className="flex items-center gap-3 min-w-0">
           <Link href={`/patients/${patientId}`}>
-            <Button variant="ghost" size="sm" className="rounded-full h-8 w-8 p-0">
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-          </Link>
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-foreground">{patientBasics.fullName}</span>
-            <span className="text-xs text-muted-foreground">DOB: {patientBasics.dob || "N/A"}</span>
-          </div>
-          {isRecording && (
-            <Badge variant="destructive" className="gap-1.5 animate-pulse text-xs">
-              <div className="w-1.5 h-1.5 bg-white rounded-full" />
-              Recording
-            </Badge>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {previousVisits.length > 0 && (
-            <Button
+            <button
               type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setShowPreviousVisitsDialog(true)}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full"
+              style={{ color: "var(--ink-2)", border: "1px solid var(--line)", background: "var(--card)" }}
+              aria-label="Back to patient"
             >
-              <Clock className="h-3.5 w-3.5 mr-1.5" />
-              Previous Visits
-            </Button>
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+          </Link>
+          <Avatar name={patientBasics.fullName} size={34} />
+          <div className="min-w-0 leading-tight">
+            <div className="flex flex-wrap items-baseline gap-2">
+              <span
+                className="serif nowrap"
+                style={{ fontSize: 17, letterSpacing: "-0.015em", color: "var(--ink)" }}
+              >
+                {patientBasics.fullName}
+              </span>
+              {isRecording && (
+                <ClearingPill tone="critical" dot>
+                  Recording
+                </ClearingPill>
+              )}
+            </div>
+            <div className="mono text-[11px]" style={{ color: "var(--ink-3)" }}>
+              DOB {patientBasics.dob || "N/A"}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {previousVisits.length > 0 && (
+            <ClearingBtn
+              kind="ghost"
+              size="sm"
+              icon={<Clock className="h-3.5 w-3.5" />}
+              onClick={() => setShowPreviousVisitsDialog(true)}
+              type="button"
+            >
+              Previous visits
+            </ClearingBtn>
           )}
           {visitAppointmentType?.toLowerCase() === "virtual" && visitTwilioRoomName && existingVisitId && (
-            <Button
-              onClick={() => router.push(`/visit/${existingVisitId}/call`)}
+            <ClearingBtn
+              kind="accent"
               size="sm"
-              className="bg-purple-600 hover:bg-purple-700 text-xs"
+              icon={<Video className="h-3.5 w-3.5" />}
+              onClick={() => router.push(`/visit/${existingVisitId}/call`)}
             >
-              <Video className="h-3.5 w-3.5 mr-1.5" />
-              Join Call
-            </Button>
+              Join call
+            </ClearingBtn>
           )}
           <OfflineSyncBadge
             isOnline={isOnline}
@@ -1457,29 +1494,16 @@ export function NewVisitForm({
         </div>
       </div>
 
-      {/* Body: left sidebar + main content */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        {userRole === "doctor" && visitCreatedByRole === "nurse" && (
-          <div className="border-b border-slate-200/70 bg-background px-4 py-4 dark:border-slate-800 md:px-6">
-            <NurseIntakeSummaryCard
-              isExpanded={nurseIntakeExpanded}
-              onToggle={() => setNurseIntakeExpanded((current) => !current)}
-              chiefComplaint={intakeChiefComplaint}
-              bp={intakeBp}
-              hr={intakeHr}
-              temp={intakeTemp}
-              weight={intakeWeight}
-              triageNotes={intakeTriageNotes}
-              allergies={patientBasics.allergies}
-              currentMedications={patientBasics.currentMedications}
-            />
-          </div>
-        )}
-
-        <div className="flex flex-1 overflow-hidden">
-
-        {/* Left sidebar — stepper + AI capture (hidden on mobile) */}
-        <div className="hidden lg:flex flex-col w-64 shrink-0 border-r border-slate-200/60 dark:border-slate-800 overflow-y-auto bg-background">
+      {/* Body: left section stepper + main canvas */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left stepper rail */}
+        <aside
+          className="hidden lg:flex flex-col w-[220px] shrink-0 overflow-y-auto scroll"
+          style={{
+            background: "var(--paper-2)",
+            borderRight: "1px solid var(--line)",
+          }}
+        >
           {medicalPanelOpen && medicalPanelSection && (
             <MedicalInfoPanel
               patientBasics={patientBasics}
@@ -1491,49 +1515,15 @@ export function NewVisitForm({
             />
           )}
           {!hideAICapture && (
-            <div className="p-3 border-b border-slate-200/60 dark:border-slate-800">
-              <div className="mb-3 rounded-xl border border-slate-200/70 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-900/70">
-                <div className="text-sm font-semibold text-foreground">
-                  AI transcript consent
-                </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  AI capture stays disabled until consent is confirmed for this
-                  visit.
-                </p>
-                <div className="mt-3 flex items-start gap-2">
-                  <Checkbox
-                    id="ai-transcript-consent"
-                    checked={aiTranscriptConsent}
-                    onCheckedChange={(checked) =>
-                      form.setValue("consents.aiTranscript", checked === true)
-                    }
-                  />
-                  <Label
-                    htmlFor="ai-transcript-consent"
-                    className="text-xs leading-5 text-foreground"
-                  >
-                    Patient consent for AI-assisted transcription has been
-                    confirmed.
-                  </Label>
-                </div>
-                <p className="mt-2 text-[11px] text-muted-foreground">
-                  {hasConsentOnFile
-                    ? "Signed treatment consent is already on file."
-                    : "No signature is on file yet. Capture is allowed only after you confirm verbal consent for this visit."}
-                </p>
-              </div>
-              {aiTranscriptConsent ? (
-                <AICapturePanel
-                  patientId={patientId}
-                  onTranscriptReady={handleTranscriptReady}
-                  onParseReady={handleParseReady}
-                />
-              ) : (
-                <div className="rounded-xl border border-dashed border-slate-300 bg-white/70 p-4 text-xs text-muted-foreground dark:border-slate-700 dark:bg-slate-950/70">
-                  Confirm consent to enable live transcript capture and AI
-                  parsing.
-                </div>
-              )}
+            <div
+              className="px-3 py-3"
+              style={{ borderBottom: "1px solid var(--line)" }}
+            >
+              <AICapturePanel
+                patientId={patientId}
+                onTranscriptReady={handleTranscriptReady}
+                onParseReady={handleParseReady}
+              />
             </div>
           )}
           <div className="p-3 flex-1">
@@ -1544,94 +1534,101 @@ export function NewVisitForm({
               userRole={userRole}
             />
           </div>
-        </div>
+        </aside>
 
-        {/* Main content area */}
+        {/* Main canvas */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto">
-            <div className="max-w-3xl mx-auto w-full px-4 md:px-6 py-6 space-y-6">
-              <div className="grid gap-4 md:grid-cols-2">
-                <EncounterSummaryCard
-                  patientBasics={patientBasics}
-                  visitAppointmentType={visitAppointmentType}
-                  visitCreatedByRole={visitCreatedByRole}
-                  consentConfirmed={Boolean(aiTranscriptConsent)}
-                />
-                <MiniScheduleWidget
-                  patientId={patientId}
-                  userRole={userRole}
-                  visitAppointmentType={visitAppointmentType}
-                  visitTwilioRoomName={visitTwilioRoomName}
-                  existingVisitId={existingVisitId}
-                />
-              </div>
-
+          <div
+            className="flex-1 overflow-y-auto scroll"
+            style={{ background: "var(--paper)" }}
+          >
+            <div className="mx-auto w-full max-w-3xl px-4 md:px-8 py-8 flex flex-col gap-6">
               {/* Section header */}
-              <div className="text-center space-y-1">
-                <h1 className="text-2xl font-bold text-foreground">
-                  {roleSections.find(s => s.id === currentSection)?.label}
-                </h1>
-                <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                  {sectionDescriptions[currentSection] || ""}
-                </p>
-                <p className="text-xs text-muted-foreground/60">
+              <div>
+                <div
+                  className="text-[11px] uppercase"
+                  style={{ color: "var(--ink-3)", letterSpacing: "0.12em" }}
+                >
                   Step {currentSectionIndex + 1} of {roleSections.length}
-                </p>
+                </div>
+                <h1
+                  className="serif mt-1.5"
+                  style={{
+                    margin: 0,
+                    fontSize: "clamp(28px, 3vw, 32px)",
+                    lineHeight: 1,
+                    letterSpacing: "-0.02em",
+                    color: "var(--ink)",
+                  }}
+                >
+                  {roleSections.find((s) => s.id === currentSection)?.label}
+                </h1>
+                {sectionDescriptions[currentSection] && (
+                  <p
+                    className="mt-2 max-w-xl text-[13.5px]"
+                    style={{ color: "var(--ink-2)" }}
+                  >
+                    {sectionDescriptions[currentSection]}
+                  </p>
+                )}
               </div>
 
-              {/* Form card */}
-              <Card className="shadow-sm">
-                <CardContent className="p-6 md:p-8">{renderSection()}</CardContent>
-              </Card>
+              {/* Form canvas */}
+              <ClearingCardWrap pad={24}>{renderSection()}</ClearingCardWrap>
 
-              {/* Inline prev / next navigation */}
-              <div className="flex items-center justify-between pb-6">
-                <Button
-                  variant="outline"
-                  className="h-11 px-5 text-sm font-medium gap-2"
+              {/* Prev / next navigation */}
+              <div className="flex items-center justify-between gap-2">
+                <ClearingBtn
+                  kind="ghost"
+                  icon={<ChevronLeft className="h-4 w-4" />}
                   onClick={goToPrev}
                   disabled={!canGoPrev}
                 >
-                  <ChevronLeft className="h-4 w-4" />
                   {canGoPrev ? roleSections[currentSectionIndex - 1]?.label : "Previous"}
-                </Button>
-
+                </ClearingBtn>
                 {canGoNext ? (
-                  <Button
-                    className="h-11 px-5 text-sm font-medium gap-2"
+                  <ClearingBtn
+                    kind="accent"
+                    iconRight={<ChevronRight className="h-4 w-4" />}
                     onClick={goToNext}
                   >
                     {roleSections[currentSectionIndex + 1]?.label}
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
+                  </ClearingBtn>
                 ) : (
-                  <Button
+                  <ClearingBtn
+                    kind="accent"
                     onClick={handleFinalize}
                     disabled={isSaving || !allSectionsReviewed || !isOnline}
-                    className="h-11 px-6 text-sm font-semibold"
                   >
                     {isSaving ? (
                       <>
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                        Saving...
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Saving…
                       </>
                     ) : (
-                      "Complete Visit"
+                      "Complete visit"
                     )}
-                  </Button>
+                  </ClearingBtn>
                 )}
               </div>
             </div>
           </div>
 
-          {/* Mobile: show stepper as bottom sheet strip */}
-          <div className="lg:hidden border-t border-slate-200/60 dark:border-slate-800 overflow-x-auto">
+          {/* Mobile stepper strip */}
+          <div
+            className="lg:hidden overflow-x-auto scroll"
+            style={{
+              borderTop: "1px solid var(--line)",
+              background: "var(--paper-2)",
+            }}
+          >
             <SectionStepper
               currentSection={currentSection}
               reviewedSections={reviewedSections}
               onSectionClick={handleSectionChange}
               userRole={userRole}
-              className="flex-row py-2 px-3"
+              orientation="horizontal"
+              className="px-3 py-2"
             />
           </div>
         </div>

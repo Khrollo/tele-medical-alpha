@@ -428,31 +428,60 @@ export function AICapturePanel({
   return (
     <div className="fixed bottom-24 right-8 z-[100] group flex flex-col items-end gap-3">
       {(liveTranscript || interimTranscript) && (
-        <div className="pointer-events-none max-w-sm rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 text-sm shadow-xl dark:border-slate-800 dark:bg-slate-950/95">
-          <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            <AudioLines className="h-4 w-4" />
-            {isLiveParsing ? "Live AI Draft (Updating)" : "Live AI Draft"}
+        <div
+          className="pointer-events-none max-w-sm rounded-[14px] px-4 py-3 text-sm"
+          style={{
+            background: "var(--card)",
+            border: "1px solid var(--line)",
+            boxShadow: "0 24px 60px -24px oklch(0 0 0 / 0.25)",
+          }}
+        >
+          <div
+            className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase"
+            style={{ color: "var(--ink-3)", letterSpacing: "0.12em" }}
+          >
+            <AudioLines className="h-3.5 w-3.5" style={{ color: "var(--brand-ink)" }} />
+            {isLiveParsing ? "Live AI draft · updating" : "Live AI draft"}
           </div>
-          <p className="text-slate-700 dark:text-slate-200">
-            {liveTranscript || "Listening..."}
+          <p className="text-[13px] leading-5" style={{ color: "var(--ink)" }}>
+            {liveTranscript || (
+              <span style={{ color: "var(--ink-3)", fontStyle: "italic" }}>Listening…</span>
+            )}
             {interimTranscript && (
-              <span className="text-slate-400"> {interimTranscript}</span>
+              <span style={{ color: "var(--ink-3)" }}> {interimTranscript}</span>
             )}
           </p>
         </div>
       )}
 
-      <div className="absolute bottom-full right-0 mb-4 px-4 py-2 bg-slate-800 text-white text-sm rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none md:origin-bottom-right border border-slate-700 font-medium">
+      <div
+        className="absolute bottom-full right-0 mb-4 px-3 py-1.5 text-[12px] rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none md:origin-bottom-right font-medium"
+        style={{
+          background: "var(--ink)",
+          color: "var(--paper)",
+          border: "1px solid var(--line-strong)",
+        }}
+      >
         {isLiveMode
           ? isLiveParsing
-            ? "AI Clinical Scribe (Live, syncing every 5s)"
-            : "AI Clinical Scribe (Live)"
+            ? "AI Clinical Scribe · Live, syncing every 5s"
+            : "AI Clinical Scribe · Live"
           : "AI Clinical Scribe"}
-        <div className="absolute -bottom-2 right-6 w-0 h-0 border-l-[6px] border-l-transparent border-t-[8px] border-t-slate-800 border-r-[6px] border-r-transparent"></div>
+        <div
+          className="absolute -bottom-2 right-6 w-0 h-0"
+          style={{
+            borderLeft: "6px solid transparent",
+            borderRight: "6px solid transparent",
+            borderTop: "8px solid var(--ink)",
+          }}
+        />
       </div>
 
       {state === "recording" && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-red-500 rounded-full animate-ping opacity-20" />
+        <div
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-14 rounded-full animate-ping opacity-20"
+          style={{ background: "var(--critical)" }}
+        />
       )}
 
       <Button
@@ -460,28 +489,35 @@ export function AICapturePanel({
         disabled={isProcessing && !isCapturing}
         size="icon"
         className={cn(
-          "relative h-14 w-14 rounded-full border-4 border-white dark:border-slate-800 overflow-hidden transition-all duration-300",
-          isCapturing
-            ? "bg-red-500 hover:bg-red-600 scale-105"
-            : isProcessing
-              ? "bg-slate-700 opacity-90 cursor-wait"
-              : "bg-slate-900 hover:bg-slate-800 hover:scale-105"
+          "relative h-14 w-14 rounded-full overflow-hidden transition-all duration-300",
+          isCapturing ? "scale-105" : !isProcessing && "hover:scale-105"
         )}
+        style={{
+          background: isCapturing
+            ? "var(--critical)"
+            : isProcessing
+              ? "var(--ink-2)"
+              : "var(--brand-ink)",
+          border: "4px solid var(--paper)",
+          cursor: isProcessing && !isCapturing ? "wait" : "pointer",
+          opacity: isProcessing && !isCapturing ? 0.9 : 1,
+          color: "white",
+        }}
       >
         {isCapturing ? (
           <div className="flex flex-col items-center gap-0.5">
-            <Square className="h-4 w-4 fill-current text-white" />
-            <span className="text-[9px] text-white font-bold tracking-wider">
+            <Square className="h-4 w-4 fill-current" />
+            <span className="text-[9px] font-bold tracking-wider">
               {formatTime(recordingTime)}
             </span>
           </div>
         ) : isProcessing ? (
           <div className="flex flex-col items-center gap-0.5">
-            <Loader2 className="h-4 w-4 text-white animate-spin" />
-            <span className="text-[9px] text-white font-bold px-1">WAIT</span>
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span className="text-[9px] font-bold px-1">WAIT</span>
           </div>
         ) : (
-          <Mic className="h-6 w-6 text-white" />
+          <Mic className="h-6 w-6" />
         )}
       </Button>
     </div>
