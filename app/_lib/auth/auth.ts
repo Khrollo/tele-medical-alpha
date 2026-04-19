@@ -5,19 +5,7 @@ import { nextCookies } from "better-auth/next-js";
 import { db } from "@/app/_lib/db/drizzle/index";
 import crypto from "crypto";
 
-const isProduction = process.env.NODE_ENV === "production";
-
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
-  }
-  return value;
-}
-
-const baseURL = isProduction
-  ? requireEnv("BETTER_AUTH_URL")
-  : process.env.BETTER_AUTH_URL || "http://localhost:3000";
+const baseURL = process.env.BETTER_AUTH_URL || "http://localhost:3000";
 
 const extraTrustedOrigins = (process.env.BETTER_AUTH_TRUSTED_ORIGINS ?? "")
   .split(",")
@@ -25,15 +13,13 @@ const extraTrustedOrigins = (process.env.BETTER_AUTH_TRUSTED_ORIGINS ?? "")
   .filter(Boolean);
 
 const trustedOrigins = Array.from(
-  new Set([
-    baseURL,
-    ...extraTrustedOrigins,
-    ...(isProduction ? [] : ["http://localhost:3000"]),
-  ]),
+  new Set(
+    [baseURL, ...extraTrustedOrigins, "http://localhost:3000"].filter(Boolean),
+  ),
 );
 
 export const auth = betterAuth({
-  secret: isProduction ? requireEnv("BETTER_AUTH_SECRET") : process.env.BETTER_AUTH_SECRET,
+  secret: process.env.BETTER_AUTH_SECRET,
   baseURL,
   trustedOrigins,
   database: drizzleAdapter(db, {
