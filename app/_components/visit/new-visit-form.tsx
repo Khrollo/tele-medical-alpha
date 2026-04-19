@@ -1625,7 +1625,6 @@ export function NewVisitForm({
             />
           </div>
         </div>
-        </div>
       </div>
 
       {/* Mobile: floating toggle for sidebar tools (AI capture + medical info) */}

@@ -13,6 +13,7 @@ import {
   ChevronRight,
   Sidebar as SidebarIcon,
   Settings,
+  UserPlus,
 } from "lucide-react";
 import { ThemeSwatcher } from "./theme-swatcher";
 import { Logo } from "./ui/clearing/logo";
@@ -100,6 +101,13 @@ export function SideNav({
         { href: "/patients", label: "Patients", icon: <Users className="h-4 w-4" /> },
         { href: "/waiting-room", label: "Schedule", icon: <Clock className="h-4 w-4" /> }
       );
+    }
+    if (userRole === "admin") {
+      items.push({
+        href: "/admin/users/new",
+        label: "User admin",
+        icon: <UserPlus className="h-4 w-4" />,
+      });
     }
     return items;
   }, [userRole]);

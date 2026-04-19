@@ -100,21 +100,6 @@ export function VitalsContent({
   const [editingVital, setEditingVital] = React.useState<VitalEntry | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
-  const [selectedSeries, setSelectedSeries] = React.useState<Record<ChartSeriesKey, boolean>>({
-    bpSystolic: true,
-    bpDiastolic: true,
-    hr: true,
-    tempC: true,
-    weight: true,
-    spo2: true,
-  });
-  const [startDate, setStartDate] = React.useState(() => {
-    const date = new Date();
-    date.setDate(date.getDate() - 90);
-    return formatInputDate(date);
-  });
-  const [endDate, setEndDate] = React.useState(() => formatInputDate(new Date()));
-
   React.useEffect(() => {
     setVitals(initialVitals);
   }, [initialVitals]);

@@ -117,6 +117,7 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
   const [filter, setFilter] = useState<FilterKey>("all");
   const [view, setView] = useState<"list" | "grid">("list");
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [acknowledgedAlerts, setAcknowledgedAlerts] = useState<Record<string, boolean>>({});
 
   const { patients, refresh } = useWaitingRoomRealtime({
     initialPatients,
