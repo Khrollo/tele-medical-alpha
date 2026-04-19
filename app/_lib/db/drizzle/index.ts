@@ -1,41 +1,60 @@
-import { drizzle } from "drizzle-orm/postgres-js";
+import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
 
 /**
- * This module is server-only and should never be imported in client components.
- * Drizzle ORM is used for type-safe database queries in server-side code.
+ * Server-only Drizzle client.
+ *
+ * The client is initialized lazily on first use so that importing this module
+ * (e.g. during Next.js build's "Collecting page data" phase, or any static
+ * analysis pass) does not require DATABASE_URL to be present and does not
+ * open a connection. Connections are created the first time a query runs.
  */
 
-if (!process.env.DATABASE_URL) {
-  throw new Error(
-    "DATABASE_URL environment variable is required. Please add it to your .env.local file."
-  );
-}
-
-// Use singleton pattern in development to avoid too many connections
 declare global {
   // eslint-disable-next-line no-var
   var postgresClient: postgres.Sql | undefined;
+  // eslint-disable-next-line no-var
+  var drizzleDb: PostgresJsDatabase<typeof schema> | undefined;
 }
 
-let postgresClient: postgres.Sql;
-
-if (process.env.NODE_ENV === "production") {
-  postgresClient = postgres(process.env.DATABASE_URL, {
-    max: 1,
-  });
-} else {
-  if (!global.postgresClient) {
-    global.postgresClient = postgres(process.env.DATABASE_URL, {
-      max: 1,
-    });
+function createPostgresClient(): postgres.Sql {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    throw new Error(
+      "DATABASE_URL environment variable is required. Add it to your hosting provider's environment variables (or .env.local for development).",
+    );
   }
-  postgresClient = global.postgresClient;
+  return postgres(databaseUrl, { max: 1 });
 }
 
-export const db = drizzle(postgresClient, { schema });
+function getPostgresClient(): postgres.Sql {
+  if (process.env.NODE_ENV === "production") {
+    if (!global.postgresClient) {
+      global.postgresClient = createPostgresClient();
+    }
+    return global.postgresClient;
+  }
 
-// Export schema for use in queries
+  if (!global.postgresClient) {
+    global.postgresClient = createPostgresClient();
+  }
+  return global.postgresClient;
+}
+
+function getDb(): PostgresJsDatabase<typeof schema> {
+  if (!global.drizzleDb) {
+    global.drizzleDb = drizzle(getPostgresClient(), { schema });
+  }
+  return global.drizzleDb;
+}
+
+export const db = new Proxy({} as PostgresJsDatabase<typeof schema>, {
+  get(_target, prop, receiver) {
+    const target = getDb();
+    const value = Reflect.get(target, prop, receiver);
+    return typeof value === "function" ? value.bind(target) : value;
+  },
+});
+
 export type Schema = typeof schema;
-
