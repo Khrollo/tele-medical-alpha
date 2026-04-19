@@ -3,18 +3,28 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { useState, useMemo } from "react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { QRCodeSVG } from "qrcode.react";
+import { toast } from "sonner";
+import {
+  ArrowUpDown,
+  Video,
+  Copy,
+  Check,
+  QrCode,
+  RefreshCw,
+  Clock,
+  List as ListIcon,
+  LayoutGrid as GridIcon,
+} from "lucide-react";
+
+import { assignVisitToMeAction } from "@/app/_actions/visits";
+import { cn } from "@/app/_lib/utils/cn";
+import { useWaitingRoomRealtime } from "@/app/_lib/hooks/use-waiting-room-realtime";
+
+import { Avatar, Btn, ClearingCard, Pill, type PillTone } from "@/components/ui/clearing";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { assignVisitToMeAction } from "@/app/_actions/visits";
-import { toast } from "sonner";
-import { ArrowLeft, ArrowRight, ArrowUpDown, Check, Copy, QrCode, RefreshCw, Siren, User, Video } from "lucide-react";
-import { cn } from "@/app/_lib/utils/cn";
-import { QRCodeSVG } from "qrcode.react";
-import { useWaitingRoomRealtime } from "@/app/_lib/hooks/use-waiting-room-realtime";
 
 interface VisitInfo {
   id: string;
@@ -36,7 +46,7 @@ interface Patient {
 }
 
 interface WaitingRoomListProps {
-  patients: Patient[]; // Initial patients from server
+  patients: Patient[];
   userRole?: string;
 }
 
@@ -60,6 +70,43 @@ interface PatientSnapshot {
 
 type SortField = "name" | "waitTime" | "priority" | "appointmentType";
 type SortDirection = "asc" | "desc";
+type FilterKey = "all" | "critical" | "urgent" | "routine" | "virtual";
+
+function getWaitMinutes(visit: VisitInfo | null): number {
+  if (!visit?.createdAt) return 0;
+  return Math.floor((Date.now() - new Date(visit.createdAt).getTime()) / 60000);
+}
+
+function formatWait(minutes: number): string {
+  if (minutes <= 0) return "New";
+  if (minutes < 60) return `${minutes}m`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+function priorityKey(p: string | null): Exclude<FilterKey, "all" | "virtual"> | "none" {
+  const k = (p ?? "").toLowerCase();
+  if (k === "critical") return "critical";
+  if (k === "urgent") return "urgent";
+  if (k === "mild" || k === "low" || k === "routine") return "routine";
+  return "none";
+}
+
+function priorityPill(p: string | null): { tone: PillTone; label: string; accent: string } {
+  const key = priorityKey(p);
+  if (key === "critical") return { tone: "critical", label: "Critical", accent: "var(--critical)" };
+  if (key === "urgent") return { tone: "warn", label: "Urgent", accent: "var(--warn)" };
+  if (key === "routine") return { tone: "info", label: "Routine", accent: "var(--info)" };
+  return { tone: "neutral", label: p ?? "Not set", accent: "var(--line)" };
+}
+
+function appointmentPill(type: string | null): { tone: PillTone; label: string } {
+  const t = (type ?? "").toLowerCase();
+  if (t === "virtual") return { tone: "info", label: "Virtual" };
+  if (t === "in-person" || t === "in person") return { tone: "neutral", label: "In-person" };
+  return { tone: "neutral", label: type ?? "Not set" };
+}
 
 export function WaitingRoomList({ patients: initialPatients, userRole }: WaitingRoomListProps) {
   const router = useRouter();
@@ -67,27 +114,36 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
   const [searchQuery, setSearchQuery] = useState("");
   const [sortField, setSortField] = useState<SortField>("waitTime");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
-  const [selectedDate, setSelectedDate] = useState(() => new Date());
-  const [acknowledgedAlerts, setAcknowledgedAlerts] = useState<Record<string, boolean>>({});
-  const [snapshotPatientId, setSnapshotPatientId] = useState<string | null>(null);
-  const [snapshotData, setSnapshotData] = useState<PatientSnapshot | null>(null);
-  const [isSnapshotLoading, setIsSnapshotLoading] = useState(false);
+  const [filter, setFilter] = useState<FilterKey>("all");
+  const [view, setView] = useState<"list" | "grid">("list");
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const [virtualVisitData] = useState<Record<string, { joinUrl: string; visitId: string }>>({});
-
-  // Use polling hook to get live updates
   const { patients, refresh } = useWaitingRoomRealtime({
     initialPatients,
     onError: (error) => {
-      // Only log errors, don't spam console
-      // Errors are handled gracefully - the UI will show initial data
       if (process.env.NODE_ENV === "development") {
         console.warn("Polling error:", error.message);
       }
     },
   });
 
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const counts = useMemo(() => {
+    const c = { all: patients.length, critical: 0, urgent: 0, routine: 0, virtual: 0 };
+    for (const p of patients) {
+      const k = priorityKey(p.visit?.priority ?? null);
+      if (k === "critical") c.critical++;
+      if (k === "urgent") c.urgent++;
+      if (k === "routine") c.routine++;
+      if ((p.visit?.appointmentType ?? "").toLowerCase() === "virtual") c.virtual++;
+    }
+    return c;
+  }, [patients]);
+
+  const medianWaitMinutes = useMemo(() => {
+    if (!patients.length) return 0;
+    const sorted = [...patients].map((p) => getWaitMinutes(p.visit)).sort((a, b) => a - b);
+    return sorted[Math.floor(sorted.length / 2)] ?? 0;
+  }, [patients]);
 
   React.useEffect(() => {
     try {
@@ -124,8 +180,6 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
     const target = visitId
       ? `/patients/${patientId}/new-visit?visitId=${visitId}`
       : `/patients/${patientId}/new-visit`;
-
-    // Use a full navigation so the edit surface loads from a fresh server render.
     window.location.assign(target);
   };
 
@@ -136,14 +190,9 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
   ) => {
     e.preventDefault();
     e.stopPropagation();
-
     setLoadingPatientId(patientId);
-
     try {
-      if (visitId) {
-        await assignVisitToMeAction(visitId);
-      }
-
+      if (visitId) await assignVisitToMeAction(visitId);
       navigateToVisitEditor(patientId, visitId);
     } catch (error) {
       console.error("Error assigning visit:", error);
@@ -153,246 +202,52 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
     }
   };
 
-  // Calculate wait time in minutes
-  const getWaitTime = (visit: VisitInfo | null): number => {
-    if (!visit || !visit.createdAt) return 0;
-    const now = new Date();
-    const visitTime = new Date(visit.createdAt);
-    const diffMs = now.getTime() - visitTime.getTime();
-    return Math.floor(diffMs / (1000 * 60)); // Convert to minutes
-  };
-
-  // Format wait time display
-  const formatWaitTime = (minutes: number): string => {
-    if (minutes < 60) {
-      return `${minutes}m`;
-    }
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
-  };
-
-  // Get priority badge variant
-  const getPriorityBadge = (priority: string | null) => {
-    if (!priority) {
-      return { variant: "secondary" as const, label: "Not Set" };
-    }
-    const priorityLower = priority.toLowerCase();
-    if (priorityLower === "critical" || priorityLower === "urgent") {
-      return {
-        variant: "destructive" as const,
-        label: priority,
-        className: "bg-red-500 text-white border-red-600 dark:bg-red-600 dark:text-white"
-      };
-    }
-    if (priorityLower === "mild" || priorityLower === "low") {
-      return { variant: "default" as const, label: priority };
-    }
-    return { variant: "outline" as const, label: priority };
-  };
-
-  // Get appointment type badge
-  const getAppointmentTypeBadge = (type: string | null) => {
-    if (!type) {
-      return { variant: "secondary" as const, label: "Not Set" };
-    }
-    const typeLower = type.toLowerCase();
-    if (typeLower === "in-person" || typeLower === "in person") {
-      return { variant: "default" as const, label: "In-Person", className: "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500" };
-    }
-    if (typeLower === "virtual") {
-      return { variant: "default" as const, label: "Virtual", className: "bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500" };
-    }
-    return { variant: "outline" as const, label: type };
-  };
-
-  const formatScheduledTime = (visit: VisitInfo | null) => {
-    if (!visit?.createdAt) {
-      return "Unscheduled";
-    }
-
-    return new Intl.DateTimeFormat("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-    }).format(new Date(visit.createdAt));
-  };
-
-  const getArrivalStatusBadge = (status: string | null) => {
-    const normalized = status?.toLowerCase();
-    if (normalized === "waiting") {
-      return {
-        label: "Arrived",
-        className:
-          "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/40",
-      };
-    }
-
-    if (normalized === "in progress" || normalized === "in_progress") {
-      return {
-        label: "Roomed",
-        className:
-          "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/40",
-      };
-    }
-
-    return {
-      label: "Pending",
-      className:
-        "bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/40",
-    };
-  };
-
-  const getSlotTypeBadge = (visit: VisitInfo | null) => {
-    if (visit?.clinicianId) {
-      return {
-        label: "Designated",
-        className:
-          "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/40",
-      };
-    }
-
-    return {
-      label: "Free Slot",
-      className:
-        "bg-violet-500/10 text-violet-700 dark:text-violet-300 border-violet-500/40",
-    };
-  };
-
-  const formatHistorySummary = (entries: unknown, emptyLabel: string) => {
-    if (entries && typeof entries === "object" && !Array.isArray(entries)) {
-      return Object.entries(entries as Record<string, unknown>)
-        .filter(([, value]) => typeof value === "string" && value)
-        .slice(0, 3)
-        .map(([key, value]) => `${key}: ${value}`)
-        .join(", ") || emptyLabel;
-    }
-
-    if (!Array.isArray(entries) || entries.length === 0) {
-      return emptyLabel;
-    }
-
-    return entries
-      .slice(0, 3)
-      .map((entry) => {
-        if (typeof entry === "string") return entry;
-        if (entry && typeof entry === "object") {
-          const record = entry as Record<string, unknown>;
-          return (
-            (typeof record.condition === "string" && record.condition) ||
-            (typeof record.relationship === "string" && record.relationship) ||
-            (typeof record.brandName === "string" && record.brandName) ||
-            (typeof record.name === "string" && record.name) ||
-            (typeof record.status === "string" && record.status) ||
-            "Not specified"
-          );
-        }
-
-        return "Not specified";
-      })
-      .join(", ");
-  };
-
-  const handleAlertAcknowledged = (patientId: string, visitId?: string | null) => {
-    const key = `${patientId}:${visitId ?? "no-visit"}`;
-    setAcknowledgedAlerts((current) => ({
-      ...current,
-      [key]: true,
-    }));
-    toast.success("Urgent alert acknowledged");
-  };
-
-  const openSnapshot = async (patientId: string) => {
-    setSnapshotPatientId(patientId);
-    setIsSnapshotLoading(true);
-    setSnapshotData(null);
-
-    try {
-      const response = await fetch(`/api/patients/${patientId}`);
-      if (!response.ok) {
-        throw new Error("Unable to load patient snapshot");
+  const filteredSorted = useMemo(() => {
+    const q = searchQuery.toLowerCase();
+    const out = patients.filter((p) => {
+      if (q) {
+        const match =
+          p.fullName.toLowerCase().includes(q) ||
+          (p.visit?.priority?.toLowerCase().includes(q) ?? false) ||
+          (p.visit?.appointmentType?.toLowerCase().includes(q) ?? false);
+        if (!match) return false;
       }
-
-      const data = (await response.json()) as PatientSnapshot;
-      setSnapshotData(data);
-    } catch (error) {
-      console.error("Error loading patient snapshot:", error);
-      toast.error("Unable to load patient snapshot");
-    } finally {
-      setIsSnapshotLoading(false);
-    }
-  };
-
-  // Filter and sort patients
-  const filteredAndSortedPatients = useMemo(() => {
-    const selectedDateKey = selectedDate.toDateString();
-    const filtered = patients.filter(patient => {
-      const visitDate = patient.visit?.createdAt
-        ? new Date(patient.visit.createdAt).toDateString()
-        : patient.createdAt
-          ? new Date(patient.createdAt).toDateString()
-          : "";
-
-      if (visitDate !== selectedDateKey) {
-        return false;
-      }
-
-      if (!searchQuery) return true;
-      const query = searchQuery.toLowerCase();
-      return (
-        patient.fullName.toLowerCase().includes(query) ||
-        (patient.visit?.priority?.toLowerCase().includes(query) ?? false) ||
-        (patient.visit?.appointmentType?.toLowerCase().includes(query) ?? false) ||
-        (patient.visit?.chiefComplaint?.toLowerCase().includes(query) ?? false)
-      );
+      if (filter === "all") return true;
+      if (filter === "virtual") return (p.visit?.appointmentType ?? "").toLowerCase() === "virtual";
+      return priorityKey(p.visit?.priority ?? null) === filter;
     });
 
-    // Sort
-    filtered.sort((a, b) => {
-      let aValue: string | number;
-      let bValue: string | number;
-
+    out.sort((a, b) => {
+      let aVal: string | number;
+      let bVal: string | number;
       switch (sortField) {
         case "name":
-          aValue = a.fullName.toLowerCase();
-          bValue = b.fullName.toLowerCase();
+          aVal = a.fullName.toLowerCase();
+          bVal = b.fullName.toLowerCase();
           break;
         case "waitTime":
-          aValue = getWaitTime(a.visit);
-          bValue = getWaitTime(b.visit);
+          aVal = getWaitMinutes(a.visit);
+          bVal = getWaitMinutes(b.visit);
           break;
-        case "priority":
-          aValue = a.visit?.priority?.toLowerCase() || "zzz";
-          bValue = b.visit?.priority?.toLowerCase() || "zzz";
-          // Custom priority order: critical > urgent > mild > others
-          const priorityOrder: Record<string, number> = { critical: 0, urgent: 1, mild: 2 };
-          aValue = priorityOrder[aValue as string] ?? 999;
-          bValue = priorityOrder[bValue as string] ?? 999;
+        case "priority": {
+          const order: Record<string, number> = { critical: 0, urgent: 1, routine: 2, none: 3 };
+          aVal = order[priorityKey(a.visit?.priority ?? null)] ?? 999;
+          bVal = order[priorityKey(b.visit?.priority ?? null)] ?? 999;
           break;
+        }
         case "appointmentType":
-          aValue = a.visit?.appointmentType?.toLowerCase() || "zzz";
-          bValue = b.visit?.appointmentType?.toLowerCase() || "zzz";
+          aVal = a.visit?.appointmentType?.toLowerCase() || "zzz";
+          bVal = b.visit?.appointmentType?.toLowerCase() || "zzz";
           break;
         default:
           return 0;
       }
-
-      if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
-      if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
+      if (aVal < bVal) return sortDirection === "asc" ? -1 : 1;
+      if (aVal > bVal) return sortDirection === "asc" ? 1 : -1;
       return 0;
     });
-
-    return filtered;
-  }, [patients, searchQuery, selectedDate, sortField, sortDirection]);
-
-  const urgentAlerts = useMemo(() => {
-    return filteredAndSortedPatients.filter((patient) => {
-      const isUrgent =
-        patient.visit?.priority?.toLowerCase() === "critical" ||
-        patient.visit?.priority?.toLowerCase() === "urgent";
-      const ackKey = `${patient.id}:${patient.visit?.id ?? "no-visit"}`;
-      return isUrgent && !acknowledgedAlerts[ackKey];
-    });
-  }, [acknowledgedAlerts, filteredAndSortedPatients]);
+    return out;
+  }, [patients, searchQuery, sortField, sortDirection, filter]);
 
   const handleSortChange = (field: SortField) => {
     if (sortField === field) {
@@ -405,419 +260,306 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
 
   // Sync search with top bar search input
   React.useEffect(() => {
-    const topBarSearch = document.getElementById("waiting-room-search") as HTMLInputElement;
-    if (topBarSearch) {
-      const handleInput = (e: Event) => {
-        const target = e.target as HTMLInputElement;
-        setSearchQuery(target.value);
-      };
-      topBarSearch.addEventListener("input", handleInput);
-      // Sync initial value
-      if (topBarSearch.value !== searchQuery) {
-        topBarSearch.value = searchQuery;
-      }
-      return () => {
-        topBarSearch.removeEventListener("input", handleInput);
-      };
-    }
+    const topBarSearch = document.getElementById("waiting-room-search") as HTMLInputElement | null;
+    if (!topBarSearch) return;
+    const handleInput = (e: Event) => setSearchQuery((e.target as HTMLInputElement).value);
+    topBarSearch.addEventListener("input", handleInput);
+    if (topBarSearch.value !== searchQuery) topBarSearch.value = searchQuery;
+    return () => topBarSearch.removeEventListener("input", handleInput);
   }, [searchQuery]);
 
-  // Update top bar search when searchQuery changes (for external updates)
-  React.useEffect(() => {
-    const topBarSearch = document.getElementById("waiting-room-search") as HTMLInputElement;
-    if (topBarSearch && topBarSearch.value !== searchQuery) {
-      topBarSearch.value = searchQuery;
-    }
-  }, [searchQuery]);
+  const today = new Date();
+  const formattedDate = today.toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
 
   return (
-    <div className="space-y-6 p-4 md:p-6">
-      {/* Header Area */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-6 px-4 py-6 md:px-8 md:py-8">
+      {/* Header */}
+      <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-end">
         <div>
-          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
-            Schedule
-          </h2>
-          <p className="mt-0.5 text-sm text-slate-500">
+          <div
+            className="text-[11.5px] uppercase"
+            style={{ color: "var(--ink-3)", letterSpacing: "0.12em" }}
+          >
+            {formattedDate}
+          </div>
+          <h1
+            className="serif mt-1.5"
+            style={{
+              fontSize: "clamp(32px, 4vw, 44px)",
+              lineHeight: 1,
+              letterSpacing: "-0.02em",
+              color: "var(--ink)",
+              margin: 0,
+            }}
+          >
+            Waiting room
+          </h1>
+          <p className="mt-2 max-w-xl text-[13.5px]" style={{ color: "var(--ink-2)" }}>
             {userRole === "nurse"
-              ? "Review today’s assigned schedule and incoming visits."
+              ? "Review today's assigned schedule and incoming visits."
               : "Review the physician schedule and assign incoming patient visits."}
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1 rounded-full border border-slate-200 bg-white px-1 py-1 dark:border-slate-800 dark:bg-slate-900">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 rounded-full"
-              onClick={() =>
-                setSelectedDate((current) => {
-                  const next = new Date(current);
-                  next.setDate(current.getDate() - 1);
-                  return next;
-                })
-              }
-            >
-              <ArrowLeft className="h-4 w-4" />
-              <span className="sr-only">Previous day</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="rounded-full px-3 text-xs font-semibold uppercase tracking-wider"
-              onClick={() => setSelectedDate(new Date())}
-            >
-              {selectedDate.toDateString() === new Date().toDateString()
-                ? "Today"
-                : selectedDate.toLocaleDateString()}
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 rounded-full"
-              onClick={() =>
-                setSelectedDate((current) => {
-                  const next = new Date(current);
-                  next.setDate(current.getDate() + 1);
-                  return next;
-                })
-              }
-            >
-              <ArrowRight className="h-4 w-4" />
-              <span className="sr-only">Next day</span>
-            </Button>
-          </div>
-          <Button
-            variant="ghost"
+        <div className="flex-1" />
+        <div className="flex items-center gap-2">
+          <Btn
+            kind="ghost"
             size="sm"
+            icon={<RefreshCw className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")} />}
             onClick={handleRefresh}
             disabled={isRefreshing}
-            className="rounded-full px-4 hover:bg-white dark:hover:bg-slate-800 border border-slate-200 transition-all"
           >
-            <RefreshCw className={`h-4 w-4 mr-2 text-slate-500 ${isRefreshing ? "animate-spin" : ""}`} />
-            <span className="text-xs font-bold text-slate-600 uppercase tracking-widest">{isRefreshing ? "Syncing..." : "Sync"}</span>
-          </Button>
-          <div className="h-8 w-px bg-slate-200 dark:bg-slate-800 hidden sm:block" />
-          <div className="flex items-center gap-2">
-            <Select value={sortField} onValueChange={(value) => handleSortChange(value as SortField)}>
-              <SelectTrigger className="w-[160px] h-9 rounded-full bg-white dark:bg-slate-900 border border-slate-100 text-xs font-bold uppercase tracking-widest">
-                <SelectValue placeholder="Sort by" />
-              </SelectTrigger>
-              <SelectContent className="rounded-xl">
-                <SelectItem value="waitTime">Wait Time</SelectItem>
-                <SelectItem value="priority">Priority</SelectItem>
-                <SelectItem value="name">Name</SelectItem>
-                <SelectItem value="appointmentType">Appointment Type</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-9 w-9 rounded-full border border-slate-100 bg-white dark:bg-slate-900"
-              onClick={() => setSortDirection(sortDirection === "asc" ? "desc" : "asc")}
-            >
-              <ArrowUpDown className="h-4 w-4 text-slate-600" />
-            </Button>
-          </div>
+            {isRefreshing ? "Syncing…" : "Auto-refresh on"}
+          </Btn>
         </div>
       </div>
 
-      {urgentAlerts.length > 0 && (
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {urgentAlerts.map((patient) => (
-            <Card key={`alert:${patient.id}`} className="border-red-200 bg-red-50/80 dark:border-red-900/40 dark:bg-red-950/20">
-              <CardContent className="flex items-start justify-between gap-4 p-4">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-red-700 dark:text-red-300">
-                    <Siren className="h-4 w-4" />
-                    Critical alert
-                  </div>
-                  <div className="text-sm font-medium text-foreground">
-                    {patient.fullName}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {patient.visit?.priority || "Urgent priority"} •{" "}
-                    {patient.visit?.chiefComplaint || "Chief complaint pending"}
-                  </div>
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="border-red-300 bg-white/80 dark:border-red-800 dark:bg-slate-950"
-                  onClick={() => handleAlertAcknowledged(patient.id, patient.visit?.id)}
-                >
-                  Acknowledge
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {/* Patient Cards */}
-      <div className="grid gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
-        {filteredAndSortedPatients.map((patient) => {
-          const waitTime = getWaitTime(patient.visit);
-          const priorityBadge = getPriorityBadge(patient.visit?.priority ?? null);
-          const appointmentBadge = getAppointmentTypeBadge(patient.visit?.appointmentType ?? null);
-          const arrivalBadge = getArrivalStatusBadge(patient.visit?.status ?? null);
-          const slotTypeBadge = getSlotTypeBadge(patient.visit);
-          const isUrgent = patient.visit?.priority?.toLowerCase() === "critical" || patient.visit?.priority?.toLowerCase() === "urgent";
-
-          return (
-            <Card
-              key={patient.id}
-              className={cn(
-                "group relative rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden transition-all hover:shadow-md hover:translate-y-[-2px]",
-                isUrgent && "ring-2 ring-red-500/10"
-              )}
-            >
-              {isUrgent && (
-                <div className="absolute top-0 left-0 right-0 h-1 bg-red-500/50" />
-              )}
-              <CardContent className="p-5">
-                <div className="flex justify-between items-start mb-3">
-                  <div className="h-10 w-10 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-400 group-hover:bg-slate-900 group-hover:text-white transition-all">
-                    <User className="h-5 w-5" />
-                  </div>
-                  <div className="px-2.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 flex flex-col items-center min-w-[56px]">
-                     <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">Wait</span>
-                     <span className={cn(
-                       "text-sm font-medium",
-                       waitTime > 30 ? "text-red-500" : waitTime > 15 ? "text-orange-500" : "text-slate-700 dark:text-slate-200"
-                     )}>
-                       {waitTime > 0 ? formatWaitTime(waitTime) : "NEW"}
-                     </span>
-                  </div>
-                </div>
-
-                <div className="mb-3">
-                  <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-1.5">
-                    {patient.fullName}
-                  </h3>
-                  <div className="mb-2 text-sm text-slate-600 dark:text-slate-300">
-                    {patient.visit?.chiefComplaint || "Chief complaint pending"}
-                  </div>
-                  <div className="mb-2 grid grid-cols-2 gap-2 text-xs text-slate-500 dark:text-slate-400">
-                    <div>
-                      <span className="font-semibold text-slate-700 dark:text-slate-200">
-                        Time:
-                      </span>{" "}
-                      {formatScheduledTime(patient.visit)}
-                    </div>
-                    <div>
-                      <span className="font-semibold text-slate-700 dark:text-slate-200">
-                        Arrival:
-                      </span>{" "}
-                      {arrivalBadge.label}
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    <Badge
-                      variant={priorityBadge.variant}
-                      className={cn(
-                        "rounded-full px-3 py-0.5 text-[10px] font-medium uppercase tracking-wider h-5",
-                        priorityBadge.className
-                      )}
-                    >
-                      {priorityBadge.label}
-                    </Badge>
-                    <Badge
-                      variant={appointmentBadge.variant}
-                      className={cn(
-                        "rounded-full px-3 py-0.5 text-[10px] font-medium uppercase tracking-wider h-5",
-                        appointmentBadge.className
-                      )}
-                    >
-                      {appointmentBadge.label}
-                    </Badge>
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "rounded-full px-3 py-0.5 text-[10px] font-medium uppercase tracking-wider h-5",
-                        arrivalBadge.className
-                      )}
-                    >
-                      {arrivalBadge.label}
-                    </Badge>
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "rounded-full px-3 py-0.5 text-[10px] font-medium uppercase tracking-wider h-5",
-                        slotTypeBadge.className
-                      )}
-                    >
-                      {slotTypeBadge.label}
-                    </Badge>
-                  </div>
-                </div>
-
-                {/* Show virtual appointment actions if ready */}
-                <div className="space-y-3 pt-3 border-t border-slate-100 dark:border-slate-800">
-                  <div className="flex items-center justify-between gap-3 rounded-xl bg-slate-50/80 px-3 py-2 text-xs text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
-                    <span className="font-semibold uppercase tracking-wider">
-                      Snapshot
-                    </span>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 rounded-full px-3 text-xs"
-                      onClick={() => openSnapshot(patient.id)}
-                    >
-                      View
-                    </Button>
-                  </div>
-                  {(virtualVisitData[patient.id] ||
-                    (patient.visit?.appointmentType?.toLowerCase() === "virtual" &&
-                      patient.visit?.status === "In Progress" &&
-                      patient.visit?.patientJoinToken)) ? (
-                    <VirtualAppointmentActions
-                      joinUrl={
-                        typeof window !== 'undefined'
-                          ? `${window.location.origin}/visit/${virtualVisitData[patient.id]?.visitId || patient.visit?.id || ""}/call`
-                          : ""
-                      }
-                      onJoin={() => router.push(`/visit/${virtualVisitData[patient.id]?.visitId || patient.visit?.id || ""}/call`)}
-                    />
-                  ) : (
-                    <Button
-                      onClick={(e) => handleAssignToMe(patient.id, patient.visit?.id ?? null, e)}
-                      className="w-full"
-                      variant={isUrgent ? "default" : "secondary"}
-                      disabled={loadingPatientId === patient.id}
-                    >
-                      {loadingPatientId === patient.id ? "Assigning..." : "Assign To Me"}
-                    </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-
-      {filteredAndSortedPatients.length === 0 && (
-        <Card className="rounded-2xl border-dashed border-2 bg-transparent shadow-none">
-          <CardContent className="flex items-center justify-center py-16">
-            <div className="text-center">
-              <div className="h-12 w-12 bg-white dark:bg-slate-900 rounded-full border border-slate-100 flex items-center justify-center mx-auto mb-3">
-                 <RefreshCw className="h-5 w-5 text-slate-300" />
-              </div>
-              <p className="text-sm text-slate-500">
-                {userRole === "nurse"
-                  ? "No patients currently scheduled or waiting."
-                  : "No patients currently scheduled or awaiting assignment."}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <Dialog
-        open={snapshotPatientId !== null}
-        onOpenChange={(open) => {
-          if (!open) {
-            setSnapshotPatientId(null);
-            setSnapshotData(null);
-          }
+      {/* Summary strip */}
+      <div
+        className="grid overflow-hidden rounded-2xl"
+        style={{
+          gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+          border: "1px solid var(--line)",
+          background: "var(--card)",
         }}
       >
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Patient Snapshot</DialogTitle>
-            <DialogDescription>
-              Quick chart context without leaving the schedule board.
-            </DialogDescription>
-          </DialogHeader>
-          {isSnapshotLoading ? (
-            <div className="py-10 text-center text-sm text-muted-foreground">
-              Loading patient snapshot...
+        {[
+          { k: "In queue", v: counts.all, sub: "patients waiting", color: "var(--ink)" },
+          { k: "Critical", v: counts.critical, sub: "needs a clinician", color: "var(--critical)" },
+          { k: "Urgent", v: counts.urgent, sub: "within 30 min", color: "oklch(0.5 0.12 70)" },
+          { k: "Virtual", v: counts.virtual, sub: "telehealth visits", color: "var(--info)" },
+          { k: "Median wait", v: formatWait(medianWaitMinutes), sub: "across queue", color: "var(--ok)" },
+        ].map((m, i, arr) => (
+          <div
+            key={m.k}
+            className="flex flex-col gap-1 px-6 py-5"
+            style={{ borderRight: i < arr.length - 1 ? "1px solid var(--line)" : undefined }}
+          >
+            <div
+              className="text-[11px] uppercase"
+              style={{ color: "var(--ink-3)", letterSpacing: "0.1em" }}
+            >
+              {m.k}
             </div>
-          ) : snapshotData ? (
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="rounded-xl border p-4">
-                <div className="text-sm font-semibold">Patient</div>
-                <div className="mt-2 space-y-1 text-sm text-muted-foreground">
-                  <div className="font-medium text-foreground">
-                    {snapshotData.patient.fullName}
-                  </div>
-                  <div>DOB: {snapshotData.patient.dob || "Not recorded"}</div>
-                  <div>
-                    Chief complaint:{" "}
-                    {snapshotData.latestVisit?.chiefComplaint || "Pending"}
-                  </div>
-                  <div>
-                    Visit type:{" "}
-                    {snapshotData.latestVisit?.appointmentType || "Not specified"}
+            <div
+              className="serif"
+              style={{
+                fontSize: 36,
+                lineHeight: 0.95,
+                letterSpacing: "-0.02em",
+                color: m.color,
+              }}
+            >
+              {m.v}
+            </div>
+            <div className="text-[11.5px]" style={{ color: "var(--ink-3)" }}>
+              {m.sub}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filters + view toggle */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div
+          className="flex gap-1 rounded-full p-1"
+          style={{ border: "1px solid var(--line)", background: "var(--card)" }}
+        >
+          {([
+            ["all", `All ${counts.all}`],
+            ["critical", `Critical ${counts.critical}`],
+            ["urgent", `Urgent ${counts.urgent}`],
+            ["routine", `Routine ${counts.routine}`],
+            ["virtual", `Virtual ${counts.virtual}`],
+          ] as Array<[FilterKey, string]>).map(([k, label]) => {
+            const active = filter === k;
+            return (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setFilter(k)}
+                className="h-7 rounded-full px-3.5 text-[12.5px] font-medium tracking-tight transition-colors"
+                style={{
+                  background: active ? "var(--ink)" : "transparent",
+                  color: active ? "var(--paper)" : "var(--ink-2)",
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex-1" />
+
+        <div
+          className="flex items-center gap-1 rounded-[10px] p-1"
+          style={{ border: "1px solid var(--line)", background: "var(--card)" }}
+        >
+          {([
+            ["list", <ListIcon key="li" className="h-3.5 w-3.5" />] as const,
+            ["grid", <GridIcon key="gi" className="h-3.5 w-3.5" />] as const,
+          ]).map(([k, icon]) => {
+            const active = view === k;
+            return (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setView(k)}
+                className="inline-flex h-6 w-8 items-center justify-center rounded-md transition-colors"
+                style={{
+                  background: active ? "var(--paper-3)" : "transparent",
+                  color: active ? "var(--ink)" : "var(--ink-3)",
+                }}
+                aria-label={`${k} view`}
+              >
+                {icon}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex items-center gap-2 text-[12px]" style={{ color: "var(--ink-3)" }}>
+          <span>Sort by</span>
+          <Select value={sortField} onValueChange={(value) => handleSortChange(value as SortField)}>
+            <SelectTrigger className="h-8 min-w-[140px] rounded-md text-[12px]">
+              <SelectValue placeholder="Sort by" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="waitTime">Wait time</SelectItem>
+              <SelectItem value="priority">Priority</SelectItem>
+              <SelectItem value="name">Name</SelectItem>
+              <SelectItem value="appointmentType">Type</SelectItem>
+            </SelectContent>
+          </Select>
+          <button
+            type="button"
+            onClick={() => setSortDirection(sortDirection === "asc" ? "desc" : "asc")}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md"
+            style={{ border: "1px solid var(--line)", color: "var(--ink-2)" }}
+            aria-label="Reverse sort"
+          >
+            <ArrowUpDown className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Queue */}
+      <div
+        className={cn(
+          "gap-4",
+          view === "grid" ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3" : "flex flex-col"
+        )}
+      >
+        {filteredSorted.map((p) => {
+          const wait = getWaitMinutes(p.visit);
+          const pr = priorityPill(p.visit?.priority ?? null);
+          const ap = appointmentPill(p.visit?.appointmentType ?? null);
+          const isVirtualReady =
+            (p.visit?.appointmentType ?? "").toLowerCase() === "virtual" &&
+            p.visit?.status === "In Progress" &&
+            !!p.visit?.patientJoinToken;
+          const joinUrl =
+            typeof window !== "undefined" && p.visit?.id
+              ? `${window.location.origin}/visit/${p.visit.id}/call`
+              : "";
+
+          return (
+            <ClearingCard
+              key={p.id}
+              pad={0}
+              style={{
+                overflow: "hidden",
+                display: "flex",
+                flexDirection: "column",
+                borderLeft: `3px solid ${pr.accent}`,
+              }}
+            >
+              {/* Head */}
+              <div className="flex items-start gap-3 px-4.5 py-3.5">
+                <Avatar name={p.fullName} size={40} />
+                <div className="min-w-0 flex-1 leading-tight">
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <span
+                      className="serif nowrap"
+                      style={{ fontSize: 20, letterSpacing: "-0.015em", color: "var(--ink)" }}
+                    >
+                      {p.fullName}
+                    </span>
                   </div>
                 </div>
-              </div>
-              <div className="rounded-xl border p-4">
-                <div className="text-sm font-semibold">Vitals / risks</div>
-                <div className="mt-2 space-y-2 text-sm text-muted-foreground">
-                  <div>
-                    Latest vitals:{" "}
-                    {formatHistorySummary(
-                      snapshotData.patient.vitals as unknown[],
-                      "No vitals captured"
-                    )}
-                  </div>
-                  <div>
-                    Allergies:{" "}
-                    {formatHistorySummary(
-                      snapshotData.patient.allergies as unknown[],
-                      "No allergies recorded"
-                    )}
-                  </div>
+                <div className="flex flex-col items-end gap-1.5">
+                  <Pill tone={pr.tone} dot>
+                    {pr.label}
+                  </Pill>
+                  <Pill tone={ap.tone}>
+                    {ap.label === "Virtual" ? <Video className="h-3 w-3" /> : null}
+                    {ap.label}
+                  </Pill>
                 </div>
               </div>
-              <div className="rounded-xl border p-4 md:col-span-2">
-                <div className="text-sm font-semibold">Clinical context</div>
-                <div className="mt-2 grid gap-3 md:grid-cols-3 text-sm text-muted-foreground">
-                  <div>
-                    Medications:{" "}
-                    {formatHistorySummary(
-                      snapshotData.patient.currentMedications as unknown[],
-                      "No medications on file"
-                    )}
-                  </div>
-                  <div>
-                    PMH:{" "}
-                    {formatHistorySummary(
-                      snapshotData.patient.pastMedicalHistory as unknown[],
-                      "No PMH on file"
-                    )}
-                  </div>
-                  <div>
-                    Social/Family:{" "}
-                    {formatHistorySummary(
-                      [
-                        ...(Array.isArray(snapshotData.patient.socialHistory)
-                          ? snapshotData.patient.socialHistory
-                          : []),
-                        ...(Array.isArray(snapshotData.patient.familyHistory)
-                          ? snapshotData.patient.familyHistory
-                          : []),
-                      ],
-                      "No social or family concerns on file"
-                    )}
-                  </div>
+
+              {/* Footer */}
+              <div
+                className="flex flex-wrap items-center gap-2.5 px-4.5 py-2.5"
+                style={{
+                  background: "var(--paper-2)",
+                  borderTop: "1px solid var(--line)",
+                }}
+              >
+                <div className="flex items-center gap-1.5 text-[12px]" style={{ color: "var(--ink-3)" }}>
+                  <Clock className="h-3.5 w-3.5" />
+                  <span className="mono" style={{ color: "var(--ink)", fontWeight: 500 }}>
+                    {formatWait(wait)}
+                  </span>
                 </div>
+                <div className="h-3.5 w-px" style={{ background: "var(--line)" }} />
+                <div className="flex-1" />
+                {isVirtualReady ? (
+                  <VirtualAppointmentActions
+                    joinUrl={joinUrl}
+                    onJoin={() => router.push(`/visit/${p.visit?.id}/call`)}
+                  />
+                ) : (
+                  <Btn
+                    kind="accent"
+                    size="sm"
+                    disabled={loadingPatientId === p.id}
+                    onClick={(e) => handleAssignToMe(p.id, p.visit?.id ?? null, e)}
+                  >
+                    {loadingPatientId === p.id ? "Assigning…" : "Assign to me"}
+                  </Btn>
+                )}
               </div>
-            </div>
-          ) : (
-            <div className="py-10 text-center text-sm text-muted-foreground">
-              No patient snapshot available.
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+            </ClearingCard>
+          );
+        })}
+
+        {filteredSorted.length === 0 && (
+          <div
+            className="flex flex-col items-center justify-center gap-3 rounded-xl px-6 py-16 text-center"
+            style={{
+              border: "1px dashed var(--line-strong)",
+              color: "var(--ink-3)",
+            }}
+          >
+            <RefreshCw className="h-5 w-5" />
+            <p className="text-[13px]">
+              {userRole === "nurse"
+                ? "No patients currently scheduled or waiting."
+                : "No patients currently scheduled or awaiting assignment."}
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-// Virtual Appointment Actions Component
 function VirtualAppointmentActions({
   joinUrl,
   onJoin,
@@ -836,67 +578,44 @@ function VirtualAppointmentActions({
   };
 
   return (
-    <div className="space-y-2">
-      <Button onClick={onJoin} className="w-full" variant="default">
-        <Video className="h-4 w-4 mr-2" />
-        Join Call
-      </Button>
-      <div className="grid grid-cols-2 gap-3">
-        <Button
-          onClick={() => setShowQR(true)}
-          variant="outline"
-          className="rounded-xl h-10 font-bold"
-          size="sm"
-        >
-          <QrCode className="h-4 w-4 mr-2" />
-          QR Code
-        </Button>
-        <Button
-          onClick={handleCopy}
-          variant="outline"
-          className="rounded-xl h-10 font-bold"
-          size="sm"
-        >
-          {copied ? (
-            <>
-              <Check className="h-4 w-4 mr-2" />
-              Copied
-            </>
-          ) : (
-            <>
-              <Copy className="h-4 w-4 mr-2" />
-              Copy Link
-            </>
-          )}
-        </Button>
-      </div>
+    <div className="flex flex-wrap items-center gap-1.5">
+      <Btn kind="ghost" size="sm" icon={<QrCode className="h-3.5 w-3.5" />} onClick={() => setShowQR(true)}>
+        QR
+      </Btn>
+      <Btn
+        kind="ghost"
+        size="sm"
+        icon={copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+        onClick={handleCopy}
+      >
+        {copied ? "Copied" : "Copy link"}
+      </Btn>
+      <Btn kind="accent" size="sm" icon={<Video className="h-3.5 w-3.5" />} onClick={onJoin}>
+        Join call
+      </Btn>
       <Dialog open={showQR} onOpenChange={setShowQR}>
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>
-            <DialogTitle>Doctor Join Link</DialogTitle>
-            <DialogDescription>
-              Scan this QR code or copy the link to join the call
-            </DialogDescription>
+            <DialogTitle>Doctor join link</DialogTitle>
+            <DialogDescription>Scan this QR code or copy the link to join the call</DialogDescription>
           </DialogHeader>
           <div className="flex flex-col items-center gap-4 py-4">
-            <div className="p-4 bg-white rounded-lg">
+            <div className="rounded-lg bg-white p-4">
               <QRCodeSVG value={joinUrl} size={200} />
             </div>
             <div className="w-full space-y-2">
               <Input value={joinUrl} readOnly className="text-xs" />
-              <Button onClick={handleCopy} variant="outline" className="w-full" size="sm">
+              <Btn kind="ghost" full size="sm" onClick={handleCopy}>
                 {copied ? (
                   <>
-                    <Check className="h-4 w-4 mr-2" />
-                    Copied
+                    <Check className="mr-2 h-4 w-4" /> Copied
                   </>
                 ) : (
                   <>
-                    <Copy className="h-4 w-4 mr-2" />
-                    Copy Link
+                    <Copy className="mr-2 h-4 w-4" /> Copy link
                   </>
                 )}
-              </Button>
+              </Btn>
             </div>
           </div>
         </DialogContent>

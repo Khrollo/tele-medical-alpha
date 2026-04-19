@@ -10,7 +10,6 @@ export default async function NewPatientPage() {
         redirect("/sign-in");
     }
 
-    // Only doctors and nurses can create patients
     if (session.role !== "doctor" && session.role !== "nurse") {
         redirect("/");
     }
@@ -20,11 +19,32 @@ export default async function NewPatientPage() {
 
     return (
         <CreatePatientShell userRole={userRole} userName={userName}>
-            <div className="container mx-auto py-8 px-4 max-w-7xl">
+            <div className="container mx-auto max-w-7xl px-4 py-8">
                 <div className="mb-6">
-                    <h1 className="text-3xl font-bold text-foreground">Create New Patient</h1>
-                    <p className="text-muted-foreground mt-2">
-                        Enter patient information to create a new patient record.
+                    <div
+                        className="text-[11.5px] uppercase"
+                        style={{ color: "var(--ink-3)", letterSpacing: "0.12em" }}
+                    >
+                        Step 1 of 3 · Demographics
+                    </div>
+                    <h1
+                        className="serif mt-1.5"
+                        style={{
+                            fontSize: "clamp(32px, 4vw, 44px)",
+                            lineHeight: 1,
+                            letterSpacing: "-0.02em",
+                            color: "var(--ink)",
+                            margin: 0,
+                        }}
+                    >
+                        Let&rsquo;s meet the patient.
+                    </h1>
+                    <p
+                        className="mt-2 max-w-[620px] text-[14px]"
+                        style={{ color: "var(--ink-2)" }}
+                    >
+                        Speak the basics out loud — name, DOB, phone, insurance — and the assistant
+                        fills in the form. You confirm each field before anything saves.
                     </p>
                 </div>
                 <CreatePatientForm />
@@ -32,4 +52,3 @@ export default async function NewPatientPage() {
         </CreatePatientShell>
     );
 }
-

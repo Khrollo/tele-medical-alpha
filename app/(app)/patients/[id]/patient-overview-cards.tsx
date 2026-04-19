@@ -4,17 +4,30 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
-  Copy, Check, Video, ArrowUpRight, Target, Activity, Droplets,
-  ActivitySquare, Pill, Image as ImageIcon, HeartPulse,
-  History, AlertCircle
+  Activity,
+  AlertTriangle,
+  Check,
+  ClipboardList,
+  Copy,
+  FileText,
+  Heart,
+  History,
+  Pill as PillIcon,
+  Video,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
-import { LineChart, Line, AreaChart, Area, ResponsiveContainer, PieChart, Pie, Cell, XAxis, YAxis, Tooltip } from "recharts";
+
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import {
+  Btn,
+  ClearingCard,
+  Pill,
+  Sparkline,
+  type PillTone,
+} from "@/components/ui/clearing";
 
 interface PatientOverviewCardsProps {
   patient: {
@@ -54,160 +67,70 @@ interface PatientOverviewCardsProps {
   userRole: string;
 }
 
-type OverviewAllergy = {
-  name?: string;
-  type?: string;
-};
-
-type OverviewMedication = {
-  id?: string;
+type Allergy = { name?: string; type?: string; severity?: string; reaction?: string };
+type Medication = {
   brandName?: string;
   genericName?: string;
   name?: string;
-  medication?: string;
   dosage?: string;
   frequency?: string;
   status?: string;
 };
-
-type OverviewHistoryItem = {
-  condition?: string;
-  status?: string;
-  diagnosedDate?: string;
+type HistoryItem = { condition?: string; status?: string; diagnosedDate?: string };
+type VitalsEntry = {
+  date?: string;
+  bp?: string;
+  hr?: string;
+  temp?: string;
+  weight?: string;
+  spo2?: string;
+  rr?: string;
 };
 
-/**
- * Normalize JSONB data to array format
- */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.trim() !== "";
+function asNonEmptyString(v: unknown): v is string {
+  return typeof v === "string" && v.trim() !== "";
 }
-
 function normalizeList(data: unknown): Record<string, unknown>[] {
-  if (Array.isArray(data)) {
-    return data.filter(isRecord);
-  }
-
-  if (!isRecord(data)) {
-    return [];
-  }
-
-  if (Array.isArray(data.entries)) {
-    return data.entries.filter(isRecord);
-  }
-
+  if (Array.isArray(data)) return data.filter(isRecord);
+  if (!isRecord(data)) return [];
+  if (Array.isArray(data.entries)) return data.entries.filter(isRecord);
   return Object.values(data).filter(isRecord);
 }
-
-function normalizeAllergies(data: unknown): OverviewAllergy[] {
+function normalizeAllergies(data: unknown): Allergy[] {
   if (Array.isArray(data)) {
-    if (data.every(isRecord)) {
-      return data as OverviewAllergy[];
-    }
-
-    return data
-      .filter(isNonEmptyString)
-      .map<OverviewAllergy>((entry) => ({ name: entry.trim() }));
+    if (data.every(isRecord)) return data as Allergy[];
+    return data.filter(asNonEmptyString).map<Allergy>((entry) => ({ name: entry.trim() }));
   }
-
-  return normalizeList(data) as OverviewAllergy[];
+  return normalizeList(data) as Allergy[];
 }
-
-function normalizeMedications(data: unknown): OverviewMedication[] {
+function normalizeMedications(data: unknown): Medication[] {
   if (Array.isArray(data)) {
-    if (data.every(isRecord)) {
-      return data as OverviewMedication[];
-    }
-
-    return data
-      .filter(isNonEmptyString)
-      .map<OverviewMedication>((entry) => ({ name: entry.trim() }));
+    if (data.every(isRecord)) return data as Medication[];
+    return data.filter(asNonEmptyString).map<Medication>((entry) => ({ name: entry.trim() }));
   }
-
-  return normalizeList(data) as OverviewMedication[];
+  return normalizeList(data) as Medication[];
 }
-
-function normalizeVitals(data: unknown) {
-  if (Array.isArray(data)) {
-    return data.filter(isRecord) as Array<{
-      id?: string;
-      date?: string;
-      bp?: string;
-      hr?: string;
-      temp?: string;
-      weight?: string;
-      height?: string;
-      bmi?: string;
-      spo2?: string;
-      rr?: string;
-    }>;
-  }
-
-  if (!isRecord(data)) {
-    return [];
-  }
-
-  if (Array.isArray(data.entries)) {
-    return data.entries.filter(isRecord) as Array<{
-      id?: string;
-      date?: string;
-      bp?: string;
-      hr?: string;
-      temp?: string;
-      weight?: string;
-      height?: string;
-      bmi?: string;
-      spo2?: string;
-      rr?: string;
-    }>;
-  }
-
+function normalizeVitals(data: unknown): VitalsEntry[] {
+  if (Array.isArray(data)) return data.filter(isRecord) as VitalsEntry[];
+  if (!isRecord(data)) return [];
+  if (Array.isArray(data.entries)) return data.entries.filter(isRecord) as VitalsEntry[];
   if (
     "bp" in data ||
     "hr" in data ||
     "temp" in data ||
     "weight" in data ||
-    "height" in data ||
-    "bmi" in data ||
     "spo2" in data ||
     "rr" in data
   ) {
-    return [data] as Array<{
-      id?: string;
-      date?: string;
-      bp?: string;
-      hr?: string;
-      temp?: string;
-      weight?: string;
-      height?: string;
-      bmi?: string;
-      spo2?: string;
-      rr?: string;
-    }>;
+    return [data] as VitalsEntry[];
   }
-
   return Object.values(data).filter(
-    (value) =>
-      isRecord(value) &&
-      ("bp" in value || "hr" in value || "temp" in value || "weight" in value)
-  ) as Array<{
-    id?: string;
-    date?: string;
-    bp?: string;
-    hr?: string;
-    temp?: string;
-    weight?: string;
-    height?: string;
-    bmi?: string;
-    spo2?: string;
-    rr?: string;
-  }>;
+    (v) => isRecord(v) && ("bp" in v || "hr" in v || "temp" in v || "weight" in v)
+  ) as VitalsEntry[];
 }
-
 function normalizeJsonb(data: unknown): unknown[] {
   if (!data) return [];
   if (Array.isArray(data)) return data;
@@ -215,18 +138,21 @@ function normalizeJsonb(data: unknown): unknown[] {
   return [];
 }
 
-const generateBPData = (sys: number, dia: number) => {
-    return [
-        { sys: sys - 8, dia: dia - 4 },
-        { sys: sys + 3, dia: dia + 5 },
-        { sys: sys - 5, dia: dia - 2 },
-        { sys: sys + 6, dia: dia + 3 },
-        { sys: sys, dia: dia }
-    ];
-};
+function allergySeverityTone(sev?: string): PillTone {
+  const s = (sev ?? "").toLowerCase();
+  if (s.includes("severe") || s.includes("anaphyl")) return "critical";
+  if (s.includes("moderate")) return "warn";
+  return "neutral";
+}
+
+function medStatusTone(status?: string): "ok" | "warn" {
+  const s = (status ?? "").toLowerCase();
+  return s.includes("held") || s.includes("prn") ? "warn" : "ok";
+}
 
 export function PatientOverviewCards({
   patient,
+  stats,
   latestVisit,
   recentVisits,
 }: PatientOverviewCardsProps) {
@@ -236,10 +162,13 @@ export function PatientOverviewCards({
 
   const isVirtualVisitReady = () => {
     if (!latestVisit) return false;
-    const statusLower = latestVisit.status?.toLowerCase() || "";
-    if (statusLower === "signed & complete" || statusLower === "completed") return false;
-    return latestVisit.appointmentType?.toLowerCase() === "virtual" &&
-      latestVisit.clinicianId !== null && latestVisit.patientJoinToken !== null;
+    const s = latestVisit.status?.toLowerCase() || "";
+    if (s === "signed & complete" || s === "completed") return false;
+    return (
+      latestVisit.appointmentType?.toLowerCase() === "virtual" &&
+      latestVisit.clinicianId !== null &&
+      latestVisit.patientJoinToken !== null
+    );
   };
 
   const getJoinUrl = () => {
@@ -249,8 +178,7 @@ export function PatientOverviewCards({
   };
 
   const handleCopyLink = async () => {
-    const joinUrl = getJoinUrl();
-    await navigator.clipboard.writeText(joinUrl);
+    await navigator.clipboard.writeText(getJoinUrl());
     setCopied(true);
     toast.success("Link copied to clipboard");
     setTimeout(() => setCopied(false), 2000);
@@ -260,366 +188,418 @@ export function PatientOverviewCards({
     const joinUrl = getJoinUrl();
     if (joinUrl) router.push(joinUrl);
   };
+
   const allergies = normalizeAllergies(patient.allergies);
   const medications = normalizeMedications(patient.currentMedications);
-  const vitalsArray = normalizeVitals(patient.vitals);
+  const vitalsArray = normalizeVitals(patient.vitals).filter((v) => v.date);
+  const pastMedicalHistory = normalizeJsonb(patient.pastMedicalHistory) as HistoryItem[];
 
-  const pastMedicalHistory = normalizeJsonb(patient.pastMedicalHistory) as OverviewHistoryItem[];
+  const sortedVitals = [...vitalsArray].sort((a, b) => {
+    const da = a.date ? new Date(a.date).getTime() : 0;
+    const db = b.date ? new Date(b.date).getTime() : 0;
+    return da - db;
+  });
+  const latestVital = sortedVitals[sortedVitals.length - 1];
 
-  const latestVital = vitalsArray.length > 0
-    ? vitalsArray.sort((a, b) => {
-      const dateA = a.date ? new Date(a.date).getTime() : 0;
-      const dateB = b.date ? new Date(b.date).getTime() : 0;
-      return dateB - dateA;
-    })[0] : null;
+  const seriesFor = (
+    extractor: (v: VitalsEntry) => number | null
+  ): { series: number[]; latest: string | null } => {
+    const nums = sortedVitals
+      .map(extractor)
+      .filter((n): n is number => typeof n === "number" && Number.isFinite(n));
+    const latest = extractor(latestVital ?? {});
+    return {
+      series: nums,
+      latest: typeof latest === "number" && Number.isFinite(latest) ? `${latest}` : null,
+    };
+  };
 
-  const vitalsTrendData = [...vitalsArray]
-    .filter((entry) => entry.date)
-    .sort((a, b) => {
-      const dateA = a.date ? new Date(a.date).getTime() : 0;
-      const dateB = b.date ? new Date(b.date).getTime() : 0;
-      return dateA - dateB;
-    })
-    .map((entry) => {
-      const hrValue = entry.hr ? Number.parseFloat(entry.hr) : null;
-      const weightValue = entry.weight ? Number.parseFloat(entry.weight) : null;
-      const bpValue = entry.bp ?? "";
-      const systolicValue = bpValue.includes("/")
-        ? Number.parseFloat(bpValue.split("/")[0])
-        : null;
+  const systolic = seriesFor((v) =>
+    v.bp?.includes("/") ? Number.parseFloat(v.bp.split("/")[0]) : NaN
+  );
+  const hr = seriesFor((v) => (v.hr ? Number.parseFloat(v.hr) : NaN));
+  const temp = seriesFor((v) => (v.temp ? Number.parseFloat(v.temp) : NaN));
+  const spo2 = seriesFor((v) => (v.spo2 ? Number.parseFloat(v.spo2) : NaN));
+  const weight = seriesFor((v) => (v.weight ? Number.parseFloat(v.weight) : NaN));
+  const rr = seriesFor((v) => (v.rr ? Number.parseFloat(v.rr) : NaN));
 
-      return {
-        dateLabel: entry.date
-          ? new Date(entry.date).toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-            })
-          : "",
-        hr: Number.isFinite(hrValue as number) ? hrValue : null,
-        weight: Number.isFinite(weightValue as number) ? weightValue : null,
-        systolic: Number.isFinite(systolicValue as number) ? systolicValue : null,
-      };
-    })
-    .filter((entry) => entry.hr !== null || entry.weight !== null || entry.systolic !== null);
+  const vitalCells: Array<{ k: string; v: string; u: string; series: number[] }> = [
+    { k: "BP", v: latestVital?.bp ?? "—", u: "mmHg", series: systolic.series },
+    { k: "HR", v: hr.latest ?? "—", u: "bpm", series: hr.series },
+    { k: "Temp", v: temp.latest ?? "—", u: "°F", series: temp.series },
+    { k: "SpO₂", v: spo2.latest ?? "—", u: "%", series: spo2.series },
+    { k: "Weight", v: weight.latest ?? "—", u: "lb", series: weight.series },
+    { k: "Resp", v: rr.latest ?? "—", u: "/min", series: rr.series },
+  ];
 
-  const bpRaw = latestVital?.bp || null;
-  const sys = bpRaw ? parseInt(bpRaw.split("/")[0]) || null : null;
-  const dia = bpRaw ? parseInt(bpRaw.split("/")[1]) || null : null;
-  const hr = latestVital?.hr ? parseInt(latestVital.hr) || null : null;
-  const tempRaw = latestVital?.temp ? parseFloat(latestVital.temp) || null : null;
-
-  // Normalize temp to a pie scale roughly between 95 and 105 for visual gauge
-  const tempScale = tempRaw !== null ? Math.min(Math.max((tempRaw - 95) / 10 * 100, 0), 100) : 0;
+  const lastReading = latestVital?.date
+    ? new Date(latestVital.date).toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : null;
 
   return (
-    <div className="flex flex-col gap-8 pb-10">
-      
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        
-        {/* Left Col - Health Overview Widgets */}
-        <div className="lg:col-span-8">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                
-                {/* BP / Cells Widget */}
-                <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-6 border border-slate-100 dark:border-slate-800 flex flex-col relative h-[240px]">
-                  <div className="absolute top-6 right-6 h-8 w-8 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors">
-                    <ArrowUpRight className="h-4 w-4 text-slate-400" />
-                  </div>
-                  <div className="flex items-center gap-3 mb-6">
-                    <div className="h-12 w-12 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-500">
-                      <Droplets className="h-6 w-6" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-sm">Blood Pressure</h3>
-                      <div className="text-secondary-foreground font-bold text-2xl tracking-tight">
-                        {bpRaw ? <>{bpRaw} <span className="text-xs font-medium text-muted-foreground ml-1">mmHg</span></> : <span className="text-muted-foreground text-base">No data</span>}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex-1 w-full mt-auto -ml-2">
-                    {sys && dia ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={generateBPData(sys, dia)}>
-                        <defs>
-                            <linearGradient id="colorSys" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2}/>
-                                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                            </linearGradient>
-                        </defs>
-                        <Area type="monotone" dataKey="sys" stroke="#3b82f6" fillOpacity={1} fill="url(#colorSys)" strokeWidth={2.5} />
-                        <Area type="monotone" dataKey="dia" stroke="#ef4444" fillOpacity={0} strokeWidth={2.5} />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                    ) : (
-                      <div className="flex items-center justify-center h-full text-sm text-muted-foreground">Record vitals to see chart</div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Temp Gauge Visual Widget */}
-                <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-6 border border-slate-100 dark:border-slate-800 flex flex-col relative h-[240px]">
-                  <div className="absolute top-6 right-6 h-8 w-8 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors">
-                    <ArrowUpRight className="h-4 w-4 text-slate-400" />
-                  </div>
-                  <div className="flex items-center gap-3 mb-2 z-10">
-                    <div className="h-12 w-12 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-500">
-                      <Target className="h-6 w-6" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-sm">Vital Temp</h3>
-                      <div className="text-secondary-foreground font-bold text-2xl tracking-tight">
-                        {tempRaw !== null ? <>{tempRaw} <span className="text-xs font-medium text-muted-foreground ml-1">°F</span></> : <span className="text-muted-foreground text-base">No data</span>}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex-1 w-full relative mt-[-20px]">
-                    {tempRaw !== null ? (
-                    <>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={[{ value: tempScale }, { value: 100 - tempScale }]}
-                          cx="50%" cy="100%"
-                          startAngle={180} endAngle={0}
-                          innerRadius="75%" outerRadius="95%"
-                          dataKey="value"
-                          stroke="none"
-                          cornerRadius={8}
-                        >
-                          <Cell fill={tempRaw > 100 ? "#ef4444" : "#10b981"} />
-                          <Cell fill="#f1f5f9" />
-                        </Pie>
-                      </PieChart>
-                    </ResponsiveContainer>
-                    <div className="absolute bottom-1 left-1/2 -translate-x-1/2 text-xs font-semibold text-muted-foreground">Thermometer</div>
-                    </>
-                    ) : (
-                      <div className="flex items-center justify-center h-full text-sm text-muted-foreground">Record vitals to see gauge</div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Patient-Specific Vitals Trend Widget */}
-                <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-6 border border-slate-100 dark:border-slate-800 flex flex-col relative h-[240px]">
-                  <div className="absolute top-6 right-6 h-8 w-8 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors">
-                    <ArrowUpRight className="h-4 w-4 text-slate-400" />
-                  </div>
-                  <div className="flex items-center gap-3 mb-6 z-10">
-                    <div className="h-12 w-12 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-500">
-                      <HeartPulse className="h-6 w-6" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-sm">Vitals Over Time</h3>
-                      <div className="text-secondary-foreground font-bold text-2xl tracking-tight">
-                        {hr !== null ? (
-                          <>
-                            {hr} <span className="text-xs font-medium text-muted-foreground ml-1">latest bpm</span>
-                          </>
-                        ) : (
-                          <span className="text-muted-foreground text-base">No data</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex-1 w-full -ml-3 relative">
-                    {vitalsTrendData.length > 1 ? (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={vitalsTrendData}>
-                          <XAxis dataKey="dateLabel" hide />
-                          <YAxis hide />
-                          <Tooltip />
-                          <Line type="monotone" dataKey="hr" stroke="#ef4444" strokeWidth={2.5} dot={false} />
-                          <Line type="monotone" dataKey="systolic" stroke="#3b82f6" strokeWidth={2.5} dot={false} />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    ) : (
-                      <div className="flex items-center justify-center h-full text-sm text-muted-foreground">Record multiple vitals to see trend</div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Allergies Summary Widget */}
-                <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-6 border border-slate-100 dark:border-slate-800 flex flex-col relative h-[240px]">
-                  <div className="flex items-center gap-3 mb-6">
-                    <div className="h-12 w-12 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-500">
-                      <AlertCircle className="h-6 w-6" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-sm">Allergies</h3>
-                      <div className="text-secondary-foreground font-bold text-2xl tracking-tight">
-                        {allergies.length > 0 ? <>{allergies.length} <span className="text-xs font-medium text-muted-foreground ml-1">recorded</span></> : <span className="text-muted-foreground text-base">None recorded</span>}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex-1 overflow-hidden">
-                    {allergies.length > 0 ? (
-                      <div className="flex flex-wrap gap-2">
-                        {allergies.slice(0, 5).map((a, i) => (
-                          <span key={i} className="bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-full px-3 py-1 text-xs font-semibold">
-                            {a.name || 'Unknown'}
-                          </span>
-                        ))}
-                        {allergies.length > 5 && (
-                          <span className="bg-slate-100 dark:bg-slate-800 text-slate-600 rounded-full px-3 py-1 text-xs font-bold">+{allergies.length - 5} more</span>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-center h-full text-sm text-muted-foreground">No known allergies</div>
-                    )}
-                  </div>
-                </div>
-
+    <div className="flex flex-col gap-5 px-4 py-6 pb-10 md:px-8 md:py-8">
+      {/* Vitals strip */}
+        <ClearingCard pad={0}>
+          <div
+            className="flex flex-wrap items-center gap-2.5 px-5 py-4"
+            style={{ borderBottom: "1px solid var(--line)" }}
+          >
+            <Heart className="h-4 w-4" style={{ color: "var(--brand-ink)" }} />
+            <div className="serif" style={{ fontSize: 18, letterSpacing: "-0.01em", color: "var(--ink)" }}>
+              Vitals
             </div>
-        </div>
-
-        {/* Right Col - Recent Visits Timeline */}
-        <div className="lg:col-span-4">
-            <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-8 border border-slate-100 dark:border-slate-800 h-full min-h-[400px]">
-              <div className="flex items-center justify-between mb-8">
-                <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-linear-to-r from-slate-800 to-slate-500">Recent Visits</h2>
-                <div className="h-10 w-10 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center">
-                  <History className="h-5 w-5 text-slate-500" />
+            {lastReading && (
+              <Pill tone="ok" dot>
+                Last reading
+              </Pill>
+            )}
+            <div className="flex-1" />
+            <div className="text-[12px]" style={{ color: "var(--ink-3)" }}>
+              {lastReading ? `${lastReading}` : "No vitals recorded"}
+            </div>
+            <Link href={`/patients/${patient.id}/vitals`} className="shrink-0">
+              <Btn kind="plain" size="sm">
+                View trend
+              </Btn>
+            </Link>
+          </div>
+          <div
+            className="grid"
+            style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}
+          >
+            {vitalCells.map((x, i, arr) => (
+              <div
+                key={x.k}
+                className="px-5 py-4"
+                style={{ borderRight: i < arr.length - 1 ? "1px solid var(--line)" : undefined }}
+              >
+                <div
+                  className="text-[10.5px] uppercase"
+                  style={{ color: "var(--ink-3)", letterSpacing: "0.08em" }}
+                >
+                  {x.k}
+                </div>
+                <div className="mt-1 flex items-baseline gap-1.5">
+                  <span
+                    className="serif"
+                    style={{
+                      fontSize: 26,
+                      lineHeight: 1,
+                      letterSpacing: "-0.015em",
+                      color: "var(--ink)",
+                    }}
+                  >
+                    {x.v}
+                  </span>
+                  <span className="mono text-[10.5px]" style={{ color: "var(--ink-3)" }}>
+                    {x.u}
+                  </span>
+                </div>
+                <div className="mt-2">
+                  {x.series.length > 1 ? (
+                    <Sparkline data={x.series} w={110} h={24} />
+                  ) : (
+                    <div className="h-6 rounded-sm" style={{ background: "var(--paper-2)" }} />
+                  )}
                 </div>
               </div>
+            ))}
+          </div>
+        </ClearingCard>
 
-              <div className="relative border-l-[3px] border-slate-100 dark:border-slate-800 ml-[11px] space-y-8 pb-4">
-
-                {recentVisits.length > 0 ? recentVisits.map((visit, idx) => {
-                  const vDate = new Date(visit.createdAt).toLocaleDateString("en-US", {
-                    month: "short", day: "numeric", hour: "numeric", minute: "2-digit"
-                  });
-                  const statusColor = visit.status?.toLowerCase() === "signed & complete" || visit.status?.toLowerCase() === "completed"
-                    ? "bg-emerald-500"
-                    : visit.status?.toLowerCase() === "in progress"
-                    ? "bg-amber-500"
-                    : "bg-slate-300";
-
+        {/* Row: Meds / Allergies+Risks / Recent visits */}
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+          {/* Medications */}
+          <ClearingCard pad={0}>
+            <div
+              className="flex items-center gap-2 px-4 py-3.5"
+              style={{ borderBottom: "1px solid var(--line)" }}
+            >
+              <PillIcon className="h-4 w-4" style={{ color: "var(--brand-ink)" }} />
+              <div className="serif" style={{ fontSize: 17, color: "var(--ink)" }}>
+                Medications
+              </div>
+              <Pill tone="neutral" className="ml-auto">
+                {medications.length} active
+              </Pill>
+            </div>
+            <div>
+              {medications.length === 0 ? (
+                <div className="px-4 py-6 text-[13px]" style={{ color: "var(--ink-3)" }}>
+                  No active medications.
+                </div>
+              ) : (
+                medications.slice(0, 6).map((m, i, arr) => {
+                  const tone = medStatusTone(m.status);
                   return (
-                    <Link key={visit.id} href={`/patients/${patient.id}/visit-history`} className="relative pl-8 group block">
-                      <div className={`absolute -left-[10px] top-1.5 h-4 w-4 rounded-full border-[3.5px] border-white dark:border-slate-900 ${statusColor} group-hover:scale-125 transition-transform`} />
-                      {idx === 0 && (
-                        <div className="mb-1 inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                          Latest
-                        </div>
-                      )}
-
-                      <div className="mb-1 text-sm font-semibold text-slate-500">{vDate}</div>
-                      <div className="text-sm font-bold text-slate-800 dark:text-slate-200 capitalize">
-                        {visit.appointmentType || "Visit"}
-                      </div>
-                      <div className="text-xs font-medium text-slate-500 mt-0.5">{visit.status || "Unknown status"}</div>
-
-                      {idx === 0 && isVirtualVisitReady() && (
-                        <Button onClick={(e) => { e.preventDefault(); setShowVirtualModal(true); }} variant="secondary" className="rounded-full h-8 px-4 text-xs font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 border dark:border-none border-emerald-200 mt-2">
-                           <Video className="h-3.5 w-3.5 mr-2" /> Join Call
-                        </Button>
-                      )}
-                    </Link>
-                  );
-                }) : (
-                  <div className="relative pl-8">
-                     <div className="absolute -left-[9px] top-1 h-4 w-4 rounded-full border-[3px] border-white dark:border-slate-900 bg-slate-300" />
-                     <div className="text-sm font-semibold text-muted-foreground">No visits recorded</div>
-                  </div>
-                )}
-              </div>
-            </div>
-        </div>
-        <div className="col-span-full mt-4">
-            <h2 className="text-2xl font-bold mb-6 tracking-tight text-slate-900 dark:text-white">Disease history</h2>
-
-            <div className="flex overflow-x-auto gap-5 pb-6 thin-scrollbar snap-x">
-
-              {pastMedicalHistory.length > 0 ? pastMedicalHistory.map((pmh, idx) => {
-                 // Determine a pill badge and icon randomly or sequentially for visual demonstration of layout
-                 const iconPick = idx % 2 === 0 ? <ActivitySquare className="h-8 w-8 text-slate-400 stroke-[1.5]" /> : <ImageIcon className="h-8 w-8 text-slate-400 stroke-[1.5]" />;
-                 const hasMed = medications.length > idx;
-
-                 return (
-                  <div key={idx} className="bg-white dark:bg-slate-900 rounded-[2rem] p-5 border border-slate-100 dark:border-slate-800 min-w-[340px] flex gap-5 snap-start shrink-0 hover:-translate-y-1 transition-transform relative">
-
-                    {/* Visual Preview Left Block */}
-                    <div className="w-[100px] h-[120px] bg-slate-50 dark:bg-slate-800 rounded-[1.5rem] flex flex-col items-center justify-center shrink-0 overflow-hidden relative border border-slate-100">
-                       {iconPick}
-                       <div className="absolute top-2 left-2 h-6 w-6 rounded-full bg-white border border-slate-100 flex items-center justify-center">
-                          <Activity className="h-3 w-3 text-slate-600" />
-                       </div>
-                    </div>
-
-                    {/* Details Column */}
-                    <div className="flex flex-col flex-1 py-1">
-                      <div className="mb-2">
-                        <span className="font-bold text-[15px] leading-tight line-clamp-2 text-slate-800 dark:text-slate-100">
-                           {pmh.condition || 'Unnamed condition'}
+                    <div
+                      key={`${m.brandName ?? m.name ?? ""}-${i}`}
+                      className="px-4 py-2.5"
+                      style={{ borderBottom: i < arr.length - 1 ? "1px solid var(--line)" : undefined }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span
+                          aria-hidden
+                          className="h-1.5 w-1.5 rounded-full"
+                          style={{ background: tone === "warn" ? "var(--warn)" : "var(--ok)" }}
+                        />
+                        <span className="text-[13px] font-medium" style={{ color: "var(--ink)" }}>
+                          {m.brandName || m.genericName || m.name || "Medication"}
                         </span>
                       </div>
-                      <div className="flex items-center gap-2 mb-4 text-xs font-medium text-slate-500">
-                        {pmh.status && <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-[10px] font-bold uppercase">{pmh.status}</span>}
-                        {pmh.diagnosedDate && <span>{pmh.diagnosedDate}</span>}
-                        {!pmh.status && !pmh.diagnosedDate && <span className="text-slate-400">No details recorded</span>}
-                      </div>
-                      
-                      <div className="mt-auto">
-                        <div className="text-xs font-bold text-slate-800 mb-2">Medications</div>
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                           {hasMed ? (
-                             <>
-                               <div className="bg-slate-50 dark:bg-slate-800 border border-slate-100 rounded-full pl-1.5 pr-3 py-1 flex items-center gap-2">
-                                  <div className="h-5 w-5 rounded-full bg-white border border-slate-50 flex items-center justify-center">
-                                    <Pill className="h-3.5 w-3.5 text-blue-500" />
-                                  </div>
-                                  <span className="text-[11px] font-bold text-slate-600">{medications[idx].brandName || medications[idx].name || "Med"}</span>
-                               </div>
-                               {medications.length > idx + 1 && (
-                                  <div className="h-7 w-7 rounded-full bg-slate-800 text-white flex items-center justify-center text-[10px] font-bold">
-                                     +{medications.length - (idx + 1)}
-                                  </div>
-                               )}
-                             </>
-                           ) : (
-                             <span className="text-xs font-medium text-slate-400">No active prescriptions</span>
-                           )}
+                      {(m.dosage || m.frequency) && (
+                        <div className="mt-0.5 text-[12px]" style={{ color: "var(--ink-2)" }}>
+                          {[m.dosage, m.frequency].filter(Boolean).join(" · ")}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+            <div className="flex items-center gap-1.5 px-3 py-2.5">
+              <Link href={`/patients/${patient.id}/medications`}>
+                <Btn kind="plain" size="sm">
+                  Manage medications
+                </Btn>
+              </Link>
+            </div>
+          </ClearingCard>
+
+          {/* Allergies + Risks */}
+          <div className="flex flex-col gap-5">
+            <ClearingCard>
+              <div className="mb-2.5 flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4" style={{ color: "var(--critical)" }} />
+                <div className="serif" style={{ fontSize: 17, color: "var(--ink)" }}>
+                  Allergies
+                </div>
+                <Pill
+                  tone={allergies.length > 0 ? "critical" : "neutral"}
+                  dot={allergies.length > 0}
+                  className="ml-auto"
+                >
+                  {allergies.length > 0 ? `${allergies.length} active` : "None"}
+                </Pill>
+              </div>
+              {allergies.length === 0 ? (
+                <div className="text-[13px]" style={{ color: "var(--ink-3)" }}>
+                  No known drug allergies.
+                </div>
+              ) : (
+                allergies.slice(0, 4).map((a, i) => {
+                  const tone = allergySeverityTone(a.severity ?? a.type);
+                  return (
+                    <div
+                      key={`${a.name ?? "unknown"}-${i}`}
+                      className="flex gap-2.5 py-2"
+                      style={{ borderTop: "1px solid var(--line)" }}
+                    >
+                      <div
+                        aria-hidden
+                        style={{
+                          width: 3,
+                          alignSelf: "stretch",
+                          borderRadius: 4,
+                          background: tone === "critical" ? "var(--critical)" : "var(--warn)",
+                        }}
+                      />
+                      <div>
+                        <div className="text-[13px] font-medium" style={{ color: "var(--ink)" }}>
+                          {a.name ?? "Unknown"}
+                        </div>
+                        <div className="text-[11.5px]" style={{ color: "var(--ink-3)" }}>
+                          {[a.reaction, a.severity, a.type].filter(Boolean).join(" · ") || "No details recorded"}
                         </div>
                       </div>
                     </div>
-                  </div>
-                )
-              }) : (
-                 <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-8 border border-slate-100 text-slate-500 text-sm font-medium w-full flex items-center justify-center">
-                    No documented disease history.
-                 </div>
+                  );
+                })
               )}
+            </ClearingCard>
+
+            <ClearingCard>
+              <div className="mb-2.5 flex items-center gap-2">
+                <Activity className="h-4 w-4" style={{ color: "var(--warn)" }} />
+                <div className="serif" style={{ fontSize: 17, color: "var(--ink)" }}>
+                  Risk flags
+                </div>
+              </div>
+              {pastMedicalHistory.length === 0 ? (
+                <div className="text-[13px]" style={{ color: "var(--ink-3)" }}>
+                  No documented risk factors.
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {pastMedicalHistory.slice(0, 8).map((pmh, i) => (
+                    <Pill
+                      key={`${pmh.condition ?? "cond"}-${i}`}
+                      tone={(pmh.status ?? "").toLowerCase() === "active" ? "warn" : "neutral"}
+                    >
+                      {pmh.condition ?? "Unknown"}
+                    </Pill>
+                  ))}
+                </div>
+              )}
+            </ClearingCard>
+          </div>
+
+          {/* Recent visits */}
+          <ClearingCard pad={0}>
+            <div
+              className="flex items-center gap-2 px-4 py-3.5"
+              style={{ borderBottom: "1px solid var(--line)" }}
+            >
+              <History className="h-4 w-4" style={{ color: "var(--brand-ink)" }} />
+              <div className="serif" style={{ fontSize: 17, color: "var(--ink)" }}>
+                Recent visits
+              </div>
+              <Link href={`/patients/${patient.id}/visit-history`} className="ml-auto">
+                <Btn kind="plain" size="sm">
+                  All visits
+                </Btn>
+              </Link>
             </div>
+            {recentVisits.length === 0 ? (
+              <div className="px-4 py-6 text-[13px]" style={{ color: "var(--ink-3)" }}>
+                No visits recorded.
+              </div>
+            ) : (
+              recentVisits.slice(0, 4).map((v, i, arr) => (
+                <Link
+                  key={v.id}
+                  href={`/patients/${patient.id}/visit-history?visitId=${v.id}`}
+                  className="block px-4 py-2.5 transition-colors"
+                  style={{
+                    borderBottom: i < arr.length - 1 ? "1px solid var(--line)" : undefined,
+                    color: "var(--ink)",
+                  }}
+                  onMouseEnter={(e) => ((e.currentTarget as HTMLAnchorElement).style.background = "var(--paper-2)")}
+                  onMouseLeave={(e) => ((e.currentTarget as HTMLAnchorElement).style.background = "transparent")}
+                >
+                  <div className="flex items-baseline gap-2">
+                    <span className="mono text-[11px]" style={{ color: "var(--ink-3)", minWidth: 86 }}>
+                      {new Date(v.createdAt).toLocaleDateString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })}
+                    </span>
+                    <span className="text-[13px] font-medium" style={{ color: "var(--ink)" }}>
+                      {v.appointmentType || "Visit"}
+                    </span>
+                  </div>
+                  <div className="text-[11.5px]" style={{ color: "var(--ink-3)", paddingLeft: 94 }}>
+                    {v.status || "—"}
+                  </div>
+                </Link>
+              ))
+            )}
+            {isVirtualVisitReady() && (
+              <div className="flex justify-end p-3">
+                <Btn
+                  kind="accent"
+                  size="sm"
+                  icon={<Video className="h-3.5 w-3.5" />}
+                  onClick={() => setShowVirtualModal(true)}
+                >
+                  Join virtual visit
+                </Btn>
+              </div>
+            )}
+          </ClearingCard>
         </div>
 
-      </div>
+        {/* Row: Orders + Documents */}
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+          <ClearingCard>
+            <div className="mb-3 flex items-center gap-2">
+              <ClipboardList className="h-4 w-4" style={{ color: "var(--brand-ink)" }} />
+              <div className="serif" style={{ fontSize: 17, color: "var(--ink)" }}>
+                Pending orders
+              </div>
+              <Pill
+                tone={stats.ordersCount > 0 ? "warn" : "neutral"}
+                className="ml-auto"
+              >
+                {stats.ordersCount > 0 ? `${stats.ordersCount} awaiting` : "None"}
+              </Pill>
+            </div>
+            <div className="text-[13px]" style={{ color: "var(--ink-2)" }}>
+              {stats.ordersCount > 0 ? (
+                <Link
+                  href={`/patients/${patient.id}/orders`}
+                  className="inline-flex items-center gap-1.5 text-[12.5px] font-medium"
+                  style={{ color: "var(--ink)" }}
+                >
+                  View all orders →
+                </Link>
+              ) : (
+                "No pending orders."
+              )}
+            </div>
+          </ClearingCard>
 
-      {/* Virtual Visit Modal for Nurses remains functionally identical */}
+          <ClearingCard>
+            <div className="mb-3 flex items-center gap-2">
+              <FileText className="h-4 w-4" style={{ color: "var(--brand-ink)" }} />
+              <div className="serif" style={{ fontSize: 17, color: "var(--ink)" }}>
+                Documents
+              </div>
+              <Pill tone="neutral" className="ml-auto">
+                {stats.documentsCount} on file
+              </Pill>
+            </div>
+            <div className="text-[13px]" style={{ color: "var(--ink-2)" }}>
+              <Link
+                href={`/patients/${patient.id}/documents`}
+                className="inline-flex items-center gap-1.5 text-[12.5px] font-medium"
+                style={{ color: "var(--ink)" }}
+              >
+                Open document library →
+              </Link>
+            </div>
+          </ClearingCard>
+        </div>
+
       {showVirtualModal && isVirtualVisitReady() && (
         <Dialog open={showVirtualModal} onOpenChange={setShowVirtualModal}>
           <DialogContent className="sm:max-w-[500px]">
-             <DialogHeader>
-                <DialogTitle>Virtual Visit - Patient Join Link</DialogTitle>
-                <DialogDescription>
-                   Share this QR code or link with the patient to join the call
-                </DialogDescription>
-             </DialogHeader>
-             <div className="flex flex-col items-center gap-4 py-4">
-                <div className="p-4 bg-white rounded-lg">
-                   <QRCodeSVG value={getJoinUrl()} size={250} />
+            <DialogHeader>
+              <DialogTitle>Virtual visit — patient join link</DialogTitle>
+              <DialogDescription>
+                Share this QR code or link with the patient to join the call
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-col items-center gap-4 py-4">
+              <div className="rounded-lg bg-white p-4">
+                <QRCodeSVG value={getJoinUrl()} size={250} />
+              </div>
+              <div className="w-full space-y-3">
+                <Input value={getJoinUrl()} readOnly className="text-xs" />
+                <div className="flex gap-2">
+                  <Btn kind="ghost" size="sm" onClick={handleCopyLink} full>
+                    {copied ? (
+                      <>
+                        <Check className="mr-2 h-4 w-4" /> Copied
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="mr-2 h-4 w-4" /> Copy link
+                      </>
+                    )}
+                  </Btn>
+                  <Btn kind="accent" size="sm" onClick={handleJoinCall} full>
+                    <Video className="mr-2 h-4 w-4" /> Join as patient
+                  </Btn>
                 </div>
-                <div className="w-full space-y-3">
-                   <Input value={getJoinUrl()} readOnly className="text-xs" />
-                   <div className="flex gap-2">
-                      <Button onClick={handleCopyLink} variant="outline" className="flex-1" size="sm">
-                         {copied ? <><Check className="h-4 w-4 mr-2" /> Copied</> : <><Copy className="h-4 w-4 mr-2" /> Copy Link</>}
-                      </Button>
-                      <Button onClick={handleJoinCall} variant="default" className="flex-1" size="sm">
-                         <Video className="h-4 w-4 mr-2" /> Join as Patient
-                      </Button>
-                   </div>
-                </div>
-             </div>
+              </div>
+            </div>
           </DialogContent>
         </Dialog>
       )}

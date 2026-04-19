@@ -13,11 +13,10 @@ import {
   Search,
   Upload,
   UserRound,
+  Plus,
+  ScrollText,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -25,6 +24,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Btn,
+  ClearingCard,
+  Pill,
+  SubTabHeader,
+  type PillTone,
+} from "@/components/ui/clearing";
 import { formatDate, formatDateTime } from "@/app/_lib/utils/format-date";
 import type { PatientVisitLogResult } from "@/app/_lib/db/drizzle/queries/visit-log";
 
@@ -66,6 +72,50 @@ function getEventIcon(eventType: string) {
     default:
       return UserRound;
   }
+}
+
+function eventTypeTone(eventType: string): PillTone {
+  switch (eventType) {
+    case "finalized":
+      return "ok";
+    case "edited_after_signing":
+      return "warn";
+    case "visit_created":
+    case "created":
+      return "accent";
+    case "note_created":
+    case "note_updated":
+      return "info";
+    case "transcript_created":
+    case "document_uploaded":
+      return "neutral";
+    case "assigned":
+    case "assign_to_me":
+      return "info";
+    case "waiting":
+      return "warn";
+    case "in_progress":
+      return "accent";
+    default:
+      return "neutral";
+  }
+}
+
+function visitStatusTone(status: string | null | undefined): PillTone {
+  if (!status) return "neutral";
+  const s = status.toLowerCase();
+  if (
+    status === "Signed & Complete" ||
+    s === "signed" ||
+    s === "completed" ||
+    s === "signed & complete" ||
+    s === "finalized"
+  ) {
+    return "ok";
+  }
+  if (s === "waiting") return "warn";
+  if (s === "in progress" || s === "in_progress") return "accent";
+  return "neutral";
 }
 
 export function LogHistoryContent({ patientId, data }: LogHistoryContentProps) {
@@ -142,157 +192,351 @@ export function LogHistoryContent({ patientId, data }: LogHistoryContentProps) {
       .filter((visit): visit is NonNullable<typeof visit> => Boolean(visit));
   }, [data.visits, eventType, fromDate, searchQuery, toDate]);
 
+  const totalEvents = filteredVisits.reduce(
+    (acc, v) => acc + v.eventCount,
+    0
+  );
+  const totalTranscripts = filteredVisits.reduce(
+    (acc, v) => acc + v.transcriptCount,
+    0
+  );
+  const totalDocuments = filteredVisits.reduce(
+    (acc, v) => acc + v.documentCount,
+    0
+  );
+
+  const summaryMetrics = [
+    {
+      k: "Visits",
+      v: filteredVisits.length,
+      icon: CalendarDays,
+      tone: "var(--ink-3)" as const,
+    },
+    {
+      k: "Events",
+      v: totalEvents,
+      icon: ScrollText,
+      tone: "var(--ink-3)" as const,
+    },
+    {
+      k: "Transcripts",
+      v: totalTranscripts,
+      icon: Mic,
+      tone: "var(--ink-3)" as const,
+    },
+    {
+      k: "Documents",
+      v: totalDocuments,
+      icon: Upload,
+      tone: "var(--ink-3)" as const,
+    },
+  ];
+
   return (
-    <div className="flex flex-1 flex-col gap-8 p-4 md:p-8 bg-slate-50/30 dark:bg-transparent">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Visit Log</h1>
-          <p className="mt-1 text-sm font-medium text-slate-500">
-            Operational timeline for {data.patient.fullName}.
-          </p>
-        </div>
-        <Button asChild>
-          <Link href={`/patients/${patientId}/new-visit`}>Log New Visit</Link>
-        </Button>
+    <div className="flex flex-1 flex-col gap-5 px-4 py-6 md:px-8 md:py-8">
+      {/* Header */}
+      <SubTabHeader
+        eyebrow="Chart · Visit log"
+        title="Visit log"
+        subtitle={`Operational timeline for ${data.patient.fullName}.`}
+        actions={
+          <Link href={`/patients/${patientId}/new-visit`}>
+            <Btn kind="accent" icon={<Plus className="h-4 w-4" />}>
+              Log new visit
+            </Btn>
+          </Link>
+        }
+      />
+
+      {/* Summary strip */}
+      <div
+        className="grid overflow-hidden rounded-2xl"
+        style={{
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          border: "1px solid var(--line)",
+          background: "var(--card)",
+        }}
+      >
+        {summaryMetrics.map((m, i, arr) => {
+          const Icon = m.icon;
+          return (
+            <div
+              key={m.k}
+              className="flex flex-col gap-1.5 px-5 py-4"
+              style={{
+                borderRight:
+                  i < arr.length - 1 ? "1px solid var(--line)" : undefined,
+              }}
+            >
+              <div className="flex items-center justify-between">
+                <div
+                  className="text-[11px] uppercase"
+                  style={{
+                    color: "var(--ink-3)",
+                    letterSpacing: "0.1em",
+                  }}
+                >
+                  {m.k}
+                </div>
+                <Icon className="h-3.5 w-3.5" style={{ color: m.tone }} />
+              </div>
+              <div
+                className="serif"
+                style={{
+                  fontSize: 32,
+                  lineHeight: 0.95,
+                  letterSpacing: "-0.02em",
+                  color: "var(--ink)",
+                }}
+              >
+                {m.v}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      <Card className="rounded-[1.5rem] border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-        <CardContent className="p-6">
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px_180px_180px]">
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <Input
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Search by visit, event, actor, or summary..."
-                className="pl-11 rounded-xl bg-slate-50/50 border-slate-100 dark:bg-slate-800/50 dark:border-slate-800"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-slate-400" />
-              <Select value={eventType} onValueChange={setEventType}>
-                <SelectTrigger className="rounded-xl bg-slate-50/50 border-slate-100 dark:bg-slate-800/50 dark:border-slate-800">
-                  <SelectValue placeholder="Event type" />
-                </SelectTrigger>
-                <SelectContent className="rounded-xl">
-                  {Object.entries(EVENT_TYPE_LABELS).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>
-                      {label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <Input
-              type="date"
-              value={fromDate}
-              onChange={(event) => setFromDate(event.target.value)}
-              className="rounded-xl bg-slate-50/50 border-slate-100 dark:bg-slate-800/50 dark:border-slate-800"
+      {/* Filters */}
+      <ClearingCard>
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_180px_180px]">
+          <div className="relative">
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2"
+              style={{ color: "var(--ink-3)" }}
             />
             <Input
-              type="date"
-              value={toDate}
-              onChange={(event) => setToDate(event.target.value)}
-              className="rounded-xl bg-slate-50/50 border-slate-100 dark:bg-slate-800/50 dark:border-slate-800"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search by visit, event, actor, or summary..."
+              className="pl-10"
             />
           </div>
-        </CardContent>
-      </Card>
+          <div className="flex items-center gap-2">
+            <Filter
+              className="h-4 w-4 shrink-0"
+              style={{ color: "var(--ink-3)" }}
+            />
+            <Select value={eventType} onValueChange={setEventType}>
+              <SelectTrigger>
+                <SelectValue placeholder="Event type" />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(EVENT_TYPE_LABELS).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Input
+            type="date"
+            value={fromDate}
+            onChange={(event) => setFromDate(event.target.value)}
+          />
+          <Input
+            type="date"
+            value={toDate}
+            onChange={(event) => setToDate(event.target.value)}
+          />
+        </div>
+      </ClearingCard>
 
+      {/* Visits list */}
       {filteredVisits.length === 0 ? (
-        <Card className="rounded-[2rem] border-dashed border-2 bg-transparent shadow-none">
-          <CardContent className="flex items-center justify-center py-24">
-            <div className="text-center">
-              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
-                <ClipboardList className="h-8 w-8 text-slate-400" />
-              </div>
-              <p className="text-slate-500 font-medium">No visit log events match these filters.</p>
+        <ClearingCard>
+          <div className="flex flex-col items-center justify-center gap-3 py-16">
+            <div
+              className="flex h-14 w-14 items-center justify-center rounded-full"
+              style={{ background: "var(--paper-2)" }}
+            >
+              <ClipboardList
+                className="h-6 w-6"
+                style={{ color: "var(--ink-3)" }}
+              />
             </div>
-          </CardContent>
-        </Card>
+            <p
+              className="text-[13px]"
+              style={{ color: "var(--ink-3)" }}
+            >
+              No visit log events match these filters.
+            </p>
+          </div>
+        </ClearingCard>
       ) : (
-        <div className="space-y-5">
+        <div className="flex flex-col gap-4">
           {filteredVisits.map((visit) => {
             const isExpanded = expandedVisits.has(visit.id);
 
             return (
-              <Card key={visit.id} className="rounded-[2rem] border border-slate-100 bg-white dark:border-slate-800 dark:bg-slate-900">
-                <CardContent className="p-6">
-                  <div className="flex flex-col gap-5">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="space-y-3">
-                        <div className="flex flex-wrap items-center gap-3">
-                          <Badge variant="outline" className="rounded-full px-3 py-1 text-[10px] uppercase tracking-wider">
-                            {visit.appointmentType || "Visit"}
-                          </Badge>
-                          {visit.priority && (
-                            <Badge variant="secondary" className="rounded-full px-3 py-1 text-[10px] uppercase tracking-wider">
-                              {visit.priority}
-                            </Badge>
-                          )}
-                          <Badge variant="secondary" className="rounded-full px-3 py-1 text-[10px] uppercase tracking-wider">
-                            {visit.status || visit.notesStatus || "Draft"}
-                          </Badge>
-                        </div>
-                        <div>
-                          <p className="text-sm text-slate-500">Visit {visit.id}</p>
-                          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
-                            {visit.summary || "Operational visit timeline"}
-                          </h2>
-                        </div>
-                        <div className="flex flex-wrap gap-4 text-sm text-slate-500">
-                          <span>Started {formatDateTime(visit.createdAt)}</span>
-                          <span>{visit.transcriptCount} transcript{visit.transcriptCount === 1 ? "" : "s"}</span>
-                          <span>{visit.documentCount} document{visit.documentCount === 1 ? "" : "s"}</span>
-                          <span>{visit.eventCount} event{visit.eventCount === 1 ? "" : "s"}</span>
-                          {visit.clinicianName && <span>Clinician: {visit.clinicianName}</span>}
-                        </div>
+              <ClearingCard key={visit.id} pad={0}>
+                <div
+                  className="flex flex-col gap-4 px-5 py-4 lg:flex-row lg:items-start lg:justify-between"
+                  style={{ borderBottom: isExpanded ? "1px solid var(--line)" : undefined }}
+                >
+                  <div className="flex flex-col gap-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Pill tone="neutral">
+                        {visit.appointmentType || "Visit"}
+                      </Pill>
+                      {visit.priority && (
+                        <Pill tone="info">{visit.priority}</Pill>
+                      )}
+                      <Pill
+                        tone={visitStatusTone(
+                          visit.status || visit.notesStatus
+                        )}
+                        dot
+                      >
+                        {visit.status || visit.notesStatus || "Draft"}
+                      </Pill>
+                    </div>
+                    <div>
+                      <div
+                        className="mono text-[11px]"
+                        style={{ color: "var(--ink-3)" }}
+                      >
+                        Visit {visit.id}
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Button variant="outline" asChild>
-                          <Link href={`/patients/${patientId}/visit-history/${visit.id}`}>Open Visit</Link>
-                        </Button>
-                        <Button variant="ghost" onClick={() => toggleVisit(visit.id)}>
-                          {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                          <span className="ml-2">{isExpanded ? "Hide events" : "Show events"}</span>
-                        </Button>
+                      <div
+                        className="serif mt-0.5"
+                        style={{
+                          fontSize: 20,
+                          lineHeight: 1.1,
+                          letterSpacing: "-0.01em",
+                          color: "var(--ink)",
+                        }}
+                      >
+                        {visit.summary || "Operational visit timeline"}
                       </div>
                     </div>
+                    <div
+                      className="flex flex-wrap gap-x-4 gap-y-1 text-[12.5px]"
+                      style={{ color: "var(--ink-2)" }}
+                    >
+                      <span>
+                        Started{" "}
+                        <span className="mono" style={{ color: "var(--ink)" }}>
+                          {formatDateTime(visit.createdAt)}
+                        </span>
+                      </span>
+                      <span>
+                        {visit.transcriptCount} transcript
+                        {visit.transcriptCount === 1 ? "" : "s"}
+                      </span>
+                      <span>
+                        {visit.documentCount} document
+                        {visit.documentCount === 1 ? "" : "s"}
+                      </span>
+                      <span>
+                        {visit.eventCount} event
+                        {visit.eventCount === 1 ? "" : "s"}
+                      </span>
+                      {visit.clinicianName && (
+                        <span>Clinician: {visit.clinicianName}</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Link
+                      href={`/patients/${patientId}/visit-history/${visit.id}`}
+                    >
+                      <Btn kind="soft" size="sm">
+                        Open visit
+                      </Btn>
+                    </Link>
+                    <Btn
+                      kind="ghost"
+                      size="sm"
+                      icon={
+                        isExpanded ? (
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        ) : (
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        )
+                      }
+                      onClick={() => toggleVisit(visit.id)}
+                    >
+                      {isExpanded ? "Hide events" : "Show events"}
+                    </Btn>
+                  </div>
+                </div>
 
-                    {isExpanded && (
-                      <div className="space-y-3 border-t border-slate-100 pt-4 dark:border-slate-800">
-                        {visit.events.map((event) => {
-                          const EventIcon = getEventIcon(event.eventType);
+                {isExpanded && (
+                  <div>
+                    {visit.events.length === 0 ? (
+                      <div
+                        className="px-5 py-5 text-center text-[12.5px]"
+                        style={{ color: "var(--ink-3)" }}
+                      >
+                        No events match current filters for this visit.
+                      </div>
+                    ) : (
+                      visit.events.map((event, i, arr) => {
+                        const EventIcon = getEventIcon(event.eventType);
+                        const tone = eventTypeTone(event.eventType);
 
-                          return (
+                        return (
+                          <div
+                            key={event.id}
+                            className="flex gap-3 px-5 py-3.5"
+                            style={{
+                              borderBottom:
+                                i < arr.length - 1
+                                  ? "1px solid var(--line)"
+                                  : undefined,
+                            }}
+                          >
                             <div
-                              key={event.id}
-                              className="flex gap-4 rounded-2xl border border-slate-100 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/60"
+                              className="mono w-[160px] shrink-0 text-[11.5px] leading-5"
+                              style={{ color: "var(--ink-3)" }}
                             >
-                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-slate-500 shadow-sm dark:bg-slate-900">
-                                <EventIcon className="h-4 w-4" />
+                              <div style={{ color: "var(--ink)" }}>
+                                {formatDateTime(event.timestamp)}
                               </div>
-                              <div className="min-w-0 flex-1">
-                                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                                  <p className="font-medium text-slate-900 dark:text-white">{event.summary}</p>
-                                  <p className="text-xs uppercase tracking-wide text-slate-400">
-                                    {formatDateTime(event.timestamp)}
-                                  </p>
-                                </div>
-                                <div className="mt-1 flex flex-wrap gap-3 text-sm text-slate-500">
-                                  <span>{EVENT_TYPE_LABELS[event.eventType] || event.eventType}</span>
-                                  {event.actor && <span>By {event.actor}</span>}
-                                  <span>{formatDate(event.timestamp)}</span>
-                                </div>
+                              <div className="text-[10.5px]">
+                                {formatDate(event.timestamp)}
                               </div>
                             </div>
-                          );
-                        })}
-                      </div>
+                            <div
+                              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
+                              style={{
+                                background: "var(--paper-2)",
+                                border: "1px solid var(--line)",
+                                color: "var(--ink-2)",
+                              }}
+                            >
+                              <EventIcon className="h-3.5 w-3.5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <div
+                                  className="text-[13px] font-medium"
+                                  style={{ color: "var(--ink)" }}
+                                >
+                                  {event.summary}
+                                </div>
+                                <Pill tone={tone}>
+                                  {EVENT_TYPE_LABELS[event.eventType] ||
+                                    event.eventType}
+                                </Pill>
+                              </div>
+                              {event.actor && (
+                                <div
+                                  className="mt-0.5 text-[12px]"
+                                  style={{ color: "var(--ink-3)" }}
+                                >
+                                  By {event.actor}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })
                     )}
                   </div>
-                </CardContent>
-              </Card>
+                )}
+              </ClearingCard>
             );
           })}
         </div>

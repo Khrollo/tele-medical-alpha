@@ -14,19 +14,16 @@ export default async function PatientChartLayout({
 }) {
     const { id } = await params;
 
-    // Check authentication and role
     const session = await getServerSession();
 
     if (!session) {
         redirect("/sign-in");
     }
 
-    // Allow doctors and nurses
     if (session.role !== "doctor" && session.role !== "nurse") {
         redirect("/sign-in");
     }
 
-    // Verify patient exists
     const overview = await getPatientOverview(id);
 
     if (!overview) {
@@ -38,6 +35,12 @@ export default async function PatientChartLayout({
             <PatientChartShell
                 patientId={id}
                 patientName={overview.patient.fullName}
+                patient={{
+                    id: overview.patient.id,
+                    fullName: overview.patient.fullName,
+                    dob: overview.patient.dob,
+                    allergies: overview.patient.allergies,
+                }}
                 userRole={session.role}
                 userName={session.name}
             >
@@ -46,4 +49,3 @@ export default async function PatientChartLayout({
         </div>
     );
 }
-

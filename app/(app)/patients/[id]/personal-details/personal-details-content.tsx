@@ -6,8 +6,15 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import { Pencil, Save, X, Phone, User } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import {
+    Pencil,
+    Save,
+    X,
+    Phone,
+    User,
+    Stethoscope,
+    Heart,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -17,7 +24,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Btn, ClearingCard, SubTabHeader } from "@/components/ui/clearing";
 import { updatePatientPersonalDetails } from "./actions";
 
 const personalDetailsSchema = z.object({
@@ -68,6 +75,37 @@ interface PersonalDetailsContentProps {
         updatedAt: Date | string;
     };
     patientId: string;
+}
+
+function SectionHeader({
+    icon: Icon,
+    title,
+}: {
+    icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+    title: string;
+}) {
+    return (
+        <div className="mb-4 flex items-center gap-2">
+            <Icon className="h-4 w-4" style={{ color: "var(--ink-3)" }} />
+            <div
+                className="serif"
+                style={{ fontSize: 17, color: "var(--ink)", letterSpacing: "-0.01em" }}
+            >
+                {title}
+            </div>
+        </div>
+    );
+}
+
+function FieldDisplay({ value }: { value: string | null | undefined }) {
+    return (
+        <p
+            className="text-[13.5px]"
+            style={{ color: value ? "var(--ink)" : "var(--ink-3)" }}
+        >
+            {value || "Not provided"}
+        </p>
+    );
 }
 
 export function PersonalDetailsContent({
@@ -198,55 +236,50 @@ export function PersonalDetailsContent({
         }
     };
 
-    return (
-        <div className="flex flex-1 flex-col gap-6 p-6">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-3xl font-bold text-foreground">Personal Details</h1>
-                    <p className="mt-2 text-sm text-muted-foreground">
-                        Manage demographic and medical context fields.
-                    </p>
-                </div>
-                <div className="flex items-center gap-2">
-                    {isEditing ? (
-                        <>
-                            <Button
-                                variant="secondary"
-                                onClick={handleCancel}
-                                disabled={isSaving}
-                            >
-                                <X className="h-4 w-4 mr-2" />
-                                Cancel
-                            </Button>
-                            <Button
-                                onClick={form.handleSubmit(onSubmit)}
-                                disabled={isSaving}
-                            >
-                                <Save className="h-4 w-4 mr-2" />
-                                {isSaving ? "Saving..." : "Save"}
-                            </Button>
-                        </>
-                    ) : (
-                        <Button onClick={() => setIsEditing(true)}>
-                            <Pencil className="h-4 w-4 mr-2" />
-                            Edit
-                        </Button>
-                    )}
-                </div>
-            </div>
+    const actions = isEditing ? (
+        <>
+            <Btn
+                kind="ghost"
+                icon={<X className="h-4 w-4" />}
+                onClick={handleCancel}
+                disabled={isSaving}
+            >
+                Cancel
+            </Btn>
+            <Btn
+                kind="accent"
+                icon={<Save className="h-4 w-4" />}
+                onClick={form.handleSubmit(onSubmit)}
+                disabled={isSaving}
+            >
+                {isSaving ? "Saving…" : "Save"}
+            </Btn>
+        </>
+    ) : (
+        <Btn
+            kind="primary"
+            icon={<Pencil className="h-4 w-4" />}
+            onClick={() => setIsEditing(true)}
+        >
+            Edit
+        </Btn>
+    );
 
-            {/* Content Cards */}
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-                <div className="grid gap-6 lg:grid-cols-2">
-                    {/* Personal Details Card */}
-                    <Card className="rounded-2xl">
-                        <CardHeader className="border-b border-border">
-                            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                                PERSONAL DETAILS
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
+    return (
+        <div className="flex flex-1 flex-col gap-5 px-4 py-6 md:px-8 md:py-8">
+            <SubTabHeader
+                eyebrow="Chart · Personal details"
+                title="Personal details"
+                subtitle={`Manage demographic and medical context fields for ${patientData.fullName}.`}
+                actions={actions}
+            />
+
+            <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-5">
+                <div className="grid gap-5 lg:grid-cols-2">
+                    {/* Demographics Card */}
+                    <ClearingCard pad={20}>
+                        <SectionHeader icon={User} title="Demographics" />
+                        <div className="flex flex-col gap-4">
                             <div className="grid gap-4 sm:grid-cols-2">
                                 <div className="space-y-2">
                                     <Label htmlFor="lastName">Last name</Label>
@@ -258,15 +291,16 @@ export function PersonalDetailsContent({
                                                 placeholder="Last name"
                                             />
                                             {form.formState.errors.lastName && (
-                                                <p className="text-sm text-destructive">
+                                                <p
+                                                    className="text-[12.5px]"
+                                                    style={{ color: "var(--critical)" }}
+                                                >
                                                     {form.formState.errors.lastName.message}
                                                 </p>
                                             )}
                                         </>
                                     ) : (
-                                        <p className="text-sm text-foreground">
-                                            {lastName || "Not provided"}
-                                        </p>
+                                        <FieldDisplay value={lastName} />
                                     )}
                                 </div>
 
@@ -280,15 +314,16 @@ export function PersonalDetailsContent({
                                                 placeholder="First name"
                                             />
                                             {form.formState.errors.firstName && (
-                                                <p className="text-sm text-destructive">
+                                                <p
+                                                    className="text-[12.5px]"
+                                                    style={{ color: "var(--critical)" }}
+                                                >
                                                     {form.formState.errors.firstName.message}
                                                 </p>
                                             )}
                                         </>
                                     ) : (
-                                        <p className="text-sm text-foreground">
-                                            {firstName || "Not provided"}
-                                        </p>
+                                        <FieldDisplay value={firstName} />
                                     )}
                                 </div>
                             </div>
@@ -303,18 +338,105 @@ export function PersonalDetailsContent({
                                             {...form.register("dob")}
                                         />
                                         {form.formState.errors.dob && (
-                                            <p className="text-sm text-destructive">
+                                            <p
+                                                className="text-[12.5px]"
+                                                style={{ color: "var(--critical)" }}
+                                            >
                                                 {form.formState.errors.dob.message}
                                             </p>
                                         )}
                                     </>
                                 ) : (
-                                    <p className="text-sm text-foreground">
-                                        {formatDate(patientData.dob) || "Not provided"}
-                                    </p>
+                                    <FieldDisplay value={formatDate(patientData.dob)} />
                                 )}
                             </div>
 
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                <div className="space-y-2">
+                                    <Label htmlFor="sexAtBirth">Sex at birth</Label>
+                                    {isEditing ? (
+                                        <Select
+                                            value={form.watch("sexAtBirth") || undefined}
+                                            onValueChange={(value) =>
+                                                form.setValue(
+                                                    "sexAtBirth",
+                                                    value === "none" ? undefined : value,
+                                                    { shouldValidate: true }
+                                                )
+                                            }
+                                        >
+                                            <SelectTrigger id="sexAtBirth">
+                                                <SelectValue placeholder="Select sex at birth" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="none">Not specified</SelectItem>
+                                                <SelectItem value="Male">Male</SelectItem>
+                                                <SelectItem value="Female">Female</SelectItem>
+                                                <SelectItem value="Intersex">Intersex</SelectItem>
+                                                <SelectItem value="Unknown">Unknown</SelectItem>
+                                                <SelectItem value="Prefer not to say">
+                                                    Prefer not to say
+                                                </SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    ) : (
+                                        <FieldDisplay value={patientData.sexAtBirth} />
+                                    )}
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="genderIdentity">Gender identity</Label>
+                                    {isEditing ? (
+                                        <>
+                                            <Input
+                                                id="genderIdentity"
+                                                {...form.register("genderIdentity")}
+                                                placeholder="Gender identity"
+                                            />
+                                            {form.formState.errors.genderIdentity && (
+                                                <p
+                                                    className="text-[12.5px]"
+                                                    style={{ color: "var(--critical)" }}
+                                                >
+                                                    {form.formState.errors.genderIdentity.message}
+                                                </p>
+                                            )}
+                                        </>
+                                    ) : (
+                                        <FieldDisplay value={patientData.genderIdentity} />
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="primaryLanguage">Primary language</Label>
+                                {isEditing ? (
+                                    <>
+                                        <Input
+                                            id="primaryLanguage"
+                                            {...form.register("primaryLanguage")}
+                                            placeholder="Primary language"
+                                        />
+                                        {form.formState.errors.primaryLanguage && (
+                                            <p
+                                                className="text-[12.5px]"
+                                                style={{ color: "var(--critical)" }}
+                                            >
+                                                {form.formState.errors.primaryLanguage.message}
+                                            </p>
+                                        )}
+                                    </>
+                                ) : (
+                                    <FieldDisplay value={patientData.primaryLanguage} />
+                                )}
+                            </div>
+                        </div>
+                    </ClearingCard>
+
+                    {/* Contact Card */}
+                    <ClearingCard pad={20}>
+                        <SectionHeader icon={Phone} title="Contact" />
+                        <div className="flex flex-col gap-4">
                             <div className="space-y-2">
                                 <Label htmlFor="phone">Phone</Label>
                                 {isEditing ? (
@@ -326,37 +448,16 @@ export function PersonalDetailsContent({
                                             placeholder="Phone number"
                                         />
                                         {form.formState.errors.phone && (
-                                            <p className="text-sm text-destructive">
+                                            <p
+                                                className="text-[12.5px]"
+                                                style={{ color: "var(--critical)" }}
+                                            >
                                                 {form.formState.errors.phone.message}
                                             </p>
                                         )}
                                     </>
                                 ) : (
-                                    <p className="text-sm text-foreground">
-                                        {patientData.phone || "Not provided"}
-                                    </p>
-                                )}
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="address">Address</Label>
-                                {isEditing ? (
-                                    <>
-                                        <Input
-                                            id="address"
-                                            {...form.register("address")}
-                                            placeholder="Address"
-                                        />
-                                        {form.formState.errors.address && (
-                                            <p className="text-sm text-destructive">
-                                                {form.formState.errors.address.message}
-                                            </p>
-                                        )}
-                                    </>
-                                ) : (
-                                    <p className="text-sm text-foreground">
-                                        {patientData.address || "Not provided"}
-                                    </p>
+                                    <FieldDisplay value={patientData.phone} />
                                 )}
                             </div>
 
@@ -371,255 +472,209 @@ export function PersonalDetailsContent({
                                             placeholder="Email address"
                                         />
                                         {form.formState.errors.email && (
-                                            <p className="text-sm text-destructive">
+                                            <p
+                                                className="text-[12.5px]"
+                                                style={{ color: "var(--critical)" }}
+                                            >
                                                 {form.formState.errors.email.message}
                                             </p>
                                         )}
                                     </>
                                 ) : (
-                                    <p className="text-sm text-foreground">
-                                        {patientData.email || "Not provided"}
-                                    </p>
-                                )}
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    {/* Medical Information Card */}
-                    <Card className="rounded-2xl">
-                        <CardHeader className="border-b border-border">
-                            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                                MEDICAL INFORMATION
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="space-y-2">
-                                <Label>Clinician</Label>
-                                <div className="text-sm text-foreground">
-                                    {patientData.clinicianId ? (
-                                        <div>
-                                            <span className="font-medium">Assigned</span>
-                                            {patientData.clinicianName && (
-                                                <div className="text-muted-foreground mt-1">
-                                                    {patientData.clinicianName}
-                                                    {patientData.clinicianEmail && (
-                                                        <span className="block">{patientData.clinicianEmail}</span>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-                                    ) : (
-                                        "Unassigned"
-                                    )}
-                                </div>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label>Created</Label>
-                                <div className="text-sm text-foreground">
-                                    {formatDate(
-                                        patientData.createdAt instanceof Date
-                                            ? patientData.createdAt
-                                            : typeof patientData.createdAt === "string"
-                                                ? patientData.createdAt
-                                                : null
-                                    ) || "Not provided"}
-                                </div>
-                            </div>
-
-                            {/* Medical Context Fields */}
-                            <div className="space-y-2">
-                                <Label htmlFor="sexAtBirth">Sex at birth</Label>
-                                {isEditing ? (
-                                    <>
-                                        <Select
-                                            value={form.watch("sexAtBirth") || undefined}
-                                            onValueChange={(value) =>
-                                                form.setValue("sexAtBirth", value === "none" ? undefined : value, {
-                                                    shouldValidate: true,
-                                                })
-                                            }
-                                        >
-                                            <SelectTrigger id="sexAtBirth">
-                                                <SelectValue placeholder="Select sex at birth" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="none">Not specified</SelectItem>
-                                                <SelectItem value="Male">Male</SelectItem>
-                                                <SelectItem value="Female">Female</SelectItem>
-                                                <SelectItem value="Intersex">Intersex</SelectItem>
-                                                <SelectItem value="Unknown">Unknown</SelectItem>
-                                                <SelectItem value="Prefer not to say">Prefer not to say</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </>
-                                ) : (
-                                    <p className="text-sm text-foreground">
-                                        {patientData.sexAtBirth || "Not provided"}
-                                    </p>
+                                    <FieldDisplay value={patientData.email} />
                                 )}
                             </div>
 
                             <div className="space-y-2">
-                                <Label htmlFor="genderIdentity">Gender identity</Label>
+                                <Label htmlFor="address">Address</Label>
                                 {isEditing ? (
                                     <>
                                         <Input
-                                            id="genderIdentity"
-                                            {...form.register("genderIdentity")}
-                                            placeholder="Gender identity"
+                                            id="address"
+                                            {...form.register("address")}
+                                            placeholder="Address"
                                         />
-                                        {form.formState.errors.genderIdentity && (
-                                            <p className="text-sm text-destructive">
-                                                {form.formState.errors.genderIdentity.message}
+                                        {form.formState.errors.address && (
+                                            <p
+                                                className="text-[12.5px]"
+                                                style={{ color: "var(--critical)" }}
+                                            >
+                                                {form.formState.errors.address.message}
                                             </p>
                                         )}
                                     </>
                                 ) : (
-                                    <p className="text-sm text-foreground">
-                                        {patientData.genderIdentity || "Not provided"}
-                                    </p>
+                                    <FieldDisplay value={patientData.address} />
                                 )}
                             </div>
 
                             <div className="space-y-2">
-                                <Label htmlFor="primaryLanguage">Primary language</Label>
+                                <Label htmlFor="preferredCommMethod">
+                                    Preferred communication method
+                                </Label>
                                 {isEditing ? (
-                                    <>
-                                        <Input
-                                            id="primaryLanguage"
-                                            {...form.register("primaryLanguage")}
-                                            placeholder="Primary language"
-                                        />
-                                        {form.formState.errors.primaryLanguage && (
-                                            <p className="text-sm text-destructive">
-                                                {form.formState.errors.primaryLanguage.message}
-                                            </p>
-                                        )}
-                                    </>
+                                    <Select
+                                        value={form.watch("preferredCommMethod") || undefined}
+                                        onValueChange={(value) =>
+                                            form.setValue(
+                                                "preferredCommMethod",
+                                                value === "none" ? undefined : value,
+                                                { shouldValidate: true }
+                                            )
+                                        }
+                                    >
+                                        <SelectTrigger id="preferredCommMethod">
+                                            <SelectValue placeholder="Select method" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="none">Not specified</SelectItem>
+                                            <SelectItem value="Phone">Phone</SelectItem>
+                                            <SelectItem value="SMS">SMS</SelectItem>
+                                            <SelectItem value="Email">Email</SelectItem>
+                                            <SelectItem value="Portal">Portal</SelectItem>
+                                            <SelectItem value="Other">Other</SelectItem>
+                                        </SelectContent>
+                                    </Select>
                                 ) : (
-                                    <p className="text-sm text-foreground">
-                                        {patientData.primaryLanguage || "Not provided"}
-                                    </p>
-                                )}
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="preferredCommMethod">Preferred communication method</Label>
-                                {isEditing ? (
-                                    <>
-                                        <Select
-                                            value={form.watch("preferredCommMethod") || undefined}
-                                            onValueChange={(value) =>
-                                                form.setValue("preferredCommMethod", value === "none" ? undefined : value, {
-                                                    shouldValidate: true,
-                                                })
-                                            }
-                                        >
-                                            <SelectTrigger id="preferredCommMethod">
-                                                <SelectValue placeholder="Select method" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="none">Not specified</SelectItem>
-                                                <SelectItem value="Phone">Phone</SelectItem>
-                                                <SelectItem value="SMS">SMS</SelectItem>
-                                                <SelectItem value="Email">Email</SelectItem>
-                                                <SelectItem value="Portal">Portal</SelectItem>
-                                                <SelectItem value="Other">Other</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </>
-                                ) : (
-                                    <p className="text-sm text-foreground">
-                                        {patientData.preferredCommMethod || "Not provided"}
-                                    </p>
-                                )}
-                            </div>
-                        </CardContent>
-                    </Card>
-                </div>
-
-                {/* Emergency Contact Card - Full Width */}
-                <Card className="rounded-2xl">
-                    <CardHeader className="border-b border-border">
-                        <CardTitle className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                            <Phone className="h-3 w-3" />
-                            EMERGENCY CONTACT
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4 pt-4">
-                        <div className="grid gap-4 sm:grid-cols-3">
-                            <div className="space-y-2">
-                                <Label htmlFor="emergencyContactName">Full Name</Label>
-                                {isEditing ? (
-                                    <>
-                                        <Input
-                                            id="emergencyContactName"
-                                            {...form.register("emergencyContactName")}
-                                            placeholder="Emergency contact name"
-                                        />
-                                        {form.formState.errors.emergencyContactName && (
-                                            <p className="text-sm text-destructive">
-                                                {form.formState.errors.emergencyContactName.message}
-                                            </p>
-                                        )}
-                                    </>
-                                ) : (
-                                    <p className="text-sm text-foreground">
-                                        {patientData.emergencyContactName || "Not provided"}
-                                    </p>
-                                )}
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="emergencyContactRelationship">Relationship</Label>
-                                {isEditing ? (
-                                    <>
-                                        <Input
-                                            id="emergencyContactRelationship"
-                                            {...form.register("emergencyContactRelationship")}
-                                            placeholder="e.g., Spouse, Parent, Sibling"
-                                        />
-                                        {form.formState.errors.emergencyContactRelationship && (
-                                            <p className="text-sm text-destructive">
-                                                {form.formState.errors.emergencyContactRelationship.message}
-                                            </p>
-                                        )}
-                                    </>
-                                ) : (
-                                    <p className="text-sm text-foreground">
-                                        {patientData.emergencyContactRelationship || "Not provided"}
-                                    </p>
-                                )}
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="emergencyContactPhone">Phone</Label>
-                                {isEditing ? (
-                                    <>
-                                        <Input
-                                            id="emergencyContactPhone"
-                                            type="tel"
-                                            {...form.register("emergencyContactPhone")}
-                                            placeholder="Emergency contact phone"
-                                        />
-                                        {form.formState.errors.emergencyContactPhone && (
-                                            <p className="text-sm text-destructive">
-                                                {form.formState.errors.emergencyContactPhone.message}
-                                            </p>
-                                        )}
-                                    </>
-                                ) : (
-                                    <p className="text-sm text-foreground">
-                                        {patientData.emergencyContactPhone || "Not provided"}
-                                    </p>
+                                    <FieldDisplay value={patientData.preferredCommMethod} />
                                 )}
                             </div>
                         </div>
-                    </CardContent>
-                </Card>
+                    </ClearingCard>
+                </div>
+
+                {/* Care Team / Insurance Card - full width */}
+                <ClearingCard pad={20}>
+                    <SectionHeader icon={Stethoscope} title="Care team & record" />
+                    <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="space-y-2">
+                            <Label>Clinician</Label>
+                            {patientData.clinicianId ? (
+                                <div className="leading-tight">
+                                    <p
+                                        className="text-[13.5px] font-medium"
+                                        style={{ color: "var(--ink)" }}
+                                    >
+                                        {patientData.clinicianName || "Assigned"}
+                                    </p>
+                                    {patientData.clinicianEmail && (
+                                        <p
+                                            className="mono mt-1 text-[11.5px]"
+                                            style={{ color: "var(--ink-3)" }}
+                                        >
+                                            {patientData.clinicianEmail}
+                                        </p>
+                                    )}
+                                </div>
+                            ) : (
+                                <p
+                                    className="text-[13.5px]"
+                                    style={{ color: "var(--ink-3)" }}
+                                >
+                                    Unassigned
+                                </p>
+                            )}
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>Record created</Label>
+                            <p
+                                className="mono text-[12.5px]"
+                                style={{ color: "var(--ink-2)" }}
+                            >
+                                {formatDate(
+                                    patientData.createdAt instanceof Date
+                                        ? patientData.createdAt
+                                        : typeof patientData.createdAt === "string"
+                                        ? patientData.createdAt
+                                        : null
+                                ) || "Not provided"}
+                            </p>
+                        </div>
+                    </div>
+                </ClearingCard>
+
+                {/* Emergency Contact Card - Full Width */}
+                <ClearingCard pad={20}>
+                    <SectionHeader icon={Heart} title="Emergency contact" />
+                    <div className="grid gap-4 sm:grid-cols-3">
+                        <div className="space-y-2">
+                            <Label htmlFor="emergencyContactName">Full name</Label>
+                            {isEditing ? (
+                                <>
+                                    <Input
+                                        id="emergencyContactName"
+                                        {...form.register("emergencyContactName")}
+                                        placeholder="Emergency contact name"
+                                    />
+                                    {form.formState.errors.emergencyContactName && (
+                                        <p
+                                            className="text-[12.5px]"
+                                            style={{ color: "var(--critical)" }}
+                                        >
+                                            {form.formState.errors.emergencyContactName.message}
+                                        </p>
+                                    )}
+                                </>
+                            ) : (
+                                <FieldDisplay value={patientData.emergencyContactName} />
+                            )}
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="emergencyContactRelationship">Relationship</Label>
+                            {isEditing ? (
+                                <>
+                                    <Input
+                                        id="emergencyContactRelationship"
+                                        {...form.register("emergencyContactRelationship")}
+                                        placeholder="e.g., Spouse, Parent, Sibling"
+                                    />
+                                    {form.formState.errors.emergencyContactRelationship && (
+                                        <p
+                                            className="text-[12.5px]"
+                                            style={{ color: "var(--critical)" }}
+                                        >
+                                            {
+                                                form.formState.errors.emergencyContactRelationship
+                                                    .message
+                                            }
+                                        </p>
+                                    )}
+                                </>
+                            ) : (
+                                <FieldDisplay
+                                    value={patientData.emergencyContactRelationship}
+                                />
+                            )}
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="emergencyContactPhone">Phone</Label>
+                            {isEditing ? (
+                                <>
+                                    <Input
+                                        id="emergencyContactPhone"
+                                        type="tel"
+                                        {...form.register("emergencyContactPhone")}
+                                        placeholder="Emergency contact phone"
+                                    />
+                                    {form.formState.errors.emergencyContactPhone && (
+                                        <p
+                                            className="text-[12.5px]"
+                                            style={{ color: "var(--critical)" }}
+                                        >
+                                            {form.formState.errors.emergencyContactPhone.message}
+                                        </p>
+                                    )}
+                                </>
+                            ) : (
+                                <FieldDisplay value={patientData.emergencyContactPhone} />
+                            )}
+                        </div>
+                    </div>
+                </ClearingCard>
             </form>
         </div>
     );
 }
-

@@ -5,8 +5,16 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { toast } from "sonner";
-import { Plus, Trash2, Pencil, Search } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import {
+  Plus,
+  Trash2,
+  Pencil,
+  Search,
+  Scissors,
+  Calendar,
+  AlertCircle,
+  RefreshCw,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -25,15 +33,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import {
+  Btn,
+  ClearingCard,
+  Pill,
+  SubTabHeader,
+  type PillTone,
+} from "@/components/ui/clearing";
 import {
   addSurgicalHistoryAction,
   updateSurgicalHistoryAction,
   deleteSurgicalHistoryAction,
 } from "@/app/_actions/surgical-history";
 import type { SurgicalHistoryEntry } from "@/app/_lib/db/drizzle/queries/surgical-history";
-import { cn } from "@/app/_lib/utils/cn";
 
 const surgicalHistorySchema = z.object({
   procedure: z.string().min(1, "Procedure is required"),
@@ -56,6 +68,8 @@ interface SurgicalHistoryContentProps {
   surgicalHistory: SurgicalHistoryEntry[];
 }
 
+type FilterType = "all" | "recent" | "complications";
+
 const COMMON_PROCEDURES = [
   "Appendectomy",
   "Cholecystectomy",
@@ -69,12 +83,23 @@ const COMMON_PROCEDURES = [
   "Hysterectomy",
 ];
 
+function sourceTone(source: string): { tone: PillTone; label: string } {
+  switch (source) {
+    case "Medical Records":
+      return { tone: "info", label: "Medical records" };
+    case "Patient Reported":
+      return { tone: "neutral", label: "Patient reported" };
+    default:
+      return { tone: "neutral", label: source };
+  }
+}
+
 export function SurgicalHistoryContent({
   patientId,
   patientName,
   surgicalHistory: initialSurgicalHistory,
 }: SurgicalHistoryContentProps) {
-  const [surgicalHistory, setSurgicalHistory] = React.useState<SurgicalHistoryEntry[]>(
+  const [surgicalHistory] = React.useState<SurgicalHistoryEntry[]>(
     initialSurgicalHistory
   );
   const [showAddModal, setShowAddModal] = React.useState(false);
@@ -83,6 +108,7 @@ export function SurgicalHistoryContent({
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
   const [procedureSearch, setProcedureSearch] = React.useState("");
+  const [filter, setFilter] = React.useState<FilterType>("all");
 
   const form = useForm<SurgicalHistoryFormData>({
     resolver: zodResolver(surgicalHistorySchema),
@@ -196,7 +222,7 @@ export function SurgicalHistoryContent({
   );
 
   const formatDate = (dateString?: string) => {
-    if (!dateString) return "Not recorded";
+    if (!dateString) return "—";
     // If it's just a year (YYYY), return as is
     if (/^\d{4}$/.test(dateString)) {
       return dateString;
@@ -214,147 +240,409 @@ export function SurgicalHistoryContent({
     }
   };
 
-  const getSourceBadge = (source: string) => {
-    switch (source) {
-      case "Medical Records":
-        return {
-          variant: "default" as const,
-          className: "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500",
-        };
-      case "Patient Reported":
-        return {
-          variant: "secondary" as const,
-          className: "",
-        };
-      default:
-        return {
-          variant: "outline" as const,
-          className: "",
-        };
+  const totalProcedures = surgicalHistory.length;
+  const complicationsCount = surgicalHistory.filter(
+    (e) => e.complications && e.complications.trim().length > 0
+  ).length;
+  const recentCount = React.useMemo(() => {
+    const now = new Date();
+    const fiveYearsAgo = new Date(now.getFullYear() - 5, now.getMonth(), now.getDate());
+    return surgicalHistory.filter((e) => {
+      if (!e.date) return false;
+      if (/^\d{4}$/.test(e.date)) {
+        return Number(e.date) >= fiveYearsAgo.getFullYear();
+      }
+      const d = new Date(e.date);
+      return !isNaN(d.getTime()) && d >= fiveYearsAgo;
+    }).length;
+  }, [surgicalHistory]);
+  const latestDate = React.useMemo(() => {
+    const dated = surgicalHistory
+      .map((e) => e.date)
+      .filter(Boolean) as string[];
+    if (dated.length === 0) return "—";
+    const parsed = dated
+      .map((d) => {
+        if (/^\d{4}$/.test(d)) return { d, t: new Date(`${d}-01-01`).getTime() };
+        const t = new Date(d).getTime();
+        return { d, t };
+      })
+      .filter((x) => !isNaN(x.t))
+      .sort((a, b) => b.t - a.t);
+    return parsed.length > 0 ? formatDate(parsed[0].d) : "—";
+  }, [surgicalHistory]);
+
+  const filteredEntries = React.useMemo(() => {
+    if (filter === "recent") {
+      const now = new Date();
+      const fiveYearsAgo = new Date(now.getFullYear() - 5, now.getMonth(), now.getDate());
+      return surgicalHistory.filter((e) => {
+        if (!e.date) return false;
+        if (/^\d{4}$/.test(e.date)) {
+          return Number(e.date) >= fiveYearsAgo.getFullYear();
+        }
+        const d = new Date(e.date);
+        return !isNaN(d.getTime()) && d >= fiveYearsAgo;
+      });
     }
-  };
+    if (filter === "complications") {
+      return surgicalHistory.filter(
+        (e) => e.complications && e.complications.trim().length > 0
+      );
+    }
+    return surgicalHistory;
+  }, [surgicalHistory, filter]);
+
+  const summaryMetrics = [
+    {
+      k: "Total procedures",
+      v: totalProcedures,
+      icon: Scissors,
+      tone: "var(--ink-3)",
+    },
+    { k: "Last 5 years", v: recentCount, icon: Calendar, tone: "var(--ink-3)" },
+    {
+      k: "With complications",
+      v: complicationsCount,
+      icon: AlertCircle,
+      tone: complicationsCount > 0 ? "var(--critical)" : "var(--ink-3)",
+    },
+    { k: "Most recent", v: latestDate, icon: RefreshCw, tone: "var(--ink-3)" },
+  ];
+
+  const filterTabs: Array<[FilterType, string, number]> = [
+    ["all", "All", totalProcedures],
+    ["recent", "Recent", recentCount],
+    ["complications", "With complications", complicationsCount],
+  ];
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
+    <div className="flex flex-1 flex-col gap-5 px-4 py-6 md:px-8 md:py-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Surgical History</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Manage surgical history for {patientName}
-          </p>
-        </div>
-        <Button onClick={() => setShowAddModal(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Surgery
-        </Button>
+      <SubTabHeader
+        eyebrow="Chart · Surgical history"
+        title="Surgical history"
+        subtitle={`Manage surgical history for ${patientName}.`}
+        actions={
+          <Btn
+            kind="accent"
+            icon={<Plus className="h-4 w-4" />}
+            onClick={() => setShowAddModal(true)}
+          >
+            Add surgery
+          </Btn>
+        }
+      />
+
+      {/* Summary strip */}
+      <div
+        className="grid overflow-hidden rounded-2xl"
+        style={{
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          border: "1px solid var(--line)",
+          background: "var(--card)",
+        }}
+      >
+        {summaryMetrics.map((m, i, arr) => {
+          const Icon = m.icon;
+          return (
+            <div
+              key={m.k}
+              className="flex flex-col gap-1.5 px-5 py-4"
+              style={{
+                borderRight: i < arr.length - 1 ? "1px solid var(--line)" : undefined,
+              }}
+            >
+              <div className="flex items-center justify-between">
+                <div
+                  className="text-[11px] uppercase"
+                  style={{ color: "var(--ink-3)", letterSpacing: "0.1em" }}
+                >
+                  {m.k}
+                </div>
+                <Icon className="h-3.5 w-3.5" style={{ color: m.tone }} />
+              </div>
+              <div
+                className="serif"
+                style={{
+                  fontSize: 32,
+                  lineHeight: 0.95,
+                  letterSpacing: "-0.02em",
+                  color: "var(--ink)",
+                }}
+              >
+                {m.v}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      {/* Surgical History List */}
-      {surgicalHistory.length === 0 ? (
-        <Card>
-          <CardContent className="flex items-center justify-center py-12">
-            <div className="text-center">
-              <p className="text-muted-foreground mb-4">
-                No surgical history recorded
-              </p>
-              <Button onClick={() => setShowAddModal(true)} variant="outline">
-                <Plus className="h-4 w-4 mr-2" />
-                Add First Entry
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-          {surgicalHistory.map((entry) => {
-            const sourceBadge = getSourceBadge(entry.source);
+      {/* Procedures */}
+      <ClearingCard pad={0}>
+        <div
+          className="flex flex-wrap items-center gap-3 px-5 py-3.5"
+          style={{ borderBottom: "1px solid var(--line)" }}
+        >
+          <div
+            className="serif"
+            style={{ fontSize: 18, color: "var(--ink)", letterSpacing: "-0.01em" }}
+          >
+            Procedures
+          </div>
+          <div className="flex-1" />
+          <div
+            className="flex gap-1 rounded-full p-1"
+            style={{ border: "1px solid var(--line)", background: "var(--paper-2)" }}
+          >
+            {filterTabs.map(([k, label, n]) => {
+              const active = filter === k;
+              return (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setFilter(k)}
+                  className="h-7 rounded-full px-3.5 text-[12.5px] font-medium tracking-tight transition-colors"
+                  style={{
+                    background: active ? "var(--ink)" : "transparent",
+                    color: active ? "var(--paper)" : "var(--ink-2)",
+                  }}
+                >
+                  {label} <span className="mono ml-1 opacity-70">{n}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
-            return (
-              <Card key={entry.id} className="relative">
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <CardTitle className="text-lg font-semibold">
-                      {entry.procedure}
-                    </CardTitle>
-                    <div className="flex gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => handleEdit(entry)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-destructive hover:text-destructive"
-                        onClick={() => handleDelete(entry.id)}
-                        disabled={deletingId === entry.id}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex flex-wrap gap-2">
-                    <Badge
-                      variant={sourceBadge.variant}
-                      className={sourceBadge.className || ""}
+        {filteredEntries.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-3 py-12">
+            <p className="text-[13px]" style={{ color: "var(--ink-3)" }}>
+              {filter === "all"
+                ? "No surgical history recorded"
+                : `No ${filter === "recent" ? "recent" : "complicated"} surgeries found`}
+            </p>
+            {filter === "all" && (
+              <Btn
+                kind="soft"
+                icon={<Plus className="h-3.5 w-3.5" />}
+                onClick={() => setShowAddModal(true)}
+              >
+                Add first entry
+              </Btn>
+            )}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr style={{ borderBottom: "1px solid var(--line)" }}>
+                  {[
+                    "Procedure",
+                    "Date",
+                    "Laterality",
+                    "Surgeon",
+                    "Source",
+                    "Complications",
+                    "Actions",
+                  ].map((h) => (
+                    <th
+                      key={h}
+                      className="px-5 py-2.5 text-left text-[10.5px] font-medium uppercase"
+                      style={{ color: "var(--ink-3)", letterSpacing: "0.1em" }}
                     >
-                      {entry.source}
-                    </Badge>
-                    {entry.laterality && entry.laterality !== "N/A" && (
-                      <Badge variant="outline">{entry.laterality}</Badge>
-                    )}
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredEntries.map((entry, i, arr) => {
+                  const src = sourceTone(entry.source);
+                  const hasComplications =
+                    entry.complications && entry.complications.trim().length > 0;
+                  return (
+                    <tr
+                      key={entry.id}
+                      style={{
+                        borderBottom:
+                          i < arr.length - 1 ? "1px solid var(--line)" : undefined,
+                      }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLTableRowElement).style.background =
+                          "var(--paper-2)";
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLTableRowElement).style.background =
+                          "transparent";
+                      }}
+                    >
+                      <td className="px-5 py-3">
+                        <div
+                          className="text-[13.5px] font-medium"
+                          style={{ color: "var(--ink)" }}
+                        >
+                          {entry.procedure}
+                        </div>
+                        {(entry.site || entry.hospital) && (
+                          <div
+                            className="mt-0.5 text-[11.5px]"
+                            style={{ color: "var(--ink-3)" }}
+                          >
+                            {[entry.site, entry.hospital].filter(Boolean).join(" · ")}
+                          </div>
+                        )}
+                      </td>
+                      <td
+                        className="px-5 py-3 text-[12.5px]"
+                        style={{ color: "var(--ink-2)" }}
+                      >
+                        {formatDate(entry.date)}
+                      </td>
+                      <td className="px-5 py-3">
+                        {entry.laterality && entry.laterality !== "N/A" ? (
+                          <Pill tone="neutral">{entry.laterality}</Pill>
+                        ) : (
+                          <span className="text-[12.5px]" style={{ color: "var(--ink-3)" }}>
+                            —
+                          </span>
+                        )}
+                      </td>
+                      <td
+                        className="px-5 py-3 text-[12.5px]"
+                        style={{ color: "var(--ink-2)" }}
+                      >
+                        {entry.surgeon || "—"}
+                      </td>
+                      <td className="px-5 py-3">
+                        <Pill tone={src.tone}>{src.label}</Pill>
+                      </td>
+                      <td className="px-5 py-3">
+                        {hasComplications ? (
+                          <Pill tone="critical" dot>
+                            {entry.complications}
+                          </Pill>
+                        ) : (
+                          <Pill tone="ok">None</Pill>
+                        )}
+                      </td>
+                      <td className="px-5 py-3">
+                        <div className="flex gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleEdit(entry)}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md"
+                            style={{ color: "var(--ink-2)" }}
+                            onMouseEnter={(e) => {
+                              (e.currentTarget as HTMLButtonElement).style.background =
+                                "var(--paper-3)";
+                            }}
+                            onMouseLeave={(e) => {
+                              (e.currentTarget as HTMLButtonElement).style.background =
+                                "transparent";
+                            }}
+                            aria-label="Edit"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(entry.id)}
+                            disabled={deletingId === entry.id}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md disabled:opacity-50"
+                            style={{ color: "var(--critical)" }}
+                            onMouseEnter={(e) => {
+                              (e.currentTarget as HTMLButtonElement).style.background =
+                                "var(--critical-soft)";
+                            }}
+                            onMouseLeave={(e) => {
+                              (e.currentTarget as HTMLButtonElement).style.background =
+                                "transparent";
+                            }}
+                            aria-label="Delete"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </ClearingCard>
+
+      {/* Outcome/Notes detail panel - expanded details for entries with notes/outcome */}
+      {filteredEntries.some((e) => e.outcome || e.notes) && (
+        <ClearingCard>
+          <div className="mb-3 flex items-center gap-2">
+            <Scissors className="h-4 w-4" style={{ color: "var(--info)" }} />
+            <div className="serif" style={{ fontSize: 17, color: "var(--ink)" }}>
+              Procedure notes
+            </div>
+          </div>
+          <div className="flex flex-col gap-3">
+            {filteredEntries
+              .filter((e) => e.outcome || e.notes)
+              .map((entry) => (
+                <div
+                  key={entry.id}
+                  className="rounded-[10px] p-3"
+                  style={{
+                    background: "var(--paper-2)",
+                    border: "1px solid var(--line)",
+                  }}
+                >
+                  <div
+                    className="text-[12.5px] font-medium"
+                    style={{ color: "var(--ink)" }}
+                  >
+                    {entry.procedure}
+                    <span
+                      className="mono ml-2 text-[11px]"
+                      style={{ color: "var(--ink-3)" }}
+                    >
+                      {formatDate(entry.date)}
+                    </span>
                   </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Date</p>
-                    <p className="text-sm font-medium">{formatDate(entry.date)}</p>
-                  </div>
-                  {entry.site && (
-                    <div>
-                      <p className="text-xs text-muted-foreground">Site</p>
-                      <p className="text-sm">{entry.site}</p>
-                    </div>
-                  )}
-                  {entry.surgeon && (
-                    <div>
-                      <p className="text-xs text-muted-foreground">Surgeon</p>
-                      <p className="text-sm">{entry.surgeon}</p>
-                    </div>
-                  )}
-                  {entry.hospital && (
-                    <div>
-                      <p className="text-xs text-muted-foreground">Hospital</p>
-                      <p className="text-sm">{entry.hospital}</p>
-                    </div>
-                  )}
                   {entry.outcome && (
-                    <div>
-                      <p className="text-xs text-muted-foreground">Outcome</p>
-                      <p className="text-sm">{entry.outcome}</p>
-                    </div>
-                  )}
-                  {entry.complications && (
-                    <div>
-                      <p className="text-xs text-muted-foreground">Complications</p>
-                      <p className="text-sm text-destructive">{entry.complications}</p>
+                    <div className="mt-1.5">
+                      <div
+                        className="text-[10.5px] uppercase"
+                        style={{ color: "var(--ink-3)", letterSpacing: "0.1em" }}
+                      >
+                        Outcome
+                      </div>
+                      <div
+                        className="mt-0.5 text-[12.5px]"
+                        style={{ color: "var(--ink-2)" }}
+                      >
+                        {entry.outcome}
+                      </div>
                     </div>
                   )}
                   {entry.notes && (
-                    <div>
-                      <p className="text-xs text-muted-foreground">Notes</p>
-                      <p className="text-sm">{entry.notes}</p>
+                    <div className="mt-1.5">
+                      <div
+                        className="text-[10.5px] uppercase"
+                        style={{ color: "var(--ink-3)", letterSpacing: "0.1em" }}
+                      >
+                        Notes
+                      </div>
+                      <div
+                        className="mt-0.5 text-[12.5px]"
+                        style={{ color: "var(--ink-2)" }}
+                      >
+                        {entry.notes}
+                      </div>
                     </div>
                   )}
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+                </div>
+              ))}
+          </div>
+        </ClearingCard>
       )}
 
       {/* Add/Edit Surgical History Modal */}
@@ -369,11 +657,10 @@ export function SurgicalHistoryContent({
           }
         }}
       >
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Pencil className="h-5 w-5 text-primary" />
-              {editingEntry ? "Edit Surgical History" : "Quick Chart Surgery"}
+            <DialogTitle>
+              {editingEntry ? "Edit surgical history" : "Add surgery"}
             </DialogTitle>
             <DialogDescription>
               {editingEntry
@@ -383,9 +670,14 @@ export function SurgicalHistoryContent({
           </DialogHeader>
           <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="procedure">Procedure Search</Label>
+              <Label htmlFor="procedure">
+                Procedure <span style={{ color: "var(--critical)" }}>*</span>
+              </Label>
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Search
+                  className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4"
+                  style={{ color: "var(--ink-3)" }}
+                />
                 <Input
                   id="procedure"
                   placeholder="e.g. Appendectomy"
@@ -398,13 +690,25 @@ export function SurgicalHistoryContent({
                 />
               </div>
               {procedureSearch && filteredProcedures.length > 0 && (
-                <div className="border rounded-md p-2 max-h-32 overflow-y-auto">
+                <div
+                  className="max-h-32 overflow-y-auto rounded-[10px] p-1.5"
+                  style={{ border: "1px solid var(--line)", background: "var(--paper-2)" }}
+                >
                   {filteredProcedures.map((procedure) => (
                     <button
                       key={procedure}
                       type="button"
                       onClick={() => handleProcedureSelect(procedure)}
-                      className="w-full text-left px-2 py-1 text-sm hover:bg-accent rounded"
+                      className="w-full rounded-md px-2 py-1 text-left text-[12.5px]"
+                      style={{ color: "var(--ink-2)" }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLButtonElement).style.background =
+                          "var(--paper-3)";
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLButtonElement).style.background =
+                          "transparent";
+                      }}
                     >
                       {procedure}
                     </button>
@@ -412,64 +716,65 @@ export function SurgicalHistoryContent({
                 </div>
               )}
               {form.formState.errors.procedure && (
-                <p className="text-sm text-destructive">
+                <p className="text-sm" style={{ color: "var(--critical)" }}>
                   {form.formState.errors.procedure.message}
                 </p>
               )}
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="date">Date / Year</Label>
-              <Input
-                id="date"
-                placeholder="YYYY"
-                {...form.register("date")}
-              />
-              <p className="text-xs text-muted-foreground">
-                Enter year (YYYY) or full date (YYYY-MM-DD)
-              </p>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="date">Date / year</Label>
+                <Input id="date" placeholder="YYYY" {...form.register("date")} />
+                <p className="text-[11px]" style={{ color: "var(--ink-3)" }}>
+                  YYYY or YYYY-MM-DD
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="laterality">Laterality</Label>
+                <Select
+                  value={form.watch("laterality") || "N/A"}
+                  onValueChange={(value) =>
+                    form.setValue(
+                      "laterality",
+                      value as "Left" | "Right" | "Bilateral" | "N/A"
+                    )
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="N/A">N/A</SelectItem>
+                    <SelectItem value="Left">Left</SelectItem>
+                    <SelectItem value="Right">Right</SelectItem>
+                    <SelectItem value="Bilateral">Bilateral</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="site">Site</Label>
+                <Input
+                  id="site"
+                  placeholder="e.g., Abdomen, Knee"
+                  {...form.register("site")}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="surgeon">Surgeon</Label>
+                <Input
+                  id="surgeon"
+                  placeholder="Surgeon name"
+                  {...form.register("surgeon")}
+                />
+              </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="laterality">Laterality</Label>
-              <Select
-                value={form.watch("laterality") || "N/A"}
-                onValueChange={(value) =>
-                  form.setValue("laterality", value as "Left" | "Right" | "Bilateral" | "N/A")
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="N/A">N/A</SelectItem>
-                  <SelectItem value="Left">Left</SelectItem>
-                  <SelectItem value="Right">Right</SelectItem>
-                  <SelectItem value="Bilateral">Bilateral</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="site">Site</Label>
-              <Input
-                id="site"
-                placeholder="e.g., Abdomen, Knee, etc."
-                {...form.register("site")}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="surgeon">Surgeon</Label>
-              <Input
-                id="surgeon"
-                placeholder="Surgeon name"
-                {...form.register("surgeon")}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="hospital">Hospital / Facility</Label>
+              <Label htmlFor="hospital">Hospital / facility</Label>
               <Input
                 id="hospital"
                 placeholder="Hospital or facility name"
@@ -477,22 +782,23 @@ export function SurgicalHistoryContent({
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="outcome">Outcome</Label>
-              <Input
-                id="outcome"
-                placeholder="e.g., Successful, Improved, etc."
-                {...form.register("outcome")}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="complications">Complications</Label>
-              <Input
-                id="complications"
-                placeholder="e.g., Infection, Bleeding, etc."
-                {...form.register("complications")}
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="outcome">Outcome</Label>
+                <Input
+                  id="outcome"
+                  placeholder="e.g., Successful"
+                  {...form.register("outcome")}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="complications">Complications</Label>
+                <Input
+                  id="complications"
+                  placeholder="e.g., Infection"
+                  {...form.register("complications")}
+                />
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -500,7 +806,10 @@ export function SurgicalHistoryContent({
               <Select
                 value={form.watch("source")}
                 onValueChange={(value) =>
-                  form.setValue("source", value as "Patient Reported" | "Medical Records" | "Other")
+                  form.setValue(
+                    "source",
+                    value as "Patient Reported" | "Medical Records" | "Other"
+                  )
                 }
               >
                 <SelectTrigger>
@@ -525,9 +834,9 @@ export function SurgicalHistoryContent({
             </div>
 
             <DialogFooter>
-              <Button
+              <Btn
+                kind="ghost"
                 type="button"
-                variant="outline"
                 onClick={() => {
                   setShowAddModal(false);
                   setEditingEntry(null);
@@ -537,10 +846,10 @@ export function SurgicalHistoryContent({
                 disabled={isSubmitting}
               >
                 Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Saving..." : "Save Entry"}
-              </Button>
+              </Btn>
+              <Btn kind="accent" type="submit" disabled={isSubmitting}>
+                {isSubmitting ? "Saving…" : "Save entry"}
+              </Btn>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -548,4 +857,3 @@ export function SurgicalHistoryContent({
     </div>
   );
 }
-

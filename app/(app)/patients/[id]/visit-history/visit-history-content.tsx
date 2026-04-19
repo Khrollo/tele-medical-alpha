@@ -3,12 +3,19 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Calendar, Search, X, CalendarDays, Clock, ChevronRight, Filter, ClipboardList } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import {
+  Calendar,
+  Search,
+  X,
+  ChevronRight,
+  Filter,
+  ClipboardList,
+  CalendarDays,
+  Clock,
+  CheckCircle2,
+  Plus,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { cn } from "@/app/_lib/utils/cn";
 import {
   Select,
   SelectContent,
@@ -16,6 +23,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Btn,
+  ClearingCard,
+  Pill,
+  SubTabHeader,
+  type PillTone,
+} from "@/components/ui/clearing";
 import type { VisitHistoryResult } from "@/app/_lib/db/drizzle/queries/visit-history";
 import { formatDateTime } from "@/app/_lib/utils/format-date";
 import { formatVisitStatusLabel } from "@/app/_lib/utils/visit-status-label";
@@ -25,6 +39,33 @@ interface VisitHistoryContentProps {
   userRole: string;
   data: VisitHistoryResult;
   searchQuery: string | null;
+}
+
+function visitStatusTone(status: string | null): PillTone {
+  if (!status) return "neutral";
+  const s = status.toLowerCase();
+  if (
+    status === "Signed & Complete" ||
+    s === "signed" ||
+    s === "completed" ||
+    s === "signed & complete" ||
+    s === "finalized" ||
+    s === "signed_and_complete"
+  ) {
+    return "ok";
+  }
+  if (status === "Waiting" || s === "waiting") return "warn";
+  if (status === "In Progress" || s === "in_progress" || s === "in progress") return "accent";
+  if (s === "draft") return "neutral";
+  if (s === "cancelled" || s === "canceled") return "neutral";
+  return "neutral";
+}
+
+function priorityTone(priority: string): PillTone {
+  const p = priority.toLowerCase();
+  if (p === "high" || p === "urgent" || p === "critical") return "critical";
+  if (p === "medium" || p === "moderate") return "warn";
+  return "ok";
 }
 
 export function VisitHistoryContent({
@@ -38,11 +79,10 @@ export function VisitHistoryContent({
   const searchParams = useSearchParams();
   const [searchQuery, setSearchQuery] = React.useState(initialSearchQuery || "");
 
-  // Get current filter values from URL
   const currentStatus = searchParams.get("status") || "all";
   const currentFrom = searchParams.get("from") || "";
   const currentTo = searchParams.get("to") || "";
-  // Format date for input (YYYY-MM-DD)
+
   const formatDateForInput = (date: string | null) => {
     if (!date) return "";
     const d = new Date(date);
@@ -50,7 +90,6 @@ export function VisitHistoryContent({
     return d.toISOString().split("T")[0];
   };
 
-  // Update URL with new params
   const updateFilters = (updates: Record<string, string | null>) => {
     const params = new URLSearchParams(searchParams.toString());
 
@@ -62,7 +101,6 @@ export function VisitHistoryContent({
       }
     });
 
-    // Reset to page 1 when filters change
     if (!updates.page) {
       params.set("page", "1");
     }
@@ -100,7 +138,6 @@ export function VisitHistoryContent({
     updateFilters({ page: newPage.toString() });
   };
 
-  // Client-side search filter (optional enhancement)
   const filteredVisits = React.useMemo(() => {
     if (!searchQuery) return data.visits;
 
@@ -120,290 +157,436 @@ export function VisitHistoryContent({
     });
   }, [data.visits, searchQuery]);
 
-  // Get new visit path based on role
   const getNewVisitPath = () => {
     return `/patients/${patientId}/new-visit`;
   };
 
-  // Calculate pagination
   const totalPages = Math.ceil(data.total / data.pageSize);
   const hasNextPage = data.page < totalPages;
   const hasPrevPage = data.page > 1;
 
-  // Get status badge with color coding
-  const getStatusBadge = (status: string | null) => {
-    if (!status) {
-      return { variant: "secondary" as const, className: "" };
-    }
-    const statusLower = status.toLowerCase();
-    
-    // Handle both new and old status values for backward compatibility
-    if (
-      status === "Signed & Complete" ||
-      statusLower === "signed" ||
-      statusLower === "completed" ||
-      statusLower === "signed & complete"
-    ) {
-      return {
-        variant: "default" as const,
-        className: "bg-green-500 text-white border-green-600 dark:bg-green-600",
-      };
-    }
-    if (status === "Waiting" || statusLower === "waiting") {
-      return {
-        variant: "outline" as const,
-        className: "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500 dark:border-blue-400",
-      };
-    }
-    if (
-      status === "In Progress" ||
-      statusLower === "in_progress" ||
-      statusLower === "in progress"
-    ) {
-      return {
-        variant: "outline" as const,
-        className: "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-yellow-500 dark:border-yellow-400",
-      };
-    }
-    if (statusLower === "draft") {
-      return {
-        variant: "secondary" as const,
-        className: "bg-gray-500/10 text-gray-700 dark:text-gray-400 border-gray-500 dark:border-gray-400",
-      };
-    }
-    if (statusLower === "finalized" || statusLower === "signed_and_complete") {
-      return {
-        variant: "default" as const,
-        className: "bg-green-500 text-white border-green-600 dark:bg-green-600",
-      };
-    }
-    return { variant: "outline" as const, className: "" };
+  // Summary counts
+  const totalVisits = data.total;
+  const inProgressCount = data.visits.filter((v) => {
+    const s = (v.status || "").toLowerCase();
+    return s === "in progress" || s === "in_progress";
+  }).length;
+  const signedCount = data.visits.filter((v) => {
+    const s = (v.status || "").toLowerCase();
+    return (
+      v.status === "Signed & Complete" ||
+      s === "signed" ||
+      s === "completed" ||
+      s === "signed & complete" ||
+      s === "finalized" ||
+      s === "signed_and_complete"
+    );
+  }).length;
+
+  const summaryMetrics = [
+    {
+      k: "Total visits",
+      v: totalVisits,
+      icon: CalendarDays,
+      tone: "var(--ink-3)" as const,
+    },
+    {
+      k: "In progress",
+      v: inProgressCount,
+      icon: Clock,
+      tone: "var(--brand-ink)" as const,
+    },
+    {
+      k: "Signed & complete",
+      v: signedCount,
+      icon: CheckCircle2,
+      tone: "var(--ok)" as const,
+    },
+    {
+      k: "On this page",
+      v: filteredVisits.length,
+      icon: Filter,
+      tone: "var(--ink-3)" as const,
+    },
+  ];
+
+  // Group visits by date (YYYY-MM-DD)
+  const groupedVisits = React.useMemo(() => {
+    const groups = new Map<
+      string,
+      { label: string; visits: typeof filteredVisits }
+    >();
+    filteredVisits.forEach((v) => {
+      const d = new Date(v.createdAt);
+      const key = isNaN(d.getTime())
+        ? "unknown"
+        : d.toISOString().split("T")[0];
+      const label = isNaN(d.getTime())
+        ? "Unknown date"
+        : d.toLocaleDateString("en-US", {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+            weekday: "long",
+          });
+      if (!groups.has(key)) {
+        groups.set(key, { label, visits: [] });
+      }
+      groups.get(key)!.visits.push(v);
+    });
+    return Array.from(groups.entries()).map(([key, val]) => ({
+      key,
+      label: val.label,
+      visits: val.visits,
+    }));
+  }, [filteredVisits]);
+
+  const formatTimeOfDay = (date: Date | string) => {
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return "";
+    return d.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+    });
   };
 
   return (
-    <div className="flex flex-1 flex-col gap-8 p-4 md:p-8 bg-slate-50/30 dark:bg-transparent">
-      {/* Page Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Visit History</h1>
-          <p className="mt-1 text-sm font-medium text-slate-500">
-            Review detailed medical encounters for this patient.
-          </p>
-        </div>
-        <Button asChild>
-          <Link href={getNewVisitPath()}>
-            Log New Visit
-          </Link>
-        </Button>
+    <div className="flex flex-1 flex-col gap-5 px-4 py-6 md:px-8 md:py-8">
+      {/* Header */}
+      <SubTabHeader
+        eyebrow="Chart · Visit history"
+        title="Visit history"
+        subtitle="Review detailed medical encounters for this patient."
+        actions={
+          <Btn
+            kind="accent"
+            icon={<Plus className="h-4 w-4" />}
+            onClick={() => router.push(getNewVisitPath())}
+          >
+            Log new visit
+          </Btn>
+        }
+      />
+
+      {/* Summary strip */}
+      <div
+        className="grid overflow-hidden rounded-2xl"
+        style={{
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          border: "1px solid var(--line)",
+          background: "var(--card)",
+        }}
+      >
+        {summaryMetrics.map((m, i, arr) => {
+          const Icon = m.icon;
+          return (
+            <div
+              key={m.k}
+              className="flex flex-col gap-1.5 px-5 py-4"
+              style={{
+                borderRight: i < arr.length - 1 ? "1px solid var(--line)" : undefined,
+              }}
+            >
+              <div className="flex items-center justify-between">
+                <div
+                  className="text-[11px] uppercase"
+                  style={{ color: "var(--ink-3)", letterSpacing: "0.1em" }}
+                >
+                  {m.k}
+                </div>
+                <Icon className="h-3.5 w-3.5" style={{ color: m.tone }} />
+              </div>
+              <div
+                className="serif"
+                style={{
+                  fontSize: 32,
+                  lineHeight: 0.95,
+                  letterSpacing: "-0.02em",
+                  color: "var(--ink)",
+                }}
+              >
+                {m.v}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      {/* Filters Row */}
-      <Card className="rounded-[1.5rem] border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-        <CardContent className="p-6">
-          <div className="flex flex-col gap-6">
-            {/* Search and Status Row */}
-            <div className="flex flex-col gap-4 sm:flex-row">
-              <form
-                onSubmit={handleSearchSubmit}
-                className="flex-1 flex gap-2"
-              >
-                <div className="relative flex-1">
-                  <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <Input
-                    placeholder="Search by visit ID, location, priority, status..."
-                    value={searchQuery}
-                    onChange={handleSearchChange}
-                    className="pl-11 rounded-xl bg-slate-50/50 border-slate-100 dark:bg-slate-800/50 dark:border-slate-800"
-                  />
-                </div>
-                <Button type="submit" variant="secondary" className="rounded-xl px-6">
-                  Search
-                </Button>
-              </form>
-
-              <div className="flex items-center gap-2">
-                <Filter className="h-4 w-4 text-slate-400 shrink-0" />
-                <Select value={currentStatus} onValueChange={handleStatusChange}>
-                  <SelectTrigger className="w-full sm:w-[200px] rounded-xl bg-slate-50/50 border-slate-100 dark:bg-slate-800/50 dark:border-slate-800">
-                    <SelectValue placeholder="Status" />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-xl">
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="draft">Draft</SelectItem>
-                    <SelectItem value="In Progress">In Progress</SelectItem>
-                    <SelectItem value="Waiting">Waiting</SelectItem>
-                    <SelectItem value="Signed & Complete">Signed & Complete</SelectItem>
-                  </SelectContent>
-                </Select>
+      {/* Filters */}
+      <ClearingCard>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <form onSubmit={handleSearchSubmit} className="flex flex-1 gap-2">
+              <div className="relative flex-1">
+                <Search
+                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2"
+                  style={{ color: "var(--ink-3)" }}
+                />
+                <Input
+                  placeholder="Search by visit ID, appointment type, priority, status..."
+                  value={searchQuery}
+                  onChange={handleSearchChange}
+                  className="pl-10"
+                />
               </div>
-            </div>
+              <Btn kind="soft" type="submit">
+                Search
+              </Btn>
+            </form>
 
-            {/* Date Range Row */}
-            <div className="flex flex-col gap-4 sm:flex-row items-center justify-between pt-0 border-t-0">
-               <div className="flex items-center gap-3 flex-1 w-full">
-                  <div className="flex items-center gap-2 flex-1 relative">
-                    <Calendar className="absolute left-3 h-4 w-4 text-slate-400 pointer-events-none" />
-                    <Input
-                      type="date"
-                      placeholder="From date"
-                      value={formatDateForInput(currentFrom)}
-                      onChange={handleFromChange}
-                      className="pl-9 rounded-xl bg-slate-50/50 border-slate-100 dark:bg-slate-800/50 dark:border-slate-800 text-xs h-9"
-                    />
-                  </div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">to</span>
-                  <div className="flex items-center gap-2 flex-1 relative">
-                    <Calendar className="absolute left-3 h-4 w-4 text-slate-400 pointer-events-none" />
-                    <Input
-                      type="date"
-                      placeholder="To date"
-                      value={formatDateForInput(currentTo)}
-                      onChange={handleToChange}
-                      className="pl-9 rounded-xl bg-slate-50/50 border-slate-100 dark:bg-slate-800/50 dark:border-slate-800 text-xs h-9"
-                    />
-                  </div>
-               </div>
-
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleClearFilters}
-                className="text-slate-400 hover:text-slate-600 hover:bg-transparent"
-              >
-                <X className="h-4 w-4 mr-2" />
-                Clear Filters
-              </Button>
+            <div className="flex items-center gap-2">
+              <Filter
+                className="h-4 w-4 shrink-0"
+                style={{ color: "var(--ink-3)" }}
+              />
+              <Select value={currentStatus} onValueChange={handleStatusChange}>
+                <SelectTrigger className="w-full sm:w-[200px]">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All status</SelectItem>
+                  <SelectItem value="draft">Draft</SelectItem>
+                  <SelectItem value="In Progress">In progress</SelectItem>
+                  <SelectItem value="Waiting">Waiting</SelectItem>
+                  <SelectItem value="Signed & Complete">Signed & complete</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Visit List */}
-      {filteredVisits.length === 0 ? (
-        <Card className="rounded-[2rem] border-dashed border-2 bg-transparent shadow-none">
-          <CardContent className="flex items-center justify-center py-24">
-            <div className="text-center">
-              <div className="h-16 w-16 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
-                <ClipboardList className="h-8 w-8 text-slate-400" />
+          <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
+            <div className="flex flex-1 items-center gap-2">
+              <div className="relative flex-1">
+                <Calendar
+                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2"
+                  style={{ color: "var(--ink-3)" }}
+                />
+                <Input
+                  type="date"
+                  value={formatDateForInput(currentFrom)}
+                  onChange={handleFromChange}
+                  className="pl-9"
+                />
               </div>
-              <p className="text-slate-500 font-medium mb-6">No visits matching your filters.</p>
-              <Button onClick={handleClearFilters} variant="outline" className="rounded-full">
-                Clear all filters
-              </Button>
+              <span
+                className="mono text-[10.5px] uppercase"
+                style={{ color: "var(--ink-3)", letterSpacing: "0.12em" }}
+              >
+                to
+              </span>
+              <div className="relative flex-1">
+                <Calendar
+                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2"
+                  style={{ color: "var(--ink-3)" }}
+                />
+                <Input
+                  type="date"
+                  value={formatDateForInput(currentTo)}
+                  onChange={handleToChange}
+                  className="pl-9"
+                />
+              </div>
             </div>
-          </CardContent>
-        </Card>
+
+            <Btn
+              kind="plain"
+              size="sm"
+              icon={<X className="h-3.5 w-3.5" />}
+              onClick={handleClearFilters}
+            >
+              Clear filters
+            </Btn>
+          </div>
+        </div>
+      </ClearingCard>
+
+      {/* Visit list */}
+      {filteredVisits.length === 0 ? (
+        <ClearingCard>
+          <div className="flex flex-col items-center justify-center gap-3 py-16">
+            <div
+              className="flex h-14 w-14 items-center justify-center rounded-full"
+              style={{ background: "var(--paper-2)" }}
+            >
+              <ClipboardList
+                className="h-6 w-6"
+                style={{ color: "var(--ink-3)" }}
+              />
+            </div>
+            <p className="text-[13px]" style={{ color: "var(--ink-3)" }}>
+              No visits matching your filters.
+            </p>
+            <Btn kind="soft" size="sm" onClick={handleClearFilters}>
+              Clear all filters
+            </Btn>
+          </div>
+        </ClearingCard>
       ) : (
         <>
-          <div className="grid gap-6">
-            {filteredVisits.map((visit) => {
-              const statusBadge = getStatusBadge(visit.status);
-              return (
-                <Link
-                  key={visit.id}
-                  href={`/patients/${patientId}/visit-history/${visit.id}`}
-                  className="block"
+          <ClearingCard pad={0}>
+            <div>
+              {groupedVisits.map((group, gi) => (
+                <div
+                  key={group.key}
+                  style={{
+                    borderBottom:
+                      gi < groupedVisits.length - 1
+                        ? "1px solid var(--line)"
+                        : undefined,
+                  }}
                 >
-                  <Card className="rounded-[2rem] border border-slate-50 dark:border-slate-800 bg-white dark:bg-slate-900 transition-all hover:translate-x-1 group cursor-pointer">
-                    <CardContent className="p-6">
-                      <div className="flex flex-col gap-6 lg:flex-row lg:items-center">
-                        {/* Time & Icon */}
-                        <div className="flex items-center gap-4 lg:w-[220px] shrink-0">
-                          <div className="h-12 w-12 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-500 group-hover:scale-110 transition-transform">
-                            <CalendarDays className="h-6 w-6 text-slate-400" />
-                          </div>
-                          <div className="flex flex-col">
-                            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Date</span>
-                            <span className="text-base font-bold text-slate-800 dark:text-slate-100">
+                  <div
+                    className="flex items-center gap-3 px-5 py-2.5"
+                    style={{
+                      background: "var(--paper-2)",
+                      borderBottom: "1px solid var(--line)",
+                    }}
+                  >
+                    <CalendarDays
+                      className="h-3.5 w-3.5"
+                      style={{ color: "var(--ink-3)" }}
+                    />
+                    <div
+                      className="text-[11px] uppercase"
+                      style={{
+                        color: "var(--ink-3)",
+                        letterSpacing: "0.1em",
+                      }}
+                    >
+                      {group.label}
+                    </div>
+                    <div className="flex-1" />
+                    <span
+                      className="mono text-[11px]"
+                      style={{ color: "var(--ink-3)" }}
+                    >
+                      {group.visits.length} visit
+                      {group.visits.length === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  <div>
+                    {group.visits.map((visit, i, arr) => {
+                      return (
+                        <Link
+                          key={visit.id}
+                          href={`/patients/${patientId}/visit-history/${visit.id}`}
+                          className="group flex flex-wrap items-center gap-4 px-5 py-3.5 transition-colors"
+                          style={{
+                            borderBottom:
+                              i < arr.length - 1
+                                ? "1px solid var(--line)"
+                                : undefined,
+                          }}
+                          onMouseEnter={(e) => {
+                            (e.currentTarget as HTMLAnchorElement).style.background =
+                              "var(--paper-2)";
+                          }}
+                          onMouseLeave={(e) => {
+                            (e.currentTarget as HTMLAnchorElement).style.background =
+                              "transparent";
+                          }}
+                        >
+                          <div
+                            className="mono flex w-[88px] shrink-0 flex-col text-[12px]"
+                            style={{ color: "var(--ink-2)" }}
+                          >
+                            <span style={{ color: "var(--ink)" }}>
+                              {formatTimeOfDay(visit.createdAt)}
+                            </span>
+                            <span
+                              className="text-[10.5px]"
+                              style={{ color: "var(--ink-3)" }}
+                            >
                               {formatDateTime(visit.createdAt)}
                             </span>
                           </div>
-                        </div>
 
-                        {/* Status & Type */}
-                        <div className="flex flex-wrap items-center gap-6 flex-1 min-w-0">
-                          <div className="flex flex-col gap-1.5 shrink-0">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Clinical Status</span>
-                            <Badge
-                              variant={statusBadge.variant}
-                              className={cn("rounded-full px-4 py-1 text-[10px] font-bold uppercase tracking-wider h-6", statusBadge.className)}
+                          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
+                            <div
+                              className="text-[13.5px] font-medium"
+                              style={{ color: "var(--ink)" }}
                             >
+                              {visit.appointmentType === "in-person"
+                                ? "In-person visit"
+                                : visit.appointmentType === "virtual"
+                                ? "Virtual visit"
+                                : visit.appointmentType || "Visit"}
+                            </div>
+
+                            <Pill tone={visitStatusTone(visit.status)} dot>
                               {formatVisitStatusLabel(visit.status)}
-                            </Badge>
-                          </div>
+                            </Pill>
 
-                          <div className="flex flex-col gap-1 shrink-0">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Type</span>
-                            <div className="flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-300">
-                               <Clock className="h-3.5 w-3.5 text-slate-400" />
-                               {visit.appointmentType === "in-person" ? "Clinic" : "Virtual"}
-                            </div>
-                          </div>
-
-                          {visit.priority && (
-                            <div className="flex flex-col gap-1 shrink-0">
-                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Priority</span>
-                              <Badge
-                                variant="outline"
-                                className={cn(
-                                  "text-[10px] uppercase font-bold tracking-wider rounded-full px-3",
-                                  visit.priority.toLowerCase() === "high" || visit.priority.toLowerCase() === "urgent"
-                                    ? "bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20"
-                                    : visit.priority.toLowerCase() === "medium"
-                                    ? "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-yellow-500/20"
-                                    : "bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20"
-                                )}
-                              >
+                            {visit.priority && (
+                              <Pill tone={priorityTone(visit.priority)}>
                                 {visit.priority}
-                              </Badge>
-                            </div>
-                          )}
+                              </Pill>
+                            )}
 
-                        {/* Note: chiefComplaint is not in the schema for visits table currently */}
-                        </div>
+                            <span
+                              className="mono text-[11px]"
+                              style={{ color: "var(--ink-3)" }}
+                            >
+                              {visit.id.slice(0, 8)}
+                            </span>
+                          </div>
 
-                        {/* Right: View Button */}
-                        <div className="flex items-center justify-end lg:pl-4">
-                           <div className="h-10 w-10 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-400 group-hover:bg-slate-900 group-hover:text-white transition-all">
-                              <ChevronRight className="h-5 w-5" />
-                           </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </Link>
-              );
-            })}
-          </div>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="text-[12.5px] font-medium transition-colors"
+                              style={{ color: "var(--ink-2)" }}
+                            >
+                              Open
+                            </span>
+                            <ChevronRight
+                              className="h-4 w-4"
+                              style={{ color: "var(--ink-3)" }}
+                            />
+                          </div>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ClearingCard>
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between pt-6">
-              <div className="text-sm font-medium text-slate-400">
-                Found {data.total} records
+            <div className="flex items-center justify-between pt-1">
+              <div
+                className="mono text-[12px]"
+                style={{ color: "var(--ink-3)" }}
+              >
+                {data.total} records · page {data.page} of {totalPages}
               </div>
-              <div className="flex items-center gap-3">
-                <Button
-                  variant="ghost"
+              <div className="flex items-center gap-2">
+                <Btn
+                  kind="ghost"
                   size="sm"
-                  className="rounded-full px-4 hover:bg-slate-100 text-slate-600"
                   onClick={() => handlePageChange(data.page - 1)}
                   disabled={!hasPrevPage}
                 >
                   Prev
-                </Button>
-                <div className="h-8 w-8 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs font-bold">
-                   {data.page}
-                </div>
-                <Button
-                  variant="ghost"
+                </Btn>
+                <span
+                  className="mono inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-[12px]"
+                  style={{
+                    background: "var(--ink)",
+                    color: "var(--paper)",
+                  }}
+                >
+                  {data.page}
+                </span>
+                <Btn
+                  kind="ghost"
                   size="sm"
-                  className="rounded-full px-4 hover:bg-slate-100 text-slate-600"
                   onClick={() => handlePageChange(data.page + 1)}
                   disabled={!hasNextPage}
                 >
                   Next
-                </Button>
+                </Btn>
               </div>
             </div>
           )}
@@ -412,4 +595,3 @@ export function VisitHistoryContent({
     </div>
   );
 }
-

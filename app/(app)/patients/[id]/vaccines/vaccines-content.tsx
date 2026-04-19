@@ -5,8 +5,16 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { toast } from "sonner";
-import { Plus, Trash2, Pencil, Calendar, Info } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import {
+  Plus,
+  Trash2,
+  Pencil,
+  Calendar,
+  Info,
+  Syringe,
+  CalendarClock,
+  History,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -25,9 +33,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Btn,
+  ClearingCard,
+  Pill,
+  SubTabHeader,
+} from "@/components/ui/clearing";
 import {
   addVaccineHistoryAction,
   scheduleVaccineAction,
@@ -128,6 +139,10 @@ export function VaccinesContent({
   const [deletingType, setDeletingType] = React.useState<
     "history" | "scheduled" | null
   >(null);
+
+  React.useEffect(() => {
+    setVaccines(initialVaccines);
+  }, [initialVaccines]);
 
   const historyForm = useForm<VaccineHistoryFormData>({
     resolver: zodResolver(vaccineHistorySchema),
@@ -322,190 +337,424 @@ export function VaccinesContent({
     }
   };
 
+  const totalHistory = vaccines.history.length;
+  const totalScheduled = vaccines.scheduled.length;
+  const now = new Date();
+  const upcomingScheduled = vaccines.scheduled.filter((s) => {
+    try {
+      return new Date(s.scheduledDate) >= now;
+    } catch {
+      return false;
+    }
+  }).length;
+  const last12mHistory = vaccines.history.filter((h) => {
+    try {
+      const d = new Date(h.dateAdministered);
+      const year = 1000 * 60 * 60 * 24 * 365;
+      return now.getTime() - d.getTime() <= year;
+    } catch {
+      return false;
+    }
+  }).length;
+
+  const summaryMetrics = [
+    { k: "Immunizations", v: totalHistory, icon: Syringe, tone: "var(--ink-3)" as const },
+    { k: "Last 12 months", v: last12mHistory, icon: History, tone: "var(--ink-3)" as const },
+    { k: "Scheduled", v: totalScheduled, icon: CalendarClock, tone: "var(--info)" as const },
+    { k: "Upcoming", v: upcomingScheduled, icon: Calendar, tone: "var(--ok)" as const },
+  ];
+
   return (
-    <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Vaccines</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Manage vaccines for {patientName}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => setShowHistoryModal(true)}
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add History
-          </Button>
-          <Button onClick={() => setShowScheduleModal(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Schedule Vaccine
-          </Button>
-        </div>
+    <div className="flex flex-1 flex-col gap-5 px-4 py-6 md:px-8 md:py-8">
+      <SubTabHeader
+        eyebrow="Chart · Vaccines"
+        title="Vaccines"
+        subtitle={`Manage vaccines for ${patientName}.`}
+        actions={
+          <>
+            <Btn
+              kind="ghost"
+              icon={<Plus className="h-4 w-4" />}
+              onClick={() => setShowHistoryModal(true)}
+            >
+              Add history
+            </Btn>
+            <Btn
+              kind="accent"
+              icon={<Plus className="h-4 w-4" />}
+              onClick={() => setShowScheduleModal(true)}
+            >
+              Schedule vaccine
+            </Btn>
+          </>
+        }
+      />
+
+      {/* Summary strip */}
+      <div
+        className="grid overflow-hidden rounded-2xl"
+        style={{
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          border: "1px solid var(--line)",
+          background: "var(--card)",
+        }}
+      >
+        {summaryMetrics.map((m, i, arr) => {
+          const Icon = m.icon;
+          return (
+            <div
+              key={m.k}
+              className="flex flex-col gap-1.5 px-5 py-4"
+              style={{ borderRight: i < arr.length - 1 ? "1px solid var(--line)" : undefined }}
+            >
+              <div className="flex items-center justify-between">
+                <div
+                  className="text-[11px] uppercase"
+                  style={{ color: "var(--ink-3)", letterSpacing: "0.1em" }}
+                >
+                  {m.k}
+                </div>
+                <Icon className="h-3.5 w-3.5" style={{ color: m.tone }} />
+              </div>
+              <div
+                className="serif"
+                style={{
+                  fontSize: 32,
+                  lineHeight: 0.95,
+                  letterSpacing: "-0.02em",
+                  color: "var(--ink)",
+                }}
+              >
+                {m.v}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      {/* Scheduled Vaccines Section */}
-      {vaccines.scheduled.length > 0 && (
-        <div className="space-y-4">
-          <h2 className="text-xl font-semibold">Scheduled Vaccines</h2>
-          <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-            {vaccines.scheduled.map((vaccine) => (
-              <Card key={vaccine.id} className="relative">
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <CardTitle className="text-lg font-semibold">
-                      {vaccine.vaccineName}
-                    </CardTitle>
-                    <div className="flex gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => handleEditScheduled(vaccine)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-destructive hover:text-destructive"
-                        onClick={() => handleDeleteScheduled(vaccine.id)}
-                        disabled={
-                          deletingId === vaccine.id && deletingType === "scheduled"
-                        }
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <Badge variant="outline" className="bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500">
-                    Scheduled
-                  </Badge>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Scheduled Date</p>
-                    <p className="text-sm font-medium">
-                      {formatDate(vaccine.scheduledDate)}
-                    </p>
-                  </div>
-                  {vaccine.doseNumber && (
-                    <div>
-                      <p className="text-xs text-muted-foreground">Dose Number</p>
-                      <p className="text-sm">{vaccine.doseNumber}</p>
-                    </div>
-                  )}
-                  {vaccine.notes && (
-                    <div>
-                      <p className="text-xs text-muted-foreground">Notes</p>
-                      <p className="text-sm">{vaccine.notes}</p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
+      {/* Scheduled Vaccines */}
+      <ClearingCard pad={0}>
+        <div
+          className="flex flex-wrap items-center gap-3 px-5 py-3.5"
+          style={{ borderBottom: "1px solid var(--line)" }}
+        >
+          <CalendarClock className="h-4 w-4" style={{ color: "var(--info)" }} />
+          <div
+            className="serif"
+            style={{ fontSize: 18, color: "var(--ink)", letterSpacing: "-0.01em" }}
+          >
+            Scheduled vaccines
           </div>
+          <Pill tone="info">{totalScheduled}</Pill>
+          <div className="flex-1" />
+          <Btn
+            kind="soft"
+            size="sm"
+            icon={<Plus className="h-3.5 w-3.5" />}
+            onClick={() => setShowScheduleModal(true)}
+          >
+            Schedule
+          </Btn>
         </div>
-      )}
 
-      {/* Vaccine History Section */}
-      <div className="space-y-4">
-        <h2 className="text-xl font-semibold">Immunization History</h2>
-        {vaccines.history.length === 0 ? (
-          <Card>
-            <CardContent className="flex items-center justify-center py-12">
-              <div className="text-center">
-                <p className="text-muted-foreground mb-4">
-                  No immunization history recorded
-                </p>
-                <Button
-                  onClick={() => setShowHistoryModal(true)}
-                  variant="outline"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add First Vaccine
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+        {vaccines.scheduled.length === 0 ? (
+          <div
+            className="mx-5 my-6 flex flex-col items-center justify-center gap-2 rounded-[14px] py-10"
+            style={{ border: "1px dashed var(--line-strong)" }}
+          >
+            <p className="text-[13px]" style={{ color: "var(--ink-3)" }}>
+              No scheduled vaccines
+            </p>
+          </div>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-            {vaccines.history.map((vaccine) => (
-              <Card key={vaccine.id} className="relative">
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <CardTitle className="text-lg font-semibold">
-                      {vaccine.vaccineName}
-                    </CardTitle>
-                    <div className="flex gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => handleEditHistory(vaccine)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-destructive hover:text-destructive"
-                        onClick={() => handleDeleteHistory(vaccine.id)}
-                        disabled={
-                          deletingId === vaccine.id && deletingType === "history"
-                        }
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div>
-                    <p className="text-xs text-muted-foreground">Date Administered</p>
-                    <p className="text-sm font-medium">
-                      {formatDate(vaccine.dateAdministered)}
-                    </p>
-                  </div>
-                  {vaccine.doseNumber && (
-                    <div>
-                      <p className="text-xs text-muted-foreground">Dose Number</p>
-                      <p className="text-sm">{vaccine.doseNumber}</p>
-                    </div>
-                  )}
-                  {vaccine.administrationSite && (
-                    <div>
-                      <p className="text-xs text-muted-foreground">Site</p>
-                      <p className="text-sm">{vaccine.administrationSite}</p>
-                    </div>
-                  )}
-                  {vaccine.route && (
-                    <div>
-                      <p className="text-xs text-muted-foreground">Route</p>
-                      <p className="text-sm">{vaccine.route}</p>
-                    </div>
-                  )}
-                  {vaccine.lotNumber && (
-                    <div>
-                      <p className="text-xs text-muted-foreground">Lot Number</p>
-                      <p className="text-sm">{vaccine.lotNumber}</p>
-                    </div>
-                  )}
-                  {vaccine.manufacturer && (
-                    <div>
-                      <p className="text-xs text-muted-foreground">Manufacturer</p>
-                      <p className="text-sm">{vaccine.manufacturer}</p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr style={{ borderBottom: "1px solid var(--line)" }}>
+                  {["Vaccine", "Scheduled date", "Dose", "Notes", "Actions"].map((h) => (
+                    <th
+                      key={h}
+                      className="px-5 py-2.5 text-left text-[10.5px] font-medium uppercase"
+                      style={{ color: "var(--ink-3)", letterSpacing: "0.1em" }}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {vaccines.scheduled.map((vaccine, i, arr) => (
+                  <tr
+                    key={vaccine.id}
+                    style={{
+                      borderBottom:
+                        i < arr.length - 1 ? "1px solid var(--line)" : undefined,
+                    }}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLTableRowElement).style.background =
+                        "var(--paper-2)";
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLTableRowElement).style.background =
+                        "transparent";
+                    }}
+                  >
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="text-[13.5px] font-medium"
+                          style={{ color: "var(--ink)" }}
+                        >
+                          {vaccine.vaccineName}
+                        </div>
+                        <Pill tone="info" dot>
+                          Scheduled
+                        </Pill>
+                      </div>
+                    </td>
+                    <td
+                      className="px-5 py-3 text-[12.5px]"
+                      style={{ color: "var(--ink-2)" }}
+                    >
+                      {formatDate(vaccine.scheduledDate)}
+                    </td>
+                    <td
+                      className="px-5 py-3 text-[12.5px]"
+                      style={{ color: "var(--ink-2)" }}
+                    >
+                      {vaccine.doseNumber || "—"}
+                    </td>
+                    <td
+                      className="px-5 py-3 text-[12.5px]"
+                      style={{ color: "var(--ink-3)" }}
+                    >
+                      {vaccine.notes || "—"}
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="flex gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleEditScheduled(vaccine)}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md"
+                          style={{ color: "var(--ink-2)" }}
+                          onMouseEnter={(e) => {
+                            (e.currentTarget as HTMLButtonElement).style.background =
+                              "var(--paper-3)";
+                          }}
+                          onMouseLeave={(e) => {
+                            (e.currentTarget as HTMLButtonElement).style.background =
+                              "transparent";
+                          }}
+                          aria-label="Edit"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteScheduled(vaccine.id)}
+                          disabled={
+                            deletingId === vaccine.id &&
+                            deletingType === "scheduled"
+                          }
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md disabled:opacity-50"
+                          style={{ color: "var(--critical)" }}
+                          onMouseEnter={(e) => {
+                            (e.currentTarget as HTMLButtonElement).style.background =
+                              "var(--critical-soft)";
+                          }}
+                          onMouseLeave={(e) => {
+                            (e.currentTarget as HTMLButtonElement).style.background =
+                              "transparent";
+                          }}
+                          aria-label="Delete"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
-      </div>
+      </ClearingCard>
+
+      {/* Immunization History */}
+      <ClearingCard pad={0}>
+        <div
+          className="flex flex-wrap items-center gap-3 px-5 py-3.5"
+          style={{ borderBottom: "1px solid var(--line)" }}
+        >
+          <History className="h-4 w-4" style={{ color: "var(--ink-3)" }} />
+          <div
+            className="serif"
+            style={{ fontSize: 18, color: "var(--ink)", letterSpacing: "-0.01em" }}
+          >
+            Immunization history
+          </div>
+          <Pill tone="neutral">{totalHistory}</Pill>
+          <div className="flex-1" />
+          <Btn
+            kind="soft"
+            size="sm"
+            icon={<Plus className="h-3.5 w-3.5" />}
+            onClick={() => setShowHistoryModal(true)}
+          >
+            Add
+          </Btn>
+        </div>
+
+        {vaccines.history.length === 0 ? (
+          <div
+            className="mx-5 my-6 flex flex-col items-center justify-center gap-3 rounded-[14px] py-10"
+            style={{ border: "1px dashed var(--line-strong)" }}
+          >
+            <p className="text-[13px]" style={{ color: "var(--ink-3)" }}>
+              No immunization history recorded
+            </p>
+            <Btn
+              kind="soft"
+              icon={<Plus className="h-3.5 w-3.5" />}
+              onClick={() => setShowHistoryModal(true)}
+            >
+              Add first vaccine
+            </Btn>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr style={{ borderBottom: "1px solid var(--line)" }}>
+                  {[
+                    "Vaccine",
+                    "Date",
+                    "Dose",
+                    "Site",
+                    "Route",
+                    "Manufacturer",
+                    "Lot",
+                    "Actions",
+                  ].map((h) => (
+                    <th
+                      key={h}
+                      className="px-5 py-2.5 text-left text-[10.5px] font-medium uppercase"
+                      style={{ color: "var(--ink-3)", letterSpacing: "0.1em" }}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {vaccines.history.map((vaccine, i, arr) => (
+                  <tr
+                    key={vaccine.id}
+                    style={{
+                      borderBottom:
+                        i < arr.length - 1 ? "1px solid var(--line)" : undefined,
+                    }}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLTableRowElement).style.background =
+                        "var(--paper-2)";
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLTableRowElement).style.background =
+                        "transparent";
+                    }}
+                  >
+                    <td className="px-5 py-3">
+                      <div
+                        className="text-[13.5px] font-medium"
+                        style={{ color: "var(--ink)" }}
+                      >
+                        {vaccine.vaccineName}
+                      </div>
+                    </td>
+                    <td
+                      className="px-5 py-3 text-[12.5px]"
+                      style={{ color: "var(--ink-2)" }}
+                    >
+                      {formatDate(vaccine.dateAdministered)}
+                    </td>
+                    <td
+                      className="px-5 py-3 text-[12.5px]"
+                      style={{ color: "var(--ink-2)" }}
+                    >
+                      {vaccine.doseNumber || "—"}
+                    </td>
+                    <td
+                      className="px-5 py-3 text-[12.5px]"
+                      style={{ color: "var(--ink-3)" }}
+                    >
+                      {vaccine.administrationSite || "—"}
+                    </td>
+                    <td
+                      className="px-5 py-3 text-[12.5px]"
+                      style={{ color: "var(--ink-3)" }}
+                    >
+                      {vaccine.route || "—"}
+                    </td>
+                    <td
+                      className="px-5 py-3 text-[12.5px]"
+                      style={{ color: "var(--ink-3)" }}
+                    >
+                      {vaccine.manufacturer || "—"}
+                    </td>
+                    <td
+                      className="mono px-5 py-3 text-[11.5px]"
+                      style={{ color: "var(--ink-3)" }}
+                    >
+                      {vaccine.lotNumber || "—"}
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="flex gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleEditHistory(vaccine)}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md"
+                          style={{ color: "var(--ink-2)" }}
+                          onMouseEnter={(e) => {
+                            (e.currentTarget as HTMLButtonElement).style.background =
+                              "var(--paper-3)";
+                          }}
+                          onMouseLeave={(e) => {
+                            (e.currentTarget as HTMLButtonElement).style.background =
+                              "transparent";
+                          }}
+                          aria-label="Edit"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteHistory(vaccine.id)}
+                          disabled={
+                            deletingId === vaccine.id && deletingType === "history"
+                          }
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md disabled:opacity-50"
+                          style={{ color: "var(--critical)" }}
+                          onMouseEnter={(e) => {
+                            (e.currentTarget as HTMLButtonElement).style.background =
+                              "var(--critical-soft)";
+                          }}
+                          onMouseLeave={(e) => {
+                            (e.currentTarget as HTMLButtonElement).style.background =
+                              "transparent";
+                          }}
+                          aria-label="Delete"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </ClearingCard>
 
       {/* Add Immunization History Modal */}
       <Dialog
@@ -518,12 +767,12 @@ export function VaccinesContent({
           }
         }}
       >
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingHistory
-                ? "Edit Immunization History"
-                : "Add Immunization History"}
+                ? "Edit immunization history"
+                : "Add immunization history"}
             </DialogTitle>
             <DialogDescription>
               {editingHistory
@@ -537,7 +786,7 @@ export function VaccinesContent({
           >
             <div className="space-y-2">
               <Label htmlFor="history-vaccineName">
-                Vaccine Name <span className="text-destructive">*</span>
+                Vaccine name <span style={{ color: "var(--critical)" }}>*</span>
               </Label>
               <Input
                 id="history-vaccineName"
@@ -550,25 +799,23 @@ export function VaccinesContent({
               />
               <div className="flex gap-2 flex-wrap">
                 {COMMON_VACCINES.map((name) => (
-                  <Button
+                  <button
                     key={name}
                     type="button"
-                    variant="outline"
-                    size="sm"
-                    className={cn(
-                      "h-7 text-xs",
-                      name === "Tdap" && "bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500",
-                      name === "Influenza" && "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500",
-                      name === "COVID-19" && "bg-green-500/10 text-green-700 dark:text-green-400 border-green-500"
-                    )}
                     onClick={() => setQuickVaccine(name, "history")}
+                    className="h-7 rounded-full px-3 text-[11.5px] font-medium tracking-tight transition-colors"
+                    style={{
+                      border: "1px solid var(--line)",
+                      background: "var(--paper-2)",
+                      color: "var(--ink-2)",
+                    }}
                   >
                     {name}
-                  </Button>
+                  </button>
                 ))}
               </div>
               {historyForm.formState.errors.vaccineName && (
-                <p className="text-sm text-destructive">
+                <p className="text-sm" style={{ color: "var(--critical)" }}>
                   {historyForm.formState.errors.vaccineName.message}
                 </p>
               )}
@@ -576,7 +823,7 @@ export function VaccinesContent({
 
             <div className="space-y-2">
               <Label htmlFor="history-dateAdministered">
-                Date Administered <span className="text-destructive">*</span>
+                Date administered <span style={{ color: "var(--critical)" }}>*</span>
               </Label>
               <div className="relative">
                 <Input
@@ -589,17 +836,20 @@ export function VaccinesContent({
                       "border-destructive"
                   )}
                 />
-                <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                <Calendar
+                  className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none"
+                  style={{ color: "var(--ink-3)" }}
+                />
               </div>
               {historyForm.formState.errors.dateAdministered && (
-                <p className="text-sm text-destructive">
+                <p className="text-sm" style={{ color: "var(--critical)" }}>
                   {historyForm.formState.errors.dateAdministered.message}
                 </p>
               )}
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="history-doseNumber">Dose Number</Label>
+              <Label htmlFor="history-doseNumber">Dose number</Label>
               <Select
                 value={historyForm.watch("doseNumber") || ""}
                 onValueChange={(value) =>
@@ -621,7 +871,7 @@ export function VaccinesContent({
 
             <div className="space-y-2">
               <Label htmlFor="history-administrationSite">
-                Administration Site
+                Administration site
               </Label>
               <Select
                 value={historyForm.watch("administrationSite") || ""}
@@ -662,7 +912,7 @@ export function VaccinesContent({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="history-lotNumber">Lot Number</Label>
+              <Label htmlFor="history-lotNumber">Lot number</Label>
               <Input
                 id="history-lotNumber"
                 placeholder="e.g., ABC123"
@@ -679,7 +929,7 @@ export function VaccinesContent({
                 }
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select Manufacturer" />
+                  <SelectValue placeholder="Select manufacturer" />
                 </SelectTrigger>
                 <SelectContent>
                   {MANUFACTURERS.map((manufacturer) => (
@@ -692,9 +942,9 @@ export function VaccinesContent({
             </div>
 
             <DialogFooter>
-              <Button
+              <Btn
+                kind="ghost"
                 type="button"
-                variant="outline"
                 onClick={() => {
                   setShowHistoryModal(false);
                   setEditingHistory(null);
@@ -703,14 +953,14 @@ export function VaccinesContent({
                 disabled={isSubmitting}
               >
                 Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
+              </Btn>
+              <Btn kind="accent" type="submit" disabled={isSubmitting}>
                 {isSubmitting
-                  ? "Saving..."
+                  ? "Saving…"
                   : editingHistory
-                  ? "Update History"
-                  : "Save Immunization"}
-              </Button>
+                  ? "Update history"
+                  : "Save immunization"}
+              </Btn>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -727,10 +977,10 @@ export function VaccinesContent({
           }
         }}
       >
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {editingScheduled ? "Edit Scheduled Vaccine" : "Schedule Vaccine"}
+              {editingScheduled ? "Edit scheduled vaccine" : "Schedule vaccine"}
             </DialogTitle>
             <DialogDescription>
               {editingScheduled
@@ -744,7 +994,7 @@ export function VaccinesContent({
           >
             <div className="space-y-2">
               <Label htmlFor="schedule-vaccineName">
-                Vaccine Name <span className="text-destructive">*</span>
+                Vaccine name <span style={{ color: "var(--critical)" }}>*</span>
               </Label>
               <Input
                 id="schedule-vaccineName"
@@ -757,25 +1007,23 @@ export function VaccinesContent({
               />
               <div className="flex gap-2 flex-wrap">
                 {COMMON_VACCINES.map((name) => (
-                  <Button
+                  <button
                     key={name}
                     type="button"
-                    variant="outline"
-                    size="sm"
-                    className={cn(
-                      "h-7 text-xs",
-                      name === "Tdap" && "bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500",
-                      name === "Influenza" && "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500",
-                      name === "COVID-19" && "bg-green-500/10 text-green-700 dark:text-green-400 border-green-500"
-                    )}
                     onClick={() => setQuickVaccine(name, "schedule")}
+                    className="h-7 rounded-full px-3 text-[11.5px] font-medium tracking-tight transition-colors"
+                    style={{
+                      border: "1px solid var(--line)",
+                      background: "var(--paper-2)",
+                      color: "var(--ink-2)",
+                    }}
                   >
                     {name}
-                  </Button>
+                  </button>
                 ))}
               </div>
               {scheduleForm.formState.errors.vaccineName && (
-                <p className="text-sm text-destructive">
+                <p className="text-sm" style={{ color: "var(--critical)" }}>
                   {scheduleForm.formState.errors.vaccineName.message}
                 </p>
               )}
@@ -783,7 +1031,7 @@ export function VaccinesContent({
 
             <div className="space-y-2">
               <Label htmlFor="schedule-scheduledDate">
-                Scheduled Date <span className="text-destructive">*</span>
+                Scheduled date <span style={{ color: "var(--critical)" }}>*</span>
               </Label>
               <div className="relative">
                 <Input
@@ -796,17 +1044,20 @@ export function VaccinesContent({
                       "border-destructive"
                   )}
                 />
-                <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                <Calendar
+                  className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none"
+                  style={{ color: "var(--ink-3)" }}
+                />
               </div>
               {scheduleForm.formState.errors.scheduledDate && (
-                <p className="text-sm text-destructive">
+                <p className="text-sm" style={{ color: "var(--critical)" }}>
                   {scheduleForm.formState.errors.scheduledDate.message}
                 </p>
               )}
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="schedule-doseNumber">Dose Number</Label>
+              <Label htmlFor="schedule-doseNumber">Dose number</Label>
               <Select
                 value={scheduleForm.watch("doseNumber") || ""}
                 onValueChange={(value) =>
@@ -837,20 +1088,27 @@ export function VaccinesContent({
             </div>
 
             {!editingScheduled && (
-              <Alert>
-                <Info className="h-4 w-4" />
-                <AlertDescription>
+              <div
+                className="flex items-start gap-2.5 rounded-[10px] px-3 py-2.5"
+                style={{
+                  background: "var(--info-soft)",
+                  border: "1px solid transparent",
+                  color: "var(--info)",
+                }}
+              >
+                <Info className="h-4 w-4 shrink-0 mt-0.5" />
+                <p className="text-[12.5px] leading-5" style={{ color: "var(--ink-2)" }}>
                   This will create a scheduled vaccination reminder. The vaccine
                   will need to be administered and recorded after the scheduled
                   date.
-                </AlertDescription>
-              </Alert>
+                </p>
+              </div>
             )}
 
             <DialogFooter>
-              <Button
+              <Btn
+                kind="ghost"
                 type="button"
-                variant="outline"
                 onClick={() => {
                   setShowScheduleModal(false);
                   setEditingScheduled(null);
@@ -859,14 +1117,14 @@ export function VaccinesContent({
                 disabled={isSubmitting}
               >
                 Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
+              </Btn>
+              <Btn kind="accent" type="submit" disabled={isSubmitting}>
                 {isSubmitting
-                  ? "Saving..."
+                  ? "Saving…"
                   : editingScheduled
-                  ? "Update Schedule"
-                  : "Schedule Vaccine"}
-              </Button>
+                  ? "Update schedule"
+                  : "Schedule vaccine"}
+              </Btn>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -874,4 +1132,3 @@ export function VaccinesContent({
     </div>
   );
 }
-

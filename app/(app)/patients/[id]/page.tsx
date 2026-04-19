@@ -9,40 +9,30 @@ export default async function PatientOverviewPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  
-  // Check authentication and role
+
   const session = await getServerSession();
 
   if (!session) {
     redirect("/sign-in");
   }
 
-  // Allow doctors and nurses
   if (session.role !== "doctor" && session.role !== "nurse") {
     redirect("/sign-in");
   }
 
-  // Fetch patient overview data
   const overview = await getPatientOverview(id);
-  
+
   if (!overview) {
     notFound();
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-6">
-      <div>
-        <h1 className="text-3xl font-bold text-foreground">Overview</h1>
-      </div>
-
-      <PatientOverviewCards 
-        patient={overview.patient}
-        stats={overview.stats}
-        latestVisit={overview.latestVisit}
-        recentVisits={overview.recentVisits}
-        userRole={session.role}
-      />
-    </div>
+    <PatientOverviewCards
+      patient={overview.patient}
+      stats={overview.stats}
+      latestVisit={overview.latestVisit}
+      recentVisits={overview.recentVisits}
+      userRole={session.role}
+    />
   );
 }
-

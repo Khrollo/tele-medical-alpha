@@ -1,14 +1,26 @@
 "use client";
 
 import * as React from "react";
-import { Plus, Search, FileText, Clock, AlertCircle, CheckCircle, Filter, Calendar, User } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import {
+  Plus,
+  Search,
+  FileText,
+  Clock,
+  AlertCircle,
+  CheckCircle,
+  Filter,
+  Calendar,
+  User,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Btn,
+  ClearingCard,
+  Pill,
+  SubTabHeader,
+  type PillTone,
+} from "@/components/ui/clearing";
 import type { Order } from "@/app/_actions/orders";
-import { cn } from "@/app/_lib/utils/cn";
 
 interface OrdersContentProps {
   patientId: string;
@@ -18,8 +30,30 @@ interface OrdersContentProps {
 
 type OrderType = "all" | "medications" | "labs" | "imaging";
 
+function statusTone(status: string): { tone: PillTone; label: string } {
+  const s = (status || "").toLowerCase();
+  if (!status) return { tone: "neutral", label: "N/A" };
+  if (s.includes("cancel")) return { tone: "neutral", label: status };
+  if (s.includes("complete") || s.includes("fulfill") || s.includes("result"))
+    return { tone: "ok", label: status };
+  if (s.includes("pending") || s.includes("approval"))
+    return { tone: "warn", label: status };
+  if (s.includes("lab") || s.includes("progress") || s.includes("in-progress"))
+    return { tone: "info", label: status };
+  return { tone: "neutral", label: status };
+}
+
+function priorityTone(priority: string): { tone: PillTone; label: string } {
+  const p = (priority || "").toLowerCase();
+  if (!priority) return { tone: "neutral", label: "N/A" };
+  if (p === "stat" || p === "urgent")
+    return { tone: "critical", label: priority };
+  if (p === "routine" || p === "normal")
+    return { tone: "info", label: priority };
+  return { tone: "neutral", label: priority };
+}
+
 export function OrdersContent({
-  patientId,
   patientName,
   orders: initialOrders,
 }: OrdersContentProps) {
@@ -30,27 +64,32 @@ export function OrdersContent({
   // Calculate summary statistics
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  
-  const ordersToday = orders.filter(order => {
-    const orderDate = order.dateOrdered ? new Date(order.dateOrdered) : new Date(order.visitDate);
+
+  const ordersToday = orders.filter((order) => {
+    const orderDate = order.dateOrdered
+      ? new Date(order.dateOrdered)
+      : new Date(order.visitDate);
     if (isNaN(orderDate.getTime())) return false;
     orderDate.setHours(0, 0, 0, 0);
     return orderDate.getTime() === today.getTime();
   });
 
-  const pendingApproval = orders.filter(order => 
-    order.status?.toLowerCase().includes("pending") || 
-    order.status?.toLowerCase().includes("approval")
+  const pendingApproval = orders.filter(
+    (order) =>
+      order.status?.toLowerCase().includes("pending") ||
+      order.status?.toLowerCase().includes("approval")
   );
 
-  const statOrders = orders.filter(order => 
-    order.priority?.toLowerCase() === "stat" ||
-    order.priority?.toLowerCase() === "urgent"
+  const statOrders = orders.filter(
+    (order) =>
+      order.priority?.toLowerCase() === "stat" ||
+      order.priority?.toLowerCase() === "urgent"
   );
 
-  const completed = orders.filter(order => 
-    order.status?.toLowerCase().includes("completed") ||
-    order.status?.toLowerCase().includes("fulfilled")
+  const completed = orders.filter(
+    (order) =>
+      order.status?.toLowerCase().includes("completed") ||
+      order.status?.toLowerCase().includes("fulfilled")
   );
 
   // Filter orders based on type and search
@@ -59,7 +98,7 @@ export function OrdersContent({
 
     // Filter by type
     if (selectedType !== "all") {
-      filtered = filtered.filter(order => {
+      filtered = filtered.filter((order) => {
         const orderType = order.type?.toLowerCase() || "";
         return orderType.includes(selectedType);
       });
@@ -68,11 +107,12 @@ export function OrdersContent({
     // Filter by search query
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(order =>
-        order.details?.toLowerCase().includes(query) ||
-        order.type?.toLowerCase().includes(query) ||
-        order.status?.toLowerCase().includes(query) ||
-        order.orderedByName?.toLowerCase().includes(query)
+      filtered = filtered.filter(
+        (order) =>
+          order.details?.toLowerCase().includes(query) ||
+          order.type?.toLowerCase().includes(query) ||
+          order.status?.toLowerCase().includes(query) ||
+          order.orderedByName?.toLowerCase().includes(query)
       );
     }
 
@@ -92,257 +132,274 @@ export function OrdersContent({
     }
   };
 
-  const getPriorityBadge = (priority: string) => {
-    const priorityLower = priority?.toLowerCase() || "";
-    if (priorityLower === "stat" || priorityLower === "urgent") {
-      return (
-        <Badge variant="destructive" className="bg-red-500 text-white">
-          {priority || "N/A"}
-        </Badge>
-      );
-    }
-    if (priorityLower === "routine" || priorityLower === "normal") {
-      return (
-        <Badge variant="default" className="bg-blue-500 text-white">
-          {priority || "N/A"}
-        </Badge>
-      );
-    }
-    return (
-      <Badge variant="outline">
-        {priority || "N/A"}
-      </Badge>
-    );
-  };
+  const summaryMetrics: Array<{
+    k: string;
+    v: number;
+    icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+    tone: string;
+  }> = [
+    { k: "Orders today", v: ordersToday.length, icon: FileText, tone: "var(--info)" },
+    {
+      k: "Pending approval",
+      v: pendingApproval.length,
+      icon: Clock,
+      tone: "var(--warn)",
+    },
+    { k: "STAT orders", v: statOrders.length, icon: AlertCircle, tone: "var(--critical)" },
+    { k: "Completed", v: completed.length, icon: CheckCircle, tone: "var(--ok)" },
+  ];
 
-  const getStatusBadge = (status: string) => {
-    const statusLower = status?.toLowerCase() || "";
-    if (statusLower.includes("completed") || statusLower.includes("fulfilled")) {
-      return (
-        <Badge variant="default" className="bg-green-500 text-white">
-          {status || "N/A"}
-        </Badge>
-      );
-    }
-    if (statusLower.includes("pending") || statusLower.includes("approval")) {
-      return (
-        <Badge variant="default" className="bg-orange-500 text-white">
-          {status || "N/A"}
-        </Badge>
-      );
-    }
-    return (
-      <Badge variant="outline">
-        {status || "N/A"}
-      </Badge>
-    );
-  };
+  const typeTabs: Array<[OrderType, string, number]> = [
+    ["all", "All types", orders.length],
+    [
+      "medications",
+      "Medications",
+      orders.filter((o) =>
+        o.type?.toLowerCase().includes("medication")
+      ).length,
+    ],
+    [
+      "labs",
+      "Labs",
+      orders.filter((o) => o.type?.toLowerCase().includes("lab")).length,
+    ],
+    [
+      "imaging",
+      "Imaging",
+      orders.filter((o) => o.type?.toLowerCase().includes("imaging")).length,
+    ],
+  ];
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-foreground">Orders</h1>
-        <Button>
-          <Plus className="h-4 w-4 mr-2" />
-          New Order
-        </Button>
-      </div>
+    <div className="flex flex-1 flex-col gap-5 px-4 py-6 md:px-8 md:py-8">
+      <SubTabHeader
+        eyebrow="Chart · Orders"
+        title="Orders"
+        subtitle={`Manage lab, imaging, and medication orders for ${patientName}.`}
+        actions={
+          <Btn kind="accent" icon={<Plus className="h-4 w-4" />}>
+            New order
+          </Btn>
+        }
+      />
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">Orders Today</p>
-                <p className="text-2xl font-bold">{ordersToday.length}</p>
-                {ordersToday.length === 0 && (
-                  <p className="text-xs text-muted-foreground mt-1">No data</p>
-                )}
-              </div>
-              <div className="relative">
-                <FileText className="h-8 w-8 text-blue-500" />
-                <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-blue-500 rounded-full border-2 border-background" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">Pending Approval</p>
-                <p className="text-2xl font-bold">{pendingApproval.length}</p>
-                {pendingApproval.length === 0 && (
-                  <p className="text-xs text-muted-foreground mt-1">No data</p>
-                )}
-              </div>
-              <div className="relative">
-                <Clock className="h-8 w-8 text-orange-500" />
-                <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-orange-500 rounded-full border-2 border-background" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">STAT Orders</p>
-                <p className="text-2xl font-bold">{statOrders.length}</p>
-                {statOrders.length === 0 && (
-                  <p className="text-xs text-muted-foreground mt-1">No data</p>
-                )}
-              </div>
-              <div className="relative">
-                <AlertCircle className="h-8 w-8 text-red-500" />
-                <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-background" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">Completed</p>
-                <p className="text-2xl font-bold">{completed.length}</p>
-                {completed.length === 0 && (
-                  <p className="text-xs text-muted-foreground mt-1">No data</p>
-                )}
-              </div>
-              <div className="relative">
-                <CheckCircle className="h-8 w-8 text-green-500" />
-                <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-background" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Orders Management */}
-      <Card>
-        <CardContent className="p-6">
-          <div className="space-y-4">
-            {/* Title and Description */}
-            <div>
-              <h2 className="text-xl font-bold text-foreground mb-1">Orders Management</h2>
-              <p className="text-sm text-muted-foreground">
-                Manage patient orders, labs, and medications.
-              </p>
-            </div>
-
-            {/* Filters and Search */}
-            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-              <Tabs value={selectedType} onValueChange={(v) => setSelectedType(v as OrderType)}>
-                <TabsList>
-                  <TabsTrigger value="all">All Types</TabsTrigger>
-                  <TabsTrigger value="medications">Medications</TabsTrigger>
-                  <TabsTrigger value="labs">Labs</TabsTrigger>
-                  <TabsTrigger value="imaging">Imaging</TabsTrigger>
-                </TabsList>
-              </Tabs>
-
-              <div className="flex gap-2 w-full sm:w-auto">
-                <div className="relative flex-1 sm:flex-initial">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9 w-full sm:w-[200px]"
-                  />
+      {/* Summary strip */}
+      <div
+        className="grid overflow-hidden rounded-2xl"
+        style={{
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          border: "1px solid var(--line)",
+          background: "var(--card)",
+        }}
+      >
+        {summaryMetrics.map((m, i, arr) => {
+          const Icon = m.icon;
+          return (
+            <div
+              key={m.k}
+              className="flex flex-col gap-1.5 px-5 py-4"
+              style={{
+                borderRight:
+                  i < arr.length - 1 ? "1px solid var(--line)" : undefined,
+              }}
+            >
+              <div className="flex items-center justify-between">
+                <div
+                  className="text-[11px] uppercase"
+                  style={{ color: "var(--ink-3)", letterSpacing: "0.1em" }}
+                >
+                  {m.k}
                 </div>
-                <Button variant="outline" size="icon">
-                  <Filter className="h-4 w-4" />
-                </Button>
+                <Icon className="h-3.5 w-3.5" style={{ color: m.tone }} />
+              </div>
+              <div
+                className="serif"
+                style={{
+                  fontSize: 32,
+                  lineHeight: 0.95,
+                  letterSpacing: "-0.02em",
+                  color: "var(--ink)",
+                }}
+              >
+                {m.v}
               </div>
             </div>
+          );
+        })}
+      </div>
 
-            {/* Orders Table */}
-            <div className="border rounded-lg overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-muted/50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-foreground uppercase tracking-wider">
-                        ORDER DETAILS
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-foreground uppercase tracking-wider">
-                        TYPE
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-foreground uppercase tracking-wider">
-                        PRIORITY
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-foreground uppercase tracking-wider">
-                        STATUS
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-foreground uppercase tracking-wider">
-                        DATE
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-foreground uppercase tracking-wider">
-                        ORDERED BY
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {filteredOrders.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="px-4 py-12 text-center">
-                          <p className="text-muted-foreground">No orders recorded yet.</p>
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredOrders.map((order) => (
-                        <tr key={order.id} className="hover:bg-muted/50 transition-colors">
-                          <td className="px-4 py-3">
-                            <div className="max-w-md">
-                              <p className="text-sm font-medium text-foreground truncate">
-                                {order.details || "No details"}
-                              </p>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3">
-                            <Badge variant="outline">
-                              {order.type || "N/A"}
-                            </Badge>
-                          </td>
-                          <td className="px-4 py-3">
-                            {getPriorityBadge(order.priority)}
-                          </td>
-                          <td className="px-4 py-3">
-                            {getStatusBadge(order.status)}
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <Calendar className="h-4 w-4" />
-                              <span>
-                                {order.dateOrdered 
-                                  ? formatDate(order.dateOrdered)
-                                  : formatDate(order.visitDate)}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <User className="h-4 w-4" />
-                              <span>{order.orderedByName || "N/A"}</span>
-                            </div>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+      {/* Orders table card */}
+      <ClearingCard pad={0}>
+        <div
+          className="flex flex-wrap items-center gap-3 px-5 py-3.5"
+          style={{ borderBottom: "1px solid var(--line)" }}
+        >
+          <div
+            className="serif"
+            style={{ fontSize: 18, color: "var(--ink)", letterSpacing: "-0.01em" }}
+          >
+            Orders management
           </div>
-        </CardContent>
-      </Card>
+          <div className="flex-1" />
+          <div
+            className="flex gap-1 rounded-full p-1"
+            style={{ border: "1px solid var(--line)", background: "var(--paper-2)" }}
+          >
+            {typeTabs.map(([k, label, n]) => {
+              const active = selectedType === k;
+              return (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setSelectedType(k)}
+                  className="h-7 rounded-full px-3.5 text-[12.5px] font-medium tracking-tight transition-colors"
+                  style={{
+                    background: active ? "var(--ink)" : "transparent",
+                    color: active ? "var(--paper)" : "var(--ink-2)",
+                  }}
+                >
+                  {label} <span className="mono ml-1 opacity-70">{n}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2"
+                style={{ color: "var(--ink-3)" }}
+              />
+              <Input
+                placeholder="Search orders…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="h-8 w-full pl-9 text-[12.5px] sm:w-[220px]"
+              />
+            </div>
+            <button
+              type="button"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md"
+              style={{ color: "var(--ink-2)", border: "1px solid var(--line)" }}
+              aria-label="Filter"
+            >
+              <Filter className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {filteredOrders.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-3 py-12">
+            <p className="text-[13px]" style={{ color: "var(--ink-3)" }}>
+              No orders recorded yet.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr style={{ borderBottom: "1px solid var(--line)" }}>
+                  {[
+                    "Order details",
+                    "Type",
+                    "Priority",
+                    "Status",
+                    "Date",
+                    "Ordered by",
+                  ].map((h) => (
+                    <th
+                      key={h}
+                      className="px-5 py-2.5 text-left text-[10.5px] font-medium uppercase"
+                      style={{ color: "var(--ink-3)", letterSpacing: "0.1em" }}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredOrders.map((order, i, arr) => {
+                  const st = statusTone(order.status);
+                  const pr = priorityTone(order.priority);
+                  return (
+                    <tr
+                      key={order.id}
+                      style={{
+                        borderBottom:
+                          i < arr.length - 1
+                            ? "1px solid var(--line)"
+                            : undefined,
+                      }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLTableRowElement).style.background =
+                          "var(--paper-2)";
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLTableRowElement).style.background =
+                          "transparent";
+                      }}
+                    >
+                      <td className="px-5 py-3">
+                        <div
+                          className="max-w-md text-[13.5px] font-medium"
+                          style={{ color: "var(--ink)" }}
+                        >
+                          {order.details || "No details"}
+                        </div>
+                      </td>
+                      <td className="px-5 py-3">
+                        <span
+                          className="mono text-[11.5px] uppercase"
+                          style={{ color: "var(--ink-2)", letterSpacing: "0.05em" }}
+                        >
+                          {order.type || "N/A"}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3">
+                        <Pill tone={pr.tone} dot={pr.tone === "critical"}>
+                          {pr.label}
+                        </Pill>
+                      </td>
+                      <td className="px-5 py-3">
+                        <Pill tone={st.tone} dot={st.tone === "critical" || st.tone === "warn"}>
+                          {st.label}
+                        </Pill>
+                      </td>
+                      <td className="px-5 py-3">
+                        <div
+                          className="flex items-center gap-1.5 text-[12.5px]"
+                          style={{ color: "var(--ink-2)" }}
+                        >
+                          <Calendar
+                            className="h-3.5 w-3.5"
+                            style={{ color: "var(--ink-3)" }}
+                          />
+                          <span className="mono nowrap">
+                            {order.dateOrdered
+                              ? formatDate(order.dateOrdered)
+                              : formatDate(order.visitDate)}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3">
+                        <div
+                          className="flex items-center gap-1.5 text-[12.5px]"
+                          style={{ color: "var(--ink-2)" }}
+                        >
+                          <User
+                            className="h-3.5 w-3.5"
+                            style={{ color: "var(--ink-3)" }}
+                          />
+                          <span>{order.orderedByName || "N/A"}</span>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </ClearingCard>
     </div>
   );
 }
