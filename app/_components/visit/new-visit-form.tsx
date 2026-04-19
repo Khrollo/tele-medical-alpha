@@ -52,6 +52,7 @@ import {
   ClearingCard as ClearingCardWrap,
   Pill as ClearingPill,
 } from "@/components/ui/clearing";
+import { FieldGroup, VisitField, VisitSubCard, SectionDivider } from "./visit-field";
 
 interface NewVisitFormProps {
   patientId: string;
@@ -909,157 +910,132 @@ export function NewVisitForm({
     switch (section.id) {
       case "subjective":
         return (
-          <div className="space-y-8">
-            <div className="space-y-6">
-              <Label className="text-base">Chief Complaint</Label>
+          <div className="flex flex-col gap-7">
+            <FieldGroup
+              eyebrow="Patient-reported"
+              title="Chief complaint"
+              description="The primary reason for today's visit, in the patient's own words when possible."
+              icon={<Stethoscope className="h-4 w-4" />}
+            >
               <Textarea
                 {...form.register("subjective.chiefComplaint")}
-                className="min-h-[100px]"
+                placeholder="e.g., Chest pain radiating to the left arm for the past hour."
+                className="min-h-[96px]"
               />
-            </div>
-            <div className="space-y-6">
-              <Label className="text-base">History of Present Illness (HPI)</Label>
+              <div className="text-[11.5px]" style={{ color: "var(--ink-3)" }}>
+                Tip: tap the microphone to dictate — the AI scribe will fill this in for your review.
+              </div>
+            </FieldGroup>
+
+            <SectionDivider />
+
+            <FieldGroup
+              eyebrow="Narrative"
+              title="History of present illness"
+              description="Onset, character, location, duration, aggravating / relieving factors, associated symptoms."
+              icon={<FileSignature className="h-4 w-4" />}
+            >
               <Textarea
                 {...form.register("subjective.hpi")}
-                rows={8}
-                className="min-h-[200px]"
+                placeholder="34-year-old presenting with 1 hour of substernal chest pain, onset during exertion…"
+                rows={10}
+                className="min-h-[220px]"
               />
-            </div>
+            </FieldGroup>
           </div>
         );
       case "objective":
         return (
-          <div className="grid gap-6 md:grid-cols-2">
-            <div className="space-y-6">
-              <div className="flex items-center gap-2">
-                <Label className="text-base">Blood Pressure</Label>
-                {blurredVitals.bp && getVitalAlert("bp", intakeBp) && (
-                  <VitalAlertBadge alert={getVitalAlert("bp", intakeBp)!} />
-                )}
-              </div>
-              <Input
-                {...form.register("objective.bp")}
-                placeholder="e.g., 120/80"
-                onBlur={() =>
-                  setBlurredVitals((current) => ({ ...current, bp: true }))
-                }
-              />
-            </div>
-            <div className="space-y-6">
-              <div className="flex items-center gap-2">
-                <Label className="text-base">Heart Rate</Label>
-                {blurredVitals.hr && getVitalAlert("hr", intakeHr) && (
-                  <VitalAlertBadge alert={getVitalAlert("hr", intakeHr)!} />
-                )}
-              </div>
-              <Input
-                {...form.register("objective.hr")}
-                onBlur={() =>
-                  setBlurredVitals((current) => ({ ...current, hr: true }))
-                }
-              />
-            </div>
-            <div className="space-y-6">
-              <div className="flex items-center gap-2">
-                <Label className="text-base">Temperature</Label>
-                {blurredVitals.temp && getVitalAlert("temp", intakeTemp) && (
-                  <VitalAlertBadge alert={getVitalAlert("temp", intakeTemp)!} />
-                )}
-              </div>
-              <Input
-                {...form.register("objective.temp")}
-                placeholder="e.g., 98.6"
-                onBlur={() =>
-                  setBlurredVitals((current) => ({ ...current, temp: true }))
-                }
-              />
-              {form.watch("objective.temp") && (
-                <p className="text-xs text-muted-foreground">
-                  {(() => {
-                    const temp = form.watch("objective.temp") || "";
-                    const num = parseFloat(temp);
-                    if (!isNaN(num) && temp) {
-                      const celsius = ((num - 32) * 5) / 9;
-                      return `${temp}°F = ${celsius.toFixed(1)}°C`;
-                    }
-                    return "";
-                  })()}
-                </p>
-              )}
-            </div>
-            <div className="space-y-6">
-              <div className="flex items-center gap-2">
-                <Label className="text-base">SpO2 (%)</Label>
-                {blurredVitals.spo2 && getVitalAlert("spo2", intakeSpo2) && (
-                  <VitalAlertBadge alert={getVitalAlert("spo2", intakeSpo2)!} />
-                )}
-              </div>
-              <Input
-                {...form.register("objective.spo2")}
-                placeholder="e.g., 98"
-                onBlur={() =>
-                  setBlurredVitals((current) => ({ ...current, spo2: true }))
-                }
-              />
-            </div>
-            <div className="space-y-6">
-              <Label className="text-base">Weight (lbs)</Label>
-              <Input
-                {...form.register("objective.weight")}
-                placeholder="e.g., 170"
-              />
-              {form.watch("objective.weight") && (
-                <p className="text-xs text-muted-foreground">
-                  {(() => {
-                    const weight = form.watch("objective.weight") || "";
-                    const num = parseFloat(weight);
-                    if (!isNaN(num) && weight) {
-                      const kg = num * 0.453592;
-                      return `${weight} lbs = ${kg.toFixed(1)} kg`;
-                    }
-                    return "";
-                  })()}
-                </p>
-              )}
-            </div>
-            <div className="space-y-6">
-              <Label className="text-base">Height (cm)</Label>
-              <Input
-                {...form.register("objective.height")}
-                placeholder="e.g., 177.8"
-              />
-              {form.watch("objective.height") && (
-                <p className="text-xs text-muted-foreground">
-                  {(() => {
-                    const heightValue = form.watch("objective.height");
-                    if (!heightValue) return "";
-                    const num = parseFloat(heightValue);
-                    if (!isNaN(num)) {
-                      const inches = num / 2.54;
-                      const feet = Math.floor(inches / 12);
-                      const remainingInches = Math.round(inches % 12);
-                      if (feet > 0) {
-                        return `${heightValue} cm = ${feet}'${remainingInches}"`;
+          <div className="flex flex-col gap-7">
+            <FieldGroup
+              eyebrow="Measurements"
+              title="Vitals"
+              description="Record the patient's vital signs for this encounter."
+              icon={<User className="h-4 w-4" />}
+            >
+              <VisitSubCard>
+                <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
+                  <VisitField label="Blood pressure" trailing={<span className="mono text-[10.5px]" style={{ color: "var(--ink-3)" }}>mmHg</span>}>
+                    <Input {...form.register("objective.bp")} placeholder="120/80" />
+                  </VisitField>
+                  <VisitField label="Heart rate" trailing={<span className="mono text-[10.5px]" style={{ color: "var(--ink-3)" }}>bpm</span>}>
+                    <Input {...form.register("objective.hr")} placeholder="72" />
+                  </VisitField>
+                  <VisitField
+                    label="Temperature"
+                    trailing={<span className="mono text-[10.5px]" style={{ color: "var(--ink-3)" }}>°F</span>}
+                    hint={(() => {
+                      const temp = form.watch("objective.temp") || "";
+                      const num = parseFloat(temp);
+                      if (!isNaN(num) && temp) {
+                        const celsius = ((num - 32) * 5) / 9;
+                        return `${celsius.toFixed(1)}°C`;
                       }
-                      return `${heightValue} cm = ${inches.toFixed(1)} in`;
-                    }
-                    return "";
-                  })()}
-                </p>
-              )}
-            </div>
-            <div className="space-y-6">
-              <Label className="text-base">BMI</Label>
-              <Input
-                {...form.register("objective.bmi")}
-                placeholder="Auto-calculated"
-                readOnly
-                className="bg-muted cursor-not-allowed"
-              />
-            </div>
-            <div className="md:col-span-2 space-y-4">
-              <Label className="text-base font-semibold">Physical Examination</Label>
-              <div className="grid gap-4 md:grid-cols-2">
+                      return undefined;
+                    })()}
+                  >
+                    <Input {...form.register("objective.temp")} placeholder="98.6" />
+                  </VisitField>
+                  <VisitField
+                    label="Weight"
+                    trailing={<span className="mono text-[10.5px]" style={{ color: "var(--ink-3)" }}>lb</span>}
+                    hint={(() => {
+                      const weight = form.watch("objective.weight") || "";
+                      const num = parseFloat(weight);
+                      if (!isNaN(num) && weight) {
+                        const kg = num * 0.453592;
+                        return `${kg.toFixed(1)} kg`;
+                      }
+                      return undefined;
+                    })()}
+                  >
+                    <Input {...form.register("objective.weight")} placeholder="170" />
+                  </VisitField>
+                  <VisitField
+                    label="Height"
+                    trailing={<span className="mono text-[10.5px]" style={{ color: "var(--ink-3)" }}>cm</span>}
+                    hint={(() => {
+                      const heightValue = form.watch("objective.height");
+                      if (!heightValue) return undefined;
+                      const num = parseFloat(heightValue);
+                      if (!isNaN(num)) {
+                        const inches = num / 2.54;
+                        const feet = Math.floor(inches / 12);
+                        const remainingInches = Math.round(inches % 12);
+                        if (feet > 0) return `${feet}′${remainingInches}″`;
+                        return `${inches.toFixed(1)} in`;
+                      }
+                      return undefined;
+                    })()}
+                  >
+                    <Input {...form.register("objective.height")} placeholder="177.8" />
+                  </VisitField>
+                  <VisitField
+                    label="BMI"
+                    trailing={<span className="mono text-[10.5px]" style={{ color: "var(--ink-3)" }}>kg/m²</span>}
+                    hint="Calculated from weight and height."
+                  >
+                    <Input
+                      {...form.register("objective.bmi")}
+                      placeholder="Auto"
+                      readOnly
+                      className="cursor-not-allowed"
+                      style={{ background: "var(--paper-3)" }}
+                    />
+                  </VisitField>
+                </div>
+              </VisitSubCard>
+            </FieldGroup>
+
+            <SectionDivider />
+
+            <FieldGroup
+              eyebrow="Exam"
+              title="Physical examination"
+              description="Document findings by system. Leave blank for any system not assessed today."
+              icon={<Stethoscope className="h-4 w-4" />}
+            >
+              <div className="grid gap-3 md:grid-cols-2">
                 {[
                   { key: "general", label: "General" },
                   { key: "heent", label: "HEENT" },
@@ -1072,28 +1048,45 @@ export function NewVisitForm({
                   { key: "skin", label: "Skin" },
                   { key: "psychological", label: "Psychological" },
                 ].map((category) => (
-                  <div key={category.key} className="space-y-2">
-                    <Label className="text-sm font-medium">{category.label}</Label>
+                  <VisitField key={category.key} label={category.label}>
                     <Textarea
                       {...form.register(`objective.examFindings.${category.key}` as any)}
                       rows={3}
                       className="min-h-[80px] resize-none"
-                      placeholder={`${category.label} examination findings...`}
+                      placeholder={`${category.label} findings…`}
                     />
-                  </div>
+                  </VisitField>
                 ))}
               </div>
-            </div>
-            {/* Vision fields */}
-            {["visionOd", "visionOs", "visionOu", "visionCorrection", "visionBlurry", "visionFloaters", "visionPain", "visionLastExamDate"].map((field) => (
-              <div key={field} className="space-y-2">
-                <Label>{field === "visionOd" ? "Vision OD" : field === "visionOs" ? "Vision OS" : field === "visionOu" ? "Vision OU" : field === "visionCorrection" ? "Vision Correction" : field === "visionBlurry" ? "Vision Blurry" : field === "visionFloaters" ? "Vision Floaters" : field === "visionPain" ? "Vision Pain" : "Last Exam Date"}</Label>
-                <Input
-                  type={field === "visionLastExamDate" ? "date" : "text"}
-                  {...form.register(`objective.${field}` as any)}
-                />
+            </FieldGroup>
+
+            <SectionDivider />
+
+            <FieldGroup
+              eyebrow="Ophthalmic"
+              title="Vision"
+              description="Visual acuity and related symptoms. Fill in what's relevant."
+            >
+              <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
+                {[
+                  { key: "visionOd", label: "OD (right)" },
+                  { key: "visionOs", label: "OS (left)" },
+                  { key: "visionOu", label: "OU (both)" },
+                  { key: "visionCorrection", label: "Correction" },
+                  { key: "visionBlurry", label: "Blurry vision" },
+                  { key: "visionFloaters", label: "Floaters" },
+                  { key: "visionPain", label: "Eye pain" },
+                  { key: "visionLastExamDate", label: "Last exam date" },
+                ].map((f) => (
+                  <VisitField key={f.key} label={f.label}>
+                    <Input
+                      type={f.key === "visionLastExamDate" ? "date" : "text"}
+                      {...form.register(`objective.${f.key}` as any)}
+                    />
+                  </VisitField>
+                ))}
               </div>
-            ))}
+            </FieldGroup>
           </div>
         );
       case "reviewOfSystems":
