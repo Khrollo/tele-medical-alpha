@@ -141,7 +141,6 @@ export const auth = betterAuth({
         type: "string",
         required: false,
         input: false,
-        fieldName: "avatar_url",
       },
       availability: {
         type: "string",
