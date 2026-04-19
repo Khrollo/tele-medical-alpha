@@ -13,6 +13,8 @@ import { db } from "@/app/_lib/db/drizzle/index";
 import { patients, notes } from "@/app/_lib/db/drizzle/schema";
 import { eq, desc } from "drizzle-orm";
 import { parseVisitNoteFromTranscript } from "@/app/_lib/ai/parse-visit";
+import { parseVisitNote } from "@/app/_lib/visit-note/schema";
+import { validateNoteForSignOff } from "@/app/_lib/visit-note/sign-off";
 
 /**
  * Create a visit draft (server action)
@@ -133,6 +135,26 @@ export async function finalizeVisitAction(
 
   if (!patientResult[0] || !isAssignedClinician) {
     throw new Error("Only the assigned clinician can sign this note");
+  }
+
+  if (status === "signed") {
+    const visitNotes = await db
+      .select({ note: notes.note })
+      .from(notes)
+      .where(eq(notes.visitId, visitId))
+      .orderBy(desc(notes.createdAt))
+      .limit(1);
+
+    const latestNote = visitNotes[0]?.note;
+    if (!latestNote || typeof latestNote !== "object") {
+      throw new Error("A complete visit note is required before sign-off");
+    }
+
+    const parsedNote = parseVisitNote(latestNote);
+    const signOffErrors = validateNoteForSignOff(parsedNote);
+    if (signOffErrors.length > 0) {
+      throw new Error(signOffErrors[0]);
+    }
   }
 
   // Finalize the visit

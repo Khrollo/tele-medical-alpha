@@ -38,7 +38,7 @@ const createUserSchema = z.object({
     .min(1, "Name is required")
     .min(2, "Name must be at least 2 characters")
     .max(100, "Name must be less than 100 characters"),
-  role: z.enum(["doctor", "nurse"], {
+  role: z.enum(["doctor", "nurse", "admin"], {
     message: "Please select a role",
   }),
 }).refine((data) => data.password === data.confirmPassword, {
@@ -130,7 +130,9 @@ export function CreateUserForm() {
             </Label>
             <Select
               value={form.watch("role") || ""}
-              onValueChange={(value) => form.setValue("role", value as "doctor" | "nurse")}
+              onValueChange={(value) =>
+                form.setValue("role", value as "doctor" | "nurse" | "admin")
+              }
             >
               <SelectTrigger
                 className={cn(
@@ -142,6 +144,7 @@ export function CreateUserForm() {
               <SelectContent>
                 <SelectItem value="doctor">Doctor</SelectItem>
                 <SelectItem value="nurse">Nurse</SelectItem>
+                <SelectItem value="admin">Admin</SelectItem>
               </SelectContent>
             </Select>
             {form.formState.errors.role && (

@@ -15,23 +15,55 @@ export function SignInForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [activeMethod, setActiveMethod] = useState<"google" | "email" | null>(
+    null
+  );
+
+  const isLoading = activeMethod !== null;
+  const requestedRedirect = searchParams.get("redirect");
+  const safeRedirect =
+    requestedRedirect && requestedRedirect.startsWith("/")
+      ? requestedRedirect
+      : "/";
+
+  const handleGoogleSignIn = async () => {
+    setError(null);
+    setActiveMethod("google");
+
+    try {
+      const { error: signInError } = await authClient.signIn.social({
+        provider: "google",
+        callbackURL: safeRedirect,
+        errorCallbackURL: "/sign-in",
+      });
+
+      if (signInError) {
+        setError(
+          signInError.message || "Failed to sign in with Google. Please try again."
+        );
+        setActiveMethod(null);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An unexpected error occurred");
+      setActiveMethod(null);
+    }
+  };
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
-    setIsLoading(true);
+    setActiveMethod("email");
 
     // Basic validation
     if (!email.trim()) {
       setError("Email is required");
-      setIsLoading(false);
+      setActiveMethod(null);
       return;
     }
 
     if (!password) {
       setError("Password is required");
-      setIsLoading(false);
+      setActiveMethod(null);
       return;
     }
 
@@ -43,21 +75,15 @@ export function SignInForm() {
 
       if (signInError) {
         setError(signInError.message || "Failed to sign in. Please check your credentials.");
-        setIsLoading(false);
+        setActiveMethod(null);
         return;
       }
-
-      const requestedRedirect = searchParams.get("redirect");
-      const safeRedirect =
-        requestedRedirect && requestedRedirect.startsWith("/")
-          ? requestedRedirect
-          : "/";
 
       // Full navigation so the server reads the real session after Better Auth sets cookies.
       window.location.assign(safeRedirect);
     } catch (err) {
       setError(err instanceof Error ? err.message : "An unexpected error occurred");
-      setIsLoading(false);
+      setActiveMethod(null);
     }
   };
 
@@ -66,7 +92,8 @@ export function SignInForm() {
       <CardHeader className="space-y-1">
         <CardTitle className="text-2xl font-bold text-center">Sign In</CardTitle>
         <CardDescription className="text-center">
-          Enter your email and password to access your account
+          Continue with Google to access your account. Email and password are
+          available as a fallback.
         </CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit}>
@@ -79,6 +106,24 @@ export function SignInForm() {
               {error}
             </div>
           )}
+
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={handleGoogleSignIn}
+            disabled={isLoading}
+            aria-busy={activeMethod === "google"}
+          >
+            {activeMethod === "google" ? "Redirecting to Google..." : "Continue with Google"}
+          </Button>
+
+          <div className="space-y-2">
+            <Separator />
+            <p className="text-center text-sm text-muted-foreground">
+              Use email and password only if needed
+            </p>
+          </div>
 
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
@@ -126,9 +171,9 @@ export function SignInForm() {
             type="submit"
             className="w-full"
             disabled={isLoading}
-            aria-busy={isLoading}
+            aria-busy={activeMethod === "email"}
           >
-            {isLoading ? "Signing in..." : "Sign In"}
+            {activeMethod === "email" ? "Signing in..." : "Sign in with email"}
           </Button>
 
           <div className="w-full">

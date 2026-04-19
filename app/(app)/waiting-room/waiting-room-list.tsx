@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { assignVisitToMeAction } from "@/app/_actions/visits";
 import { toast } from "sonner";
-import { ArrowUpDown, Video, Copy, Check, QrCode, RefreshCw, User } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUpDown, Check, Copy, QrCode, RefreshCw, Siren, User, Video } from "lucide-react";
 import { cn } from "@/app/_lib/utils/cn";
 import { QRCodeSVG } from "qrcode.react";
 import { useWaitingRoomRealtime } from "@/app/_lib/hooks/use-waiting-room-realtime";
@@ -25,6 +25,7 @@ interface VisitInfo {
   clinicianId: string | null;
   twilioRoomName: string | null;
   patientJoinToken: string | null;
+  chiefComplaint: string | null;
 }
 
 interface Patient {
@@ -39,6 +40,24 @@ interface WaitingRoomListProps {
   userRole?: string;
 }
 
+interface PatientSnapshot {
+  patient: {
+    fullName: string;
+    dob: string | null;
+    allergies: unknown;
+    vitals: unknown;
+    currentMedications: unknown;
+    familyHistory: unknown;
+    socialHistory: unknown;
+    pastMedicalHistory: unknown;
+  };
+  latestVisit: {
+    chiefComplaint?: string | null;
+    appointmentType?: string | null;
+    status?: string | null;
+  } | null;
+}
+
 type SortField = "name" | "waitTime" | "priority" | "appointmentType";
 type SortDirection = "asc" | "desc";
 
@@ -48,6 +67,11 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
   const [searchQuery, setSearchQuery] = useState("");
   const [sortField, setSortField] = useState<SortField>("waitTime");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [selectedDate, setSelectedDate] = useState(() => new Date());
+  const [acknowledgedAlerts, setAcknowledgedAlerts] = useState<Record<string, boolean>>({});
+  const [snapshotPatientId, setSnapshotPatientId] = useState<string | null>(null);
+  const [snapshotData, setSnapshotData] = useState<PatientSnapshot | null>(null);
+  const [isSnapshotLoading, setIsSnapshotLoading] = useState(false);
 
   const [virtualVisitData] = useState<Record<string, { joinUrl: string; visitId: string }>>({});
 
@@ -64,6 +88,28 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
   });
 
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  React.useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("waiting-room-acknowledged-alerts");
+      if (saved) {
+        setAcknowledgedAlerts(JSON.parse(saved) as Record<string, boolean>);
+      }
+    } catch {
+      // Ignore local storage failures.
+    }
+  }, []);
+
+  React.useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        "waiting-room-acknowledged-alerts",
+        JSON.stringify(acknowledgedAlerts)
+      );
+    } catch {
+      // Ignore local storage failures.
+    }
+  }, [acknowledgedAlerts]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -160,15 +206,143 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
     return { variant: "outline" as const, label: type };
   };
 
+  const formatScheduledTime = (visit: VisitInfo | null) => {
+    if (!visit?.createdAt) {
+      return "Unscheduled";
+    }
+
+    return new Intl.DateTimeFormat("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(new Date(visit.createdAt));
+  };
+
+  const getArrivalStatusBadge = (status: string | null) => {
+    const normalized = status?.toLowerCase();
+    if (normalized === "waiting") {
+      return {
+        label: "Arrived",
+        className:
+          "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/40",
+      };
+    }
+
+    if (normalized === "in progress" || normalized === "in_progress") {
+      return {
+        label: "Roomed",
+        className:
+          "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/40",
+      };
+    }
+
+    return {
+      label: "Pending",
+      className:
+        "bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/40",
+    };
+  };
+
+  const getSlotTypeBadge = (visit: VisitInfo | null) => {
+    if (visit?.clinicianId) {
+      return {
+        label: "Designated",
+        className:
+          "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/40",
+      };
+    }
+
+    return {
+      label: "Free Slot",
+      className:
+        "bg-violet-500/10 text-violet-700 dark:text-violet-300 border-violet-500/40",
+    };
+  };
+
+  const formatHistorySummary = (entries: unknown, emptyLabel: string) => {
+    if (entries && typeof entries === "object" && !Array.isArray(entries)) {
+      return Object.entries(entries as Record<string, unknown>)
+        .filter(([, value]) => typeof value === "string" && value)
+        .slice(0, 3)
+        .map(([key, value]) => `${key}: ${value}`)
+        .join(", ") || emptyLabel;
+    }
+
+    if (!Array.isArray(entries) || entries.length === 0) {
+      return emptyLabel;
+    }
+
+    return entries
+      .slice(0, 3)
+      .map((entry) => {
+        if (typeof entry === "string") return entry;
+        if (entry && typeof entry === "object") {
+          const record = entry as Record<string, unknown>;
+          return (
+            (typeof record.condition === "string" && record.condition) ||
+            (typeof record.relationship === "string" && record.relationship) ||
+            (typeof record.brandName === "string" && record.brandName) ||
+            (typeof record.name === "string" && record.name) ||
+            (typeof record.status === "string" && record.status) ||
+            "Not specified"
+          );
+        }
+
+        return "Not specified";
+      })
+      .join(", ");
+  };
+
+  const handleAlertAcknowledged = (patientId: string, visitId?: string | null) => {
+    const key = `${patientId}:${visitId ?? "no-visit"}`;
+    setAcknowledgedAlerts((current) => ({
+      ...current,
+      [key]: true,
+    }));
+    toast.success("Urgent alert acknowledged");
+  };
+
+  const openSnapshot = async (patientId: string) => {
+    setSnapshotPatientId(patientId);
+    setIsSnapshotLoading(true);
+    setSnapshotData(null);
+
+    try {
+      const response = await fetch(`/api/patients/${patientId}`);
+      if (!response.ok) {
+        throw new Error("Unable to load patient snapshot");
+      }
+
+      const data = (await response.json()) as PatientSnapshot;
+      setSnapshotData(data);
+    } catch (error) {
+      console.error("Error loading patient snapshot:", error);
+      toast.error("Unable to load patient snapshot");
+    } finally {
+      setIsSnapshotLoading(false);
+    }
+  };
+
   // Filter and sort patients
   const filteredAndSortedPatients = useMemo(() => {
+    const selectedDateKey = selectedDate.toDateString();
     const filtered = patients.filter(patient => {
+      const visitDate = patient.visit?.createdAt
+        ? new Date(patient.visit.createdAt).toDateString()
+        : patient.createdAt
+          ? new Date(patient.createdAt).toDateString()
+          : "";
+
+      if (visitDate !== selectedDateKey) {
+        return false;
+      }
+
       if (!searchQuery) return true;
       const query = searchQuery.toLowerCase();
       return (
         patient.fullName.toLowerCase().includes(query) ||
         (patient.visit?.priority?.toLowerCase().includes(query) ?? false) ||
-        (patient.visit?.appointmentType?.toLowerCase().includes(query) ?? false)
+        (patient.visit?.appointmentType?.toLowerCase().includes(query) ?? false) ||
+        (patient.visit?.chiefComplaint?.toLowerCase().includes(query) ?? false)
       );
     });
 
@@ -208,7 +382,17 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
     });
 
     return filtered;
-  }, [patients, searchQuery, sortField, sortDirection]);
+  }, [patients, searchQuery, selectedDate, sortField, sortDirection]);
+
+  const urgentAlerts = useMemo(() => {
+    return filteredAndSortedPatients.filter((patient) => {
+      const isUrgent =
+        patient.visit?.priority?.toLowerCase() === "critical" ||
+        patient.visit?.priority?.toLowerCase() === "urgent";
+      const ackKey = `${patient.id}:${patient.visit?.id ?? "no-visit"}`;
+      return isUrgent && !acknowledgedAlerts[ackKey];
+    });
+  }, [acknowledgedAlerts, filteredAndSortedPatients]);
 
   const handleSortChange = (field: SortField) => {
     if (sortField === field) {
@@ -261,6 +445,48 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1 rounded-full border border-slate-200 bg-white px-1 py-1 dark:border-slate-800 dark:bg-slate-900">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 rounded-full"
+              onClick={() =>
+                setSelectedDate((current) => {
+                  const next = new Date(current);
+                  next.setDate(current.getDate() - 1);
+                  return next;
+                })
+              }
+            >
+              <ArrowLeft className="h-4 w-4" />
+              <span className="sr-only">Previous day</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="rounded-full px-3 text-xs font-semibold uppercase tracking-wider"
+              onClick={() => setSelectedDate(new Date())}
+            >
+              {selectedDate.toDateString() === new Date().toDateString()
+                ? "Today"
+                : selectedDate.toLocaleDateString()}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 rounded-full"
+              onClick={() =>
+                setSelectedDate((current) => {
+                  const next = new Date(current);
+                  next.setDate(current.getDate() + 1);
+                  return next;
+                })
+              }
+            >
+              <ArrowRight className="h-4 w-4" />
+              <span className="sr-only">Next day</span>
+            </Button>
+          </div>
           <Button
             variant="ghost"
             size="sm"
@@ -296,12 +522,46 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
         </div>
       </div>
 
+      {urgentAlerts.length > 0 && (
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {urgentAlerts.map((patient) => (
+            <Card key={`alert:${patient.id}`} className="border-red-200 bg-red-50/80 dark:border-red-900/40 dark:bg-red-950/20">
+              <CardContent className="flex items-start justify-between gap-4 p-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-red-700 dark:text-red-300">
+                    <Siren className="h-4 w-4" />
+                    Critical alert
+                  </div>
+                  <div className="text-sm font-medium text-foreground">
+                    {patient.fullName}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {patient.visit?.priority || "Urgent priority"} •{" "}
+                    {patient.visit?.chiefComplaint || "Chief complaint pending"}
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-red-300 bg-white/80 dark:border-red-800 dark:bg-slate-950"
+                  onClick={() => handleAlertAcknowledged(patient.id, patient.visit?.id)}
+                >
+                  Acknowledge
+                </Button>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
       {/* Patient Cards */}
       <div className="grid gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
         {filteredAndSortedPatients.map((patient) => {
           const waitTime = getWaitTime(patient.visit);
           const priorityBadge = getPriorityBadge(patient.visit?.priority ?? null);
           const appointmentBadge = getAppointmentTypeBadge(patient.visit?.appointmentType ?? null);
+          const arrivalBadge = getArrivalStatusBadge(patient.visit?.status ?? null);
+          const slotTypeBadge = getSlotTypeBadge(patient.visit);
           const isUrgent = patient.visit?.priority?.toLowerCase() === "critical" || patient.visit?.priority?.toLowerCase() === "urgent";
 
           return (
@@ -335,6 +595,23 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
                   <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-1.5">
                     {patient.fullName}
                   </h3>
+                  <div className="mb-2 text-sm text-slate-600 dark:text-slate-300">
+                    {patient.visit?.chiefComplaint || "Chief complaint pending"}
+                  </div>
+                  <div className="mb-2 grid grid-cols-2 gap-2 text-xs text-slate-500 dark:text-slate-400">
+                    <div>
+                      <span className="font-semibold text-slate-700 dark:text-slate-200">
+                        Time:
+                      </span>{" "}
+                      {formatScheduledTime(patient.visit)}
+                    </div>
+                    <div>
+                      <span className="font-semibold text-slate-700 dark:text-slate-200">
+                        Arrival:
+                      </span>{" "}
+                      {arrivalBadge.label}
+                    </div>
+                  </div>
                   <div className="flex flex-wrap gap-1.5">
                     <Badge
                       variant={priorityBadge.variant}
@@ -354,11 +631,43 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
                     >
                       {appointmentBadge.label}
                     </Badge>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "rounded-full px-3 py-0.5 text-[10px] font-medium uppercase tracking-wider h-5",
+                        arrivalBadge.className
+                      )}
+                    >
+                      {arrivalBadge.label}
+                    </Badge>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "rounded-full px-3 py-0.5 text-[10px] font-medium uppercase tracking-wider h-5",
+                        slotTypeBadge.className
+                      )}
+                    >
+                      {slotTypeBadge.label}
+                    </Badge>
                   </div>
                 </div>
 
                 {/* Show virtual appointment actions if ready */}
-                <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
+                <div className="space-y-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+                  <div className="flex items-center justify-between gap-3 rounded-xl bg-slate-50/80 px-3 py-2 text-xs text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
+                    <span className="font-semibold uppercase tracking-wider">
+                      Snapshot
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 rounded-full px-3 text-xs"
+                      onClick={() => openSnapshot(patient.id)}
+                    >
+                      View
+                    </Button>
+                  </div>
                   {(virtualVisitData[patient.id] ||
                     (patient.visit?.appointmentType?.toLowerCase() === "virtual" &&
                       patient.visit?.status === "In Progress" &&
@@ -404,6 +713,106 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
           </CardContent>
         </Card>
       )}
+
+      <Dialog
+        open={snapshotPatientId !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSnapshotPatientId(null);
+            setSnapshotData(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Patient Snapshot</DialogTitle>
+            <DialogDescription>
+              Quick chart context without leaving the schedule board.
+            </DialogDescription>
+          </DialogHeader>
+          {isSnapshotLoading ? (
+            <div className="py-10 text-center text-sm text-muted-foreground">
+              Loading patient snapshot...
+            </div>
+          ) : snapshotData ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="rounded-xl border p-4">
+                <div className="text-sm font-semibold">Patient</div>
+                <div className="mt-2 space-y-1 text-sm text-muted-foreground">
+                  <div className="font-medium text-foreground">
+                    {snapshotData.patient.fullName}
+                  </div>
+                  <div>DOB: {snapshotData.patient.dob || "Not recorded"}</div>
+                  <div>
+                    Chief complaint:{" "}
+                    {snapshotData.latestVisit?.chiefComplaint || "Pending"}
+                  </div>
+                  <div>
+                    Visit type:{" "}
+                    {snapshotData.latestVisit?.appointmentType || "Not specified"}
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-xl border p-4">
+                <div className="text-sm font-semibold">Vitals / risks</div>
+                <div className="mt-2 space-y-2 text-sm text-muted-foreground">
+                  <div>
+                    Latest vitals:{" "}
+                    {formatHistorySummary(
+                      snapshotData.patient.vitals as unknown[],
+                      "No vitals captured"
+                    )}
+                  </div>
+                  <div>
+                    Allergies:{" "}
+                    {formatHistorySummary(
+                      snapshotData.patient.allergies as unknown[],
+                      "No allergies recorded"
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-xl border p-4 md:col-span-2">
+                <div className="text-sm font-semibold">Clinical context</div>
+                <div className="mt-2 grid gap-3 md:grid-cols-3 text-sm text-muted-foreground">
+                  <div>
+                    Medications:{" "}
+                    {formatHistorySummary(
+                      snapshotData.patient.currentMedications as unknown[],
+                      "No medications on file"
+                    )}
+                  </div>
+                  <div>
+                    PMH:{" "}
+                    {formatHistorySummary(
+                      snapshotData.patient.pastMedicalHistory as unknown[],
+                      "No PMH on file"
+                    )}
+                  </div>
+                  <div>
+                    Social/Family:{" "}
+                    {formatHistorySummary(
+                      [
+                        ...(Array.isArray(snapshotData.patient.socialHistory)
+                          ? snapshotData.patient.socialHistory
+                          : []),
+                        ...(Array.isArray(snapshotData.patient.familyHistory)
+                          ? snapshotData.patient.familyHistory
+                          : []),
+                      ],
+                      "No social or family concerns on file"
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="py-10 text-center text-sm text-muted-foreground">
+              No patient snapshot available.
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

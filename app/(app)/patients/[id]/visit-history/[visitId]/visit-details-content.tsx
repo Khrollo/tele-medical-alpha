@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { markVisitInProgressAction, finalizeVisitAction } from "@/app/_actions/visits";
+import { markVisitInProgressAction } from "@/app/_actions/visits";
 import { getDocumentSignedUrlAction } from "@/app/_actions/documents";
 import { cn } from "@/app/_lib/utils/cn";
 import { formatVisitStatusLabel } from "@/app/_lib/utils/visit-status-label";
@@ -131,7 +131,6 @@ export function VisitDetailsContent({
 }: VisitDetailsContentProps) {
   const router = useRouter();
   const [isMarkingInProgress, setIsMarkingInProgress] = React.useState(false);
-  const [isSigning, setIsSigning] = React.useState(false);
   const [activeTab, setActiveTab] = React.useState("notes");
   const [previewDocument, setPreviewDocument] = React.useState<typeof documents[0] | null>(null);
   const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
@@ -157,9 +156,18 @@ export function VisitDetailsContent({
 
     // If signed, mark as in progress first
     if (isSigned) {
+      const reason = window.prompt(
+        "Provide an amendment reason before reopening this signed note."
+      );
+
+      if (!reason?.trim()) {
+        toast.error("An amendment reason is required to reopen a signed note");
+        return;
+      }
+
       setIsMarkingInProgress(true);
       try {
-        await markVisitInProgressAction(visitId, "User initiated edit of signed note");
+        await markVisitInProgressAction(visitId, reason.trim());
         toast.success("Visit marked as in progress. You can now edit the note.");
         router.push(`/patients/${patientId}/new-visit?visitId=${visitId}`);
       } catch (error) {
@@ -173,19 +181,7 @@ export function VisitDetailsContent({
 
   const handleSign = async () => {
     if (isSigned) return;
-
-    setIsSigning(true);
-    try {
-      await finalizeVisitAction(visitId, "signed");
-      toast.success("Note signed successfully");
-      // Refresh the page to show updated status
-      router.refresh();
-    } catch (error) {
-      console.error("Error signing note:", error);
-      toast.error("Failed to sign note");
-    } finally {
-      setIsSigning(false);
-    }
+    router.push(`/patients/${patientId}/visit-close?visitId=${visitId}`);
   };
 
   const formatDateTime = (date: Date | string | null) => {
@@ -521,9 +517,9 @@ export function VisitDetailsContent({
             </Button>
           )}
           {isInProgress && !isSigned && canSignNote && (
-            <Button onClick={handleSign} disabled={isSigning} variant="default">
+            <Button onClick={handleSign} variant="default">
               <FileSignature className="h-4 w-4 mr-2" />
-              {isSigning ? "Signing..." : "Sign Note"}
+              Sign Note
             </Button>
           )}
         </div>

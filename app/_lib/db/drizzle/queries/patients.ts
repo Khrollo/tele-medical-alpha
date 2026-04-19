@@ -94,6 +94,36 @@ export async function getUnassignedPatientsWithVisits() {
     )
     .orderBy(desc(visits.createdAt));
 
+  const visitIds = waitingVisits.map((visit) => visit.id);
+  const relatedNotes =
+    visitIds.length > 0
+      ? await db
+          .select({
+            visitId: notes.visitId,
+            note: notes.note,
+            createdAt: notes.createdAt,
+          })
+          .from(notes)
+          .where(inArray(notes.visitId, visitIds))
+          .orderBy(desc(notes.createdAt))
+      : [];
+
+  const chiefComplaintByVisit = new Map<string, string>();
+  for (const noteRow of relatedNotes) {
+    if (chiefComplaintByVisit.has(noteRow.visitId)) {
+      continue;
+    }
+
+    const noteData =
+      noteRow.note && typeof noteRow.note === "object"
+        ? (noteRow.note as { subjective?: { chiefComplaint?: string } })
+        : null;
+    const chiefComplaint = noteData?.subjective?.chiefComplaint?.trim();
+    if (chiefComplaint) {
+      chiefComplaintByVisit.set(noteRow.visitId, chiefComplaint);
+    }
+  }
+
   // Map visits to patients (get most recent visit per patient)
   const visitMap = new Map<string, (typeof waitingVisits)[0]>();
   for (const visit of waitingVisits) {
@@ -119,6 +149,7 @@ export async function getUnassignedPatientsWithVisits() {
             clinicianId: visit.clinicianId,
             twilioRoomName: visit.twilioRoomName,
             patientJoinToken: visit.patientJoinToken,
+            chiefComplaint: chiefComplaintByVisit.get(visit.id) || null,
           }
         : null,
     };
