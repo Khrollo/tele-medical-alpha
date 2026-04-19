@@ -18,6 +18,22 @@ const trustedOrigins = Array.from(
   ),
 );
 
+// eslint-disable-next-line no-console
+console.log("[BetterAuth init]", {
+  nodeEnv: process.env.NODE_ENV,
+  hasSecret: Boolean(process.env.BETTER_AUTH_SECRET),
+  secretLength: process.env.BETTER_AUTH_SECRET?.length ?? 0,
+  hasBetterAuthUrl: Boolean(process.env.BETTER_AUTH_URL),
+  betterAuthUrl: process.env.BETTER_AUTH_URL,
+  hasGoogleClientId: Boolean(process.env.GOOGLE_CLIENT_ID),
+  hasGoogleClientSecret: Boolean(process.env.GOOGLE_CLIENT_SECRET),
+  hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
+  resolvedBaseURL: baseURL,
+  trustedOrigins,
+  vercelEnv: process.env.VERCEL_ENV,
+  vercelUrl: process.env.VERCEL_URL,
+});
+
 export const auth = betterAuth({
   secret: process.env.BETTER_AUTH_SECRET,
   baseURL,
