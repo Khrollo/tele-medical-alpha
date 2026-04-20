@@ -134,10 +134,28 @@ export function TranscriptPanel({ history, live, className }: TranscriptPanelPro
             className="flex flex-1 flex-col items-center justify-center gap-2 py-8 text-center text-[12.5px]"
             style={{ color: "var(--ink-3)" }}
           >
-            <AudioLines className="h-6 w-6" style={{ color: "var(--ink-4)" }} />
-            <div className="max-w-[220px] leading-[1.45]">
-              Tap the mic to start capturing. Each utterance will appear here with a timestamp as
-              the AI scribe transcribes.
+            <AudioLines
+              className="h-6 w-6"
+              style={{
+                color: live?.isCapturing ? "var(--brand-ink)" : "var(--ink-4)",
+              }}
+            />
+            <div className="max-w-[240px] leading-[1.45]">
+              {live?.isCapturing ? (
+                <>
+                  Listening…
+                  <span className="mono ml-1" style={{ color: "var(--ink-2)" }}>
+                    {formatTimestamp(live.recordingTime)}
+                  </span>
+                  <div className="mt-1">
+                    Start speaking — utterances will appear here as the AI scribe transcribes them.
+                  </div>
+                </>
+              ) : live?.state === "transcribing" || live?.state === "uploading" || live?.state === "converting" ? (
+                <>Transcribing audio…</>
+              ) : (
+                <>Tap the mic to start capturing. Each utterance will appear here with a timestamp.</>
+              )}
             </div>
           </div>
         ) : (
