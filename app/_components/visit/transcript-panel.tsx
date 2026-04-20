@@ -31,14 +31,12 @@ export function TranscriptPanel({ history, live, className }: TranscriptPanelPro
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
 
   const allText = React.useMemo(() => {
-    const lines = history.map((h) => `[${formatTimestamp(h.timestamp)}] ${h.speaker ?? "Clinician"}: ${h.text}`);
-    if (live?.liveTranscript) {
-      lines.push(`[${formatTimestamp(live.recordingTime)}] Clinician: ${live.liveTranscript}`);
-    }
-    return lines.join("\n");
-  }, [history, live]);
+    return history
+      .map((h) => `[${formatTimestamp(h.timestamp)}] ${h.speaker ?? "Clinician"}: ${h.text}`)
+      .join("\n");
+  }, [history]);
 
-  const hasContent = history.length > 0 || !!live?.liveTranscript || !!live?.interimTranscript;
+  const hasContent = history.length > 0 || !!live?.interimTranscript;
 
   const handleCopy = async () => {
     try {
@@ -163,19 +161,6 @@ export function TranscriptPanel({ history, live, className }: TranscriptPanelPro
             {history.map((entry) => (
               <TranscriptLine key={entry.id} entry={entry} />
             ))}
-
-            {live?.liveTranscript && (
-              <TranscriptLine
-                entry={{
-                  id: "live-current",
-                  text: live.liveTranscript,
-                  speaker: "Clinician",
-                  timestamp: live.recordingTime,
-                  createdAt: new Date(),
-                }}
-                highlighted
-              />
-            )}
 
             {live?.interimTranscript && (
               <div className="flex gap-2.5">

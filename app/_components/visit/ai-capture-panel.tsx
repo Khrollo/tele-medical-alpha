@@ -36,7 +36,13 @@ export interface AICaptureLiveState {
 
 interface AICapturePanelProps {
   patientId: string;
-  onTranscriptReady: (transcript: string) => void;
+  /**
+   * Fires when a transcript has been produced. `transcript` is always the full
+   * cumulative transcript for the session. `appendedOnly`, when provided, is
+   * just the newest finalized phrase from a live-speech snapshot — use it to
+   * drive per-utterance UI (e.g. a timeline panel) without duplicating text.
+   */
+  onTranscriptReady: (transcript: string, appendedOnly?: string) => void;
   onParseReady: (parsed: unknown) => void;
   onLiveState?: (state: AICaptureLiveState) => void;
   hideLiveDraftBubble?: boolean;
@@ -190,7 +196,7 @@ export function AICapturePanel({
       setInterimTranscript(snapshot.interimTranscript);
 
       if (snapshot.appendedFinalTranscript) {
-        onTranscriptReady(snapshot.fullTranscript);
+        onTranscriptReady(snapshot.fullTranscript, snapshot.appendedFinalTranscript);
         setPreviousTranscripts((prev) => [...prev, snapshot.appendedFinalTranscript]);
       }
     },

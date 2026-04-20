@@ -674,27 +674,33 @@ export function NewVisitForm({
   }, [liveCaptureState]);
 
   const handleTranscriptReady = React.useCallback(
-    async (transcript: string) => {
-      const timestamp = liveCaptureStateRef.current?.recordingTime ?? 0;
-      setTranscriptHistory((prev) => [
-        ...prev,
-        {
-          id: `tx-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-          text: transcript,
-          speaker: "Clinician",
-          timestamp,
-          createdAt: new Date(),
-        },
-      ]);
+    async (transcript: string, appendedOnly?: string) => {
+      // Panel shows one row per utterance. Live-speech gives us `appendedOnly`
+      // (just the newest phrase); fallback path only has the full transcript —
+      // push that as a single row.
+      const rowText = (appendedOnly ?? transcript).trim();
+      if (rowText) {
+        const timestamp = liveCaptureStateRef.current?.recordingTime ?? 0;
+        setTranscriptHistory((prev) => [
+          ...prev,
+          {
+            id: `tx-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            text: rowText,
+            speaker: "Clinician",
+            timestamp,
+            createdAt: new Date(),
+          },
+        ]);
+      }
 
-      // Store transcript in draft (non-critical — IndexedDB may be unavailable)
+      // Draft + DB persistence gets the full cumulative transcript so reloads
+      // and downstream AI parsing still see the whole note.
       try {
         await saveDraft(patientId, userId, { transcript, role: userRole });
       } catch (draftError) {
         console.warn("Failed to save transcript to draft:", draftError);
       }
 
-      // Save transcript to database immediately if visit exists
       if (visitIdRemote) {
         try {
           await saveTranscriptAction({
@@ -704,7 +710,6 @@ export function NewVisitForm({
           });
         } catch (error) {
           console.error("Error saving transcript:", error);
-          // Don't block the UI if transcript save fails
         }
       }
     },
