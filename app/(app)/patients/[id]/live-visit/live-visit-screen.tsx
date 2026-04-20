@@ -242,9 +242,12 @@ export function LiveVisitScreen({
     const liveControllerRef = React.useRef<import("@/app/_lib/ai/live-speech").LiveSpeechController | null>(null);
     const previousTranscriptsRef = React.useRef<string[]>([]);
     const parseInFlightRef = React.useRef(false);
-    const parseTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+    const parseTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     const latestTranscriptRef = React.useRef("");
+    const lastParsedLengthRef = React.useRef(0);
+    const parseBackoffRef = React.useRef(8000); // ms — doubles on 429, floors at 8s
     const clockTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+    const [parseThrottled, setParseThrottled] = React.useState(false);
 
     const allergySummary = React.useMemo(() => normalizeAllergies(patient.allergies), [patient.allergies]);
 
@@ -322,17 +325,36 @@ export function LiveVisitScreen({
 
     const runParse = React.useCallback(
         async (fullTranscript: string) => {
-            if (!fullTranscript.trim() || parseInFlightRef.current) return;
+            const trimmed = fullTranscript.trim();
+            if (!trimmed || parseInFlightRef.current) return;
+            // Don't burn API calls when the transcript hasn't grown by a
+            // meaningful amount since the last successful parse.
+            if (trimmed.length - lastParsedLengthRef.current < 40) return;
+
             parseInFlightRef.current = true;
             setIsParsing(true);
             try {
                 const result = await parseTranscriptDraftAction({
-                    transcript: fullTranscript,
+                    transcript: trimmed,
                     previousTranscripts: previousTranscriptsRef.current,
                 });
                 applyParsedFields(extractFieldsFromNote(result.parsed));
+                lastParsedLengthRef.current = trimmed.length;
+                // Success — relax the backoff back to the baseline.
+                parseBackoffRef.current = 8000;
+                setParseThrottled(false);
             } catch (err) {
-                console.error("Live parse failed:", err);
+                const message = err instanceof Error ? err.message : String(err);
+                const isRateLimit = /429|Too Many Requests|rate.?limit/i.test(message);
+                const isEmpty = /empty response/i.test(message);
+                if (isRateLimit || isEmpty) {
+                    // Exponential backoff, capped at 60s, to let the free tier
+                    // cool down without spamming the console.
+                    parseBackoffRef.current = Math.min(parseBackoffRef.current * 2, 60_000);
+                    setParseThrottled(true);
+                } else {
+                    console.error("Live parse failed:", err);
+                }
             } finally {
                 parseInFlightRef.current = false;
                 setIsParsing(false);
@@ -394,11 +416,16 @@ export function LiveVisitScreen({
         });
         liveControllerRef.current = controller;
 
-        // Parse every 4s using the latest transcript ref (not a closure snapshot).
-        parseTimerRef.current = setInterval(() => {
-            const snapshot = latestTranscriptRef.current;
-            if (snapshot) void runParse(snapshot);
-        }, 4000);
+        // Adaptive polling — self-reschedules with the current backoff so a
+        // 429 from OpenRouter doubles the delay instead of compounding.
+        const scheduleNextParse = () => {
+            parseTimerRef.current = setTimeout(async () => {
+                const snapshot = latestTranscriptRef.current;
+                if (snapshot) await runParse(snapshot);
+                scheduleNextParse();
+            }, parseBackoffRef.current);
+        };
+        scheduleNextParse();
 
         await controller.start();
     }, [runParse, scanFlags]);
@@ -410,12 +437,17 @@ export function LiveVisitScreen({
             clockTimerRef.current = null;
         }
         if (parseTimerRef.current) {
-            clearInterval(parseTimerRef.current);
+            clearTimeout(parseTimerRef.current);
             parseTimerRef.current = null;
         }
         const snapshot = latestTranscriptRef.current;
         await liveControllerRef.current?.stop();
-        if (snapshot) void runParse(snapshot);
+        // Final parse after a beat so the last utterance is captured.
+        if (snapshot) {
+            // Force a final parse even if under the growth threshold.
+            lastParsedLengthRef.current = 0;
+            void runParse(snapshot);
+        }
     }, [runParse]);
 
     const reset = () => {
@@ -426,8 +458,11 @@ export function LiveVisitScreen({
         setEntries([]);
         setInterim("");
         setElapsed(0);
+        setParseThrottled(false);
         previousTranscriptsRef.current = [];
         latestTranscriptRef.current = "";
+        lastParsedLengthRef.current = 0;
+        parseBackoffRef.current = 8000;
     };
 
     // Cleanup on unmount
@@ -435,7 +470,7 @@ export function LiveVisitScreen({
         return () => {
             liveControllerRef.current?.destroy();
             if (clockTimerRef.current) clearInterval(clockTimerRef.current);
-            if (parseTimerRef.current) clearInterval(parseTimerRef.current);
+            if (parseTimerRef.current) clearTimeout(parseTimerRef.current);
         };
     }, []);
 
@@ -701,7 +736,12 @@ export function LiveVisitScreen({
                             >
                                 Toggle last speaker
                             </button>
-                            {isParsing && <span>Applying…</span>}
+                            {isParsing && !parseThrottled && <span>Applying…</span>}
+                            {parseThrottled && (
+                                <span style={{ color: "var(--warn)" }}>
+                                    AI throttled · will retry
+                                </span>
+                            )}
                         </div>
                     </div>
 
