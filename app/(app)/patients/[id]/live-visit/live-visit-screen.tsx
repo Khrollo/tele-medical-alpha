@@ -16,7 +16,25 @@ import {
 import { toast } from "sonner";
 
 import { Avatar, Btn, Pill, type PillTone } from "@/components/ui/clearing";
-import { parseTranscriptDraftAction } from "@/app/_actions/visits";
+import {
+    parseTranscriptIncrementalAction,
+    createVisitDraftAction,
+    updateVisitDraftAction,
+    finalizeVisitAction,
+} from "@/app/_actions/visits";
+import { createEmptyVisitNote, type VisitNote } from "@/app/_lib/visit-note/schema";
+import { mergeVisitNote } from "@/app/_lib/visit-note/merge-with-conflicts";
+import {
+    isCalibrationStale,
+    loadCalibration,
+    type CalibrationResult,
+} from "@/app/_lib/audio/calibration";
+import { CalibrationModal } from "./calibration-modal";
+import {
+    createSrtSimulator,
+    fetchSrt,
+    type SrtSimulator,
+} from "@/app/_lib/ai/srt-simulator";
 
 // ---------- Types ----------
 
@@ -41,6 +59,26 @@ type ChecklistItem = {
 };
 
 type Flag = { key: string; tone: "critical" | "warn" | "info"; text: string };
+
+// Keys in the order they appear in the vertical timeline (center canvas).
+// Keep in sync with TIMELINE_KEYS + the renderer map below.
+type TimelineKey =
+    | "cc"
+    | "onset"
+    | "radiation"
+    | "trigger"
+    | "severity"
+    | "assoc"
+    | "ros"
+    | "allergy"
+    | "meds"
+    | "fhx"
+    | "pmh"
+    | "surgical"
+    | "social"
+    | "exam"
+    | "assessment"
+    | "plan";
 
 // ---------- Static config ----------
 
@@ -93,6 +131,91 @@ const FIELD_TO_CHECKLIST: Record<FieldKey, string> = {
     allergy: "allergy",
 };
 
+// Every TimelineKey that has a corresponding REQUIRED checklist item — used
+// to tick the right-rail checklist directly from `computeSignalPresence` so
+// exam / assessment / plan ticks even though they aren't part of the 8-field
+// summary regex extraction above.
+const TIMELINE_KEY_TO_CHECKLIST: Partial<Record<TimelineKey, string>> = {
+    cc: "hpi_cc",
+    onset: "hpi_onset",
+    severity: "hpi_severity",
+    radiation: "hpi_radiation",
+    trigger: "hpi_trigger",
+    assoc: "hpi_assoc",
+    ros: "ros",
+    allergy: "allergy",
+    fhx: "fhx",
+    exam: "exam",
+    assessment: "assessment",
+    plan: "plan",
+};
+
+// Ordered list of timeline slots in the center canvas.
+const TIMELINE_KEYS: TimelineKey[] = [
+    "cc",
+    "onset",
+    "radiation",
+    "trigger",
+    "severity",
+    "assoc",
+    "ros",
+    "allergy",
+    "meds",
+    "fhx",
+    "pmh",
+    "surgical",
+    "social",
+    "exam",
+    "assessment",
+    "plan",
+];
+
+function computeSignalPresence(
+    note: VisitNote,
+    fields: ParsedFields,
+    patient: PatientSummary
+): Record<TimelineKey, boolean> {
+    const examFindings = note.objective?.examFindings ?? {};
+    const hasExam = Object.values(examFindings).some(
+        (v) => typeof v === "string" && v.trim().length > 0
+    );
+    const risk = note.riskFlags ?? {};
+    const hasSocial =
+        !!(risk as { tobaccoUse?: string }).tobaccoUse?.trim() ||
+        !!(risk as { alcoholUse?: string }).alcoholUse?.trim() ||
+        !!(risk as { occupation?: string }).occupation?.trim() ||
+        !!(risk as { housingStatus?: string }).housingStatus?.trim();
+    const assessmentText =
+        note.assessmentPlan?.[0]?.assessment?.trim() || "";
+    const planText = note.assessmentPlan?.[0]?.plan?.trim() || "";
+    const hasOrders = (note.orders?.length ?? 0) > 0;
+    const patientAllergies = Array.isArray(patient.allergies)
+        ? (patient.allergies as unknown[]).length > 0
+        : patient.allergies &&
+          typeof patient.allergies === "object" &&
+          Object.keys(patient.allergies as Record<string, unknown>).length > 0;
+    return {
+        cc: !!fields.cc?.trim(),
+        onset: !!fields.onset?.trim(),
+        radiation: !!fields.radiation?.trim(),
+        trigger: !!fields.trigger?.trim(),
+        severity: !!fields.severity?.trim(),
+        assoc: !!fields.assoc?.trim(),
+        ros: !!fields.assoc?.trim(),
+        allergy: !!patientAllergies,
+        meds: (note.medications?.length ?? 0) > 0,
+        fhx:
+            !!fields.fhx?.trim() ||
+            (note.familyHistory?.length ?? 0) > 0,
+        pmh: (note.pastMedicalHistory?.length ?? 0) > 0,
+        surgical: (note.surgicalHistory?.length ?? 0) > 0,
+        social: hasSocial,
+        exam: hasExam,
+        assessment: !!assessmentText,
+        plan: !!planText || hasOrders,
+    };
+}
+
 // Terms in a transcript that should flip a critical flag banner.
 const FLAG_RULES: Array<{ match: RegExp; flag: Flag }> = [
     {
@@ -104,12 +227,6 @@ const FLAG_RULES: Array<{ match: RegExp; flag: Flag }> = [
         flag: { key: "respiratory_concern", tone: "warn", text: "Respiratory distress — rule out PE" },
     },
 ];
-
-const SUGGESTED_ORDERS: Record<string, { t: string; n: string; d: string }> = {
-    order_ekg: { t: "Imaging", n: "12-lead EKG", d: "STAT · bedside" },
-    order_trop: { t: "Lab", n: "Troponin I × 2", d: "STAT, repeat 3h" },
-    order_asa: { t: "Med", n: "Aspirin 325 mg", d: "Chew × 1 now" },
-};
 
 // ---------- Helpers ----------
 
@@ -158,7 +275,14 @@ function extractFieldsFromNote(parsed: unknown): ParsedFields {
     const hpi = typeof subj.hpi === "string" ? (subj.hpi as string) : "";
     const onset = matchField(hpi, /(?:for|since|started|onset)[\s:]*([^.;\n]{3,60})/i);
     const severity = matchField(hpi, /(\d{1,2}\s*\/\s*10[^.;\n]{0,40})/);
-    const radiation = matchField(hpi, /radiat(?:ing|es)\s+(?:to|into)\s+([^.;\n]{3,40})/i);
+    // Catch "radiating to/into jaw", "radiating down the left arm", "radiates
+    // across the chest", "radiation into the back", etc. The previous regex
+    // only matched "radiat(ing|es) to|into" which missed the common natural
+    // phrasing "radiating down my left arm into my jaw".
+    const radiation = matchField(
+        hpi,
+        /radiat(?:ing|es|ion)\s+(?:to|into|down|across|through|toward|towards|up)?\s*(?:the|my|his|her)?\s*([^.;\n]{3,60})/i
+    );
     const trigger = matchField(hpi, /(?:triggered|started|while|during)\s+([^.;\n]{3,40})/i);
     const assoc = matchField(hpi, /(?:associated|along with|with)\s+([^.;\n]{3,60})/i);
 
@@ -233,7 +357,6 @@ export function LiveVisitScreen({
     const [fields, setFields] = React.useState<ParsedFields>({});
     const [filled, setFilled] = React.useState<Set<string>>(new Set());
     const [flags, setFlags] = React.useState<Flag[]>([]);
-    const [suggestedOrders, setSuggestedOrders] = React.useState<Set<string>>(new Set());
     const [flashKey, setFlashKey] = React.useState<string | null>(null);
     const [isParsing, setIsParsing] = React.useState(false);
 
@@ -241,13 +364,56 @@ export function LiveVisitScreen({
     const startRef = React.useRef<number>(0);
     const liveControllerRef = React.useRef<import("@/app/_lib/ai/live-speech").LiveSpeechController | null>(null);
     const previousTranscriptsRef = React.useRef<string[]>([]);
+    // Segments that have arrived since the last successful incremental parse.
+    const pendingSegmentsRef = React.useRef<string[]>([]);
     const parseInFlightRef = React.useRef(false);
     const parseTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     const latestTranscriptRef = React.useRef("");
     const lastParsedLengthRef = React.useRef(0);
-    const parseBackoffRef = React.useRef(8000); // ms — doubles on 429, floors at 8s
+    // 3s baseline now that we send deltas + cache the system prompt. Doubles
+    // on 429/empty, capped at 10s so a throttle never silences the UI.
+    const parseBackoffRef = React.useRef(3000);
     const clockTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+    const runningNoteRef = React.useRef<VisitNote>(createEmptyVisitNote());
+    const calibratedStreamRef = React.useRef<MediaStream | null>(null);
     const [parseThrottled, setParseThrottled] = React.useState(false);
+    const [parseErrorKind, setParseErrorKind] = React.useState<
+        "none" | "rate-limit" | "quota-exhausted" | "empty" | "other"
+    >("none");
+    const [parseStats, setParseStats] = React.useState<{
+        latencyMs?: number;
+        cacheHit?: boolean;
+        provider?: "anthropic" | "openrouter";
+    }>({});
+    const [runningNote, setRunningNote] = React.useState<VisitNote>(() => createEmptyVisitNote());
+    // Chronological log of data-points the AI has captured. Each entry appears
+    // once, in the order it first became present on the running note. Drives
+    // the vertical timeline in the center canvas.
+    type LogEntry = { key: TimelineKey; t: number; ts: number };
+    const [log, setLog] = React.useState<LogEntry[]>([]);
+    const [lastLoggedKey, setLastLoggedKey] = React.useState<TimelineKey | null>(null);
+    // One ref per scroll container so we can auto-scroll chat-style.
+    const timelineScrollRef = React.useRef<HTMLDivElement | null>(null);
+    const timelinePinnedToBottomRef = React.useRef(true);
+    const [showCalibration, setShowCalibration] = React.useState(false);
+    // Initialize to null so server and client agree on first render. Load the
+    // cached calibration from localStorage in an effect after mount.
+    const [calibration, setCalibration] = React.useState<CalibrationResult | null>(null);
+    React.useEffect(() => {
+        setCalibration(loadCalibration());
+    }, []);
+    const simulatorRef = React.useRef<SrtSimulator | null>(null);
+    const [simulating, setSimulating] = React.useState(false);
+    const [simProgress, setSimProgress] = React.useState<{ current: number; total: number } | null>(null);
+    const [visitDraftId, setVisitDraftId] = React.useState<string | null>(null);
+    const [isSaving, setIsSaving] = React.useState(false);
+    const [isSigning, setIsSigning] = React.useState(false);
+    const autosaveTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+    const consentAtRef = React.useRef<string | null>(null);
+    // persistDraft is defined below `beginRecording` but referenced via setInterval
+    // inside it. Stash it on a ref so we avoid the TDZ when the deps array is
+    // evaluated during render.
+    const persistDraftRef = React.useRef<() => Promise<void>>(async () => undefined);
 
     const allergySummary = React.useMemo(() => normalizeAllergies(patient.allergies), [patient.allergies]);
 
@@ -279,16 +445,33 @@ export function LiveVisitScreen({
         }
     }, [entries.length, interim]);
 
-    // Flag detection from transcript deltas
+    // Chat-style auto-scroll for the center timeline: pin to the bottom as
+    // new items append, unless the user has scrolled up (we track that via
+    // the onScroll handler on the <section>).
+    React.useEffect(() => {
+        const el = timelineScrollRef.current;
+        if (!el) return;
+        if (!timelinePinnedToBottomRef.current) return;
+        // Double RAF so the new item has painted before we measure height.
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                el.scrollTo({
+                    top: el.scrollHeight,
+                    behavior: "smooth",
+                });
+            });
+        });
+    }, [log.length, lastLoggedKey]);
+
+    // Flag detection from transcript deltas — surfaces the top-of-center banner
+    // ("Possible ACS pattern"). No longer triggers order suggestions; those
+    // were pulled out of the UI.
     const scanFlags = React.useCallback((newText: string) => {
         for (const rule of FLAG_RULES) {
             if (rule.match.test(newText)) {
                 setFlags((prev) =>
                     prev.find((f) => f.key === rule.flag.key) ? prev : [...prev, rule.flag]
                 );
-                if (rule.flag.key === "cardiac_concern") {
-                    setSuggestedOrders((prev) => new Set([...prev, "order_ekg", "order_trop", "order_asa"]));
-                }
             }
         }
     }, []);
@@ -323,54 +506,126 @@ export function LiveVisitScreen({
         });
     }, []);
 
+    const applyDelta = React.useCallback(
+        (delta: Partial<VisitNote>) => {
+            // Merge into the running note via the shared helper so locked
+            // (user-edited) paths are preserved. Today we don't have any
+            // locked paths in this screen yet, but the hook is in place.
+            const nextNote = mergeVisitNote(runningNoteRef.current, delta, {});
+            runningNoteRef.current = nextNote;
+            setRunningNote(nextNote);
+            const nextFields = extractFieldsFromNote(nextNote);
+            applyParsedFields(nextFields);
+
+            // Diff the timeline-key presence against what's already in the
+            // log. Anything newly-present gets appended in TIMELINE_KEYS
+            // order (not merge order) so the log reads like a history.
+            const elapsedSecs = Math.floor(
+                (Date.now() - (startRef.current || Date.now())) / 1000
+            );
+            const presence = computeSignalPresence(nextNote, nextFields, patient);
+            setLog((prev) => {
+                const seen = new Set(prev.map((e) => e.key));
+                const additions: LogEntry[] = [];
+                for (const key of TIMELINE_KEYS) {
+                    if (!seen.has(key) && presence[key]) {
+                        additions.push({ key, t: elapsedSecs, ts: Date.now() });
+                    }
+                }
+                if (additions.length === 0) return prev;
+                setLastLoggedKey(additions[additions.length - 1].key);
+                return [...prev, ...additions];
+            });
+
+            // Drive the right-rail checklist from the same presence signals.
+            // The old FIELD_TO_CHECKLIST route only covered the 8 HPI summary
+            // fields, so exam / assessment / plan never ticked. This route
+            // mirrors the timeline's view of truth.
+            setFilled((prev) => {
+                let changed = false;
+                const next = new Set(prev);
+                for (const key of TIMELINE_KEYS) {
+                    const checklistKey = TIMELINE_KEY_TO_CHECKLIST[key];
+                    if (checklistKey && presence[key] && !next.has(checklistKey)) {
+                        next.add(checklistKey);
+                        changed = true;
+                    }
+                }
+                return changed ? next : prev;
+            });
+        },
+        [applyParsedFields, patient]
+    );
+
     const runParse = React.useCallback(
         async (fullTranscript: string) => {
             const trimmed = fullTranscript.trim();
             if (!trimmed || parseInFlightRef.current) return;
-            // Don't burn API calls when the transcript hasn't grown by a
-            // meaningful amount since the last successful parse.
-            if (trimmed.length - lastParsedLengthRef.current < 40) return;
+            // Don't burn API calls when there's nothing new to say and
+            // growth since the last parse is tiny.
+            const growth = trimmed.length - lastParsedLengthRef.current;
+            const pending = pendingSegmentsRef.current;
+            if (growth < 20 && pending.length === 0) return;
 
             parseInFlightRef.current = true;
             setIsParsing(true);
+            // Snapshot + clear the pending buffer so segments that arrive mid-parse
+            // are preserved for the next cycle.
+            const segmentsForThisCall = pending.slice();
+            pendingSegmentsRef.current = [];
             try {
-                const result = await parseTranscriptDraftAction({
-                    transcript: trimmed,
-                    previousTranscripts: previousTranscriptsRef.current,
+                const result = await parseTranscriptIncrementalAction({
+                    newSegments: segmentsForThisCall,
+                    runningNote: runningNoteRef.current,
+                    fallbackFullTranscript: segmentsForThisCall.length ? undefined : trimmed,
                 });
-                applyParsedFields(extractFieldsFromNote(result.parsed));
+                applyDelta(result.delta);
+                setParseStats({
+                    latencyMs: result.latencyMs,
+                    cacheHit: result.cacheHit,
+                    provider: result.provider,
+                });
                 lastParsedLengthRef.current = trimmed.length;
-                // Success — relax the backoff back to the baseline.
-                parseBackoffRef.current = 8000;
+                parseBackoffRef.current = 3000;
                 setParseThrottled(false);
+                setParseErrorKind("none");
             } catch (err) {
+                // On failure put the segments back so the next poll tries again.
+                pendingSegmentsRef.current = [...segmentsForThisCall, ...pendingSegmentsRef.current];
                 const message = err instanceof Error ? err.message : String(err);
+                const isQuotaExhausted = /free-models-per-day|daily/i.test(message);
                 const isRateLimit = /429|Too Many Requests|rate.?limit/i.test(message);
                 const isEmpty = /empty response/i.test(message);
-                if (isRateLimit || isEmpty) {
-                    // Exponential backoff, capped at 60s, to let the free tier
-                    // cool down without spamming the console.
-                    parseBackoffRef.current = Math.min(parseBackoffRef.current * 2, 60_000);
+                if (isQuotaExhausted) {
+                    // Daily quota is gone — no amount of retry will help until
+                    // the counter resets. Back off hard so we don't hammer the
+                    // API, and surface a clearer banner.
+                    parseBackoffRef.current = 60_000;
                     setParseThrottled(true);
+                    setParseErrorKind("quota-exhausted");
+                } else if (isRateLimit || isEmpty) {
+                    parseBackoffRef.current = Math.min(parseBackoffRef.current * 2, 10_000);
+                    setParseThrottled(true);
+                    setParseErrorKind(isEmpty ? "empty" : "rate-limit");
                 } else {
                     console.error("Live parse failed:", err);
+                    setParseErrorKind("other");
                 }
             } finally {
                 parseInFlightRef.current = false;
                 setIsParsing(false);
             }
         },
-        [applyParsedFields]
+        [applyDelta]
     );
 
-    // Start / stop controls
-    const start = React.useCallback(async () => {
+    const beginRecording = React.useCallback(async () => {
         const { createLiveSpeechController, isLiveSpeechSupported } = await import(
             "@/app/_lib/ai/live-speech"
         );
         if (!isLiveSpeechSupported()) {
             toast.error(
-                "This browser doesn't support live speech recognition. Try Chrome or Safari."
+                "This browser doesn't support live speech recognition. Try Chrome or Edge."
             );
             return;
         }
@@ -382,6 +637,13 @@ export function LiveVisitScreen({
         clockTimerRef.current = setInterval(() => {
             setElapsed(Math.floor((Date.now() - startRef.current) / 1000));
         }, 200);
+
+        // Autosave draft every 15s while recording so a refresh/crash doesn't
+        // lose the in-progress note.
+        if (autosaveTimerRef.current) clearInterval(autosaveTimerRef.current);
+        autosaveTimerRef.current = setInterval(() => {
+            void persistDraftRef.current();
+        }, 15_000);
 
         const controller = createLiveSpeechController({
             onStateChange: (state) => {
@@ -399,14 +661,13 @@ export function LiveVisitScreen({
                     const entry: TranscriptEntry = {
                         id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
                         t: secs,
-                        // Dumb heuristic: odd final index = patient, even = clinician. We don't
-                        // have diarization. Default everything to clinician; flip via button
-                        // later if needed.
+                        // No diarization yet — default to clinician; user can flip.
                         speaker: "dr",
                         text: appended,
                     };
                     setEntries((prev) => [...prev, entry]);
                     previousTranscriptsRef.current = [...previousTranscriptsRef.current, appended];
+                    pendingSegmentsRef.current = [...pendingSegmentsRef.current, appended];
                     scanFlags(appended);
                 }
             },
@@ -416,8 +677,6 @@ export function LiveVisitScreen({
         });
         liveControllerRef.current = controller;
 
-        // Adaptive polling — self-reschedules with the current backoff so a
-        // 429 from OpenRouter doubles the delay instead of compounding.
         const scheduleNextParse = () => {
             parseTimerRef.current = setTimeout(async () => {
                 const snapshot = latestTranscriptRef.current;
@@ -430,6 +689,161 @@ export function LiveVisitScreen({
         await controller.start();
     }, [runParse, scanFlags]);
 
+    const start = React.useCallback(async () => {
+        const cached = loadCalibration();
+        setCalibration(cached);
+        if (isCalibrationStale(cached)) {
+            setShowCalibration(true);
+            return;
+        }
+        await beginRecording();
+    }, [beginRecording]);
+
+    const startSimulation = React.useCallback(
+        async (speed = 8) => {
+            try {
+                // Dense synthetic transcript that exercises every section of
+                // the VisitNote schema — CC/HPI, vitals, exam, meds, allergies,
+                // family/surgical history, vaccines, POC labs, assessment,
+                // plan, orders. Far denser than the training-video transcript.
+                const cues = await fetchSrt("/demo/comprehensive-visit.srt");
+                if (cues.length === 0) {
+                    toast.error("Demo transcript is empty.");
+                    return;
+                }
+                // Reset state so we can see the demo from zero.
+                setFields({});
+                setFilled(new Set());
+                setEntries([]);
+                setInterim("");
+                runningNoteRef.current = createEmptyVisitNote();
+                setRunningNote(createEmptyVisitNote());
+                pendingSegmentsRef.current = [];
+                previousTranscriptsRef.current = [];
+                latestTranscriptRef.current = "";
+                lastParsedLengthRef.current = 0;
+                parseBackoffRef.current = 3000;
+
+                startRef.current = Date.now();
+                setIsRecording(true);
+                setSimulating(true);
+                setElapsed(0);
+                setSimProgress({ current: 0, total: cues.length });
+
+                if (clockTimerRef.current) clearInterval(clockTimerRef.current);
+                clockTimerRef.current = setInterval(() => {
+                    setElapsed(Math.floor((Date.now() - startRef.current) / 1000));
+                }, 200);
+
+                if (autosaveTimerRef.current) clearInterval(autosaveTimerRef.current);
+                autosaveTimerRef.current = setInterval(() => {
+                    void persistDraftRef.current();
+                }, 15_000);
+
+                const sim = createSrtSimulator(cues, {
+                    speed,
+                    onStateChange: (state) => {
+                        if (state === "stopped") {
+                            setIsRecording(false);
+                            setSimulating(false);
+                        }
+                    },
+                    onSnapshot: (snapshot) => {
+                        setInterim(snapshot.interimTranscript);
+                        latestTranscriptRef.current = snapshot.fullTranscript;
+                        if (snapshot.appendedFinalTranscript) {
+                            const appended = snapshot.appendedFinalTranscript;
+                            const secs = Math.floor((Date.now() - startRef.current) / 1000);
+                            const entry: TranscriptEntry = {
+                                id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                                t: secs,
+                                speaker: "dr",
+                                text: appended,
+                            };
+                            setEntries((prev) => [...prev, entry]);
+                            previousTranscriptsRef.current = [
+                                ...previousTranscriptsRef.current,
+                                appended,
+                            ];
+                            pendingSegmentsRef.current = [
+                                ...pendingSegmentsRef.current,
+                                appended,
+                            ];
+                            scanFlags(appended);
+                        }
+                    },
+                    onProgress: (current, total) =>
+                        setSimProgress({ current, total }),
+                });
+                simulatorRef.current = sim;
+
+                const scheduleNextParse = () => {
+                    parseTimerRef.current = setTimeout(async () => {
+                        const snapshot = latestTranscriptRef.current;
+                        if (snapshot) await runParse(snapshot);
+                        scheduleNextParse();
+                    }, parseBackoffRef.current);
+                };
+                scheduleNextParse();
+
+                sim.start();
+            } catch (err) {
+                const msg = err instanceof Error ? err.message : "Failed to load demo.";
+                toast.error(msg);
+                setSimulating(false);
+            }
+        },
+        [runParse, scanFlags]
+    );
+
+    const stopSimulation = React.useCallback(async () => {
+        if (simulatorRef.current) {
+            await simulatorRef.current.stop();
+            simulatorRef.current = null;
+        }
+        setSimulating(false);
+        setIsRecording(false);
+        if (clockTimerRef.current) {
+            clearInterval(clockTimerRef.current);
+            clockTimerRef.current = null;
+        }
+        if (parseTimerRef.current) {
+            clearTimeout(parseTimerRef.current);
+            parseTimerRef.current = null;
+        }
+        if (autosaveTimerRef.current) {
+            clearInterval(autosaveTimerRef.current);
+            autosaveTimerRef.current = null;
+        }
+        // Force a final parse against everything we have.
+        const snapshot = latestTranscriptRef.current;
+        if (snapshot) {
+            lastParsedLengthRef.current = 0;
+            void runParse(snapshot);
+        }
+    }, [runParse]);
+
+    const handleCalibrationComplete = React.useCallback(
+        async (result: CalibrationResult, stream: MediaStream, consentAtIso: string) => {
+            setCalibration(result);
+            setShowCalibration(false);
+            consentAtRef.current = consentAtIso;
+            // Release the stream — the browser SpeechRecognition engine owns
+            // its own mic handle. We only needed the stream for level / noise
+            // floor measurement during calibration.
+            calibratedStreamRef.current?.getTracks().forEach((t) => t.stop());
+            calibratedStreamRef.current = stream;
+            stream.getTracks().forEach((t) => t.stop());
+            calibratedStreamRef.current = null;
+            await beginRecording();
+        },
+        [beginRecording]
+    );
+
+    const handleCalibrationCancel = React.useCallback(() => {
+        setShowCalibration(false);
+    }, []);
+
     const stop = React.useCallback(async () => {
         setIsRecording(false);
         if (clockTimerRef.current) {
@@ -440,37 +854,119 @@ export function LiveVisitScreen({
             clearTimeout(parseTimerRef.current);
             parseTimerRef.current = null;
         }
+        if (autosaveTimerRef.current) {
+            clearInterval(autosaveTimerRef.current);
+            autosaveTimerRef.current = null;
+        }
         const snapshot = latestTranscriptRef.current;
         await liveControllerRef.current?.stop();
-        // Final parse after a beat so the last utterance is captured.
+        // Force a final parse — clear growth guard, flush any buffered segments.
         if (snapshot) {
-            // Force a final parse even if under the growth threshold.
             lastParsedLengthRef.current = 0;
             void runParse(snapshot);
         }
+        // Flush the final draft once recording stops.
+        void persistDraftRef.current();
     }, [runParse]);
+
+    const persistDraft = React.useCallback(async () => {
+        if (isSaving) return;
+        // Avoid creating empty drafts before we have anything to save.
+        const hasContent =
+            !!runningNoteRef.current.subjective?.chiefComplaint?.trim() ||
+            !!runningNoteRef.current.subjective?.hpi?.trim() ||
+            latestTranscriptRef.current.trim().length > 40;
+        if (!hasContent) return;
+        setIsSaving(true);
+        try {
+            if (!visitDraftId) {
+                if (consentAtRef.current) {
+                    console.info("[live-visit] consent recorded", {
+                        patientId,
+                        consentAt: consentAtRef.current,
+                    });
+                }
+                const { visitId } = await createVisitDraftAction({
+                    patientId,
+                    notesJson: runningNoteRef.current,
+                    transcript: latestTranscriptRef.current,
+                });
+                setVisitDraftId(visitId);
+            } else {
+                await updateVisitDraftAction(visitDraftId, {
+                    notesJson: runningNoteRef.current,
+                    transcript: latestTranscriptRef.current,
+                });
+            }
+        } catch (err) {
+            console.error("Draft save failed", err);
+        } finally {
+            setIsSaving(false);
+        }
+    }, [isSaving, patientId, visitDraftId]);
+
+    // Keep the ref pointing at the latest persistDraft so the 15s interval uses it.
+    React.useEffect(() => {
+        persistDraftRef.current = persistDraft;
+    }, [persistDraft]);
+
+    const handleSignNote = React.useCallback(async () => {
+        if (isSigning) return;
+        setIsSigning(true);
+        try {
+            // Make sure the latest note is on the server, then sign.
+            await persistDraft();
+            const draftId = visitDraftId;
+            if (!draftId) {
+                // Edge case — if persistDraft bailed (no content) but user clicked sign.
+                const { visitId } = await createVisitDraftAction({
+                    patientId,
+                    notesJson: runningNoteRef.current,
+                    transcript: latestTranscriptRef.current,
+                });
+                setVisitDraftId(visitId);
+                await finalizeVisitAction(visitId, "signed");
+            } else {
+                await finalizeVisitAction(draftId, "signed");
+            }
+            toast.success("Visit signed and saved.");
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : "Failed to sign note.";
+            toast.error(msg);
+        } finally {
+            setIsSigning(false);
+        }
+    }, [isSigning, visitDraftId, patientId, persistDraft]);
 
     const reset = () => {
         setFields({});
         setFilled(new Set());
         setFlags([]);
-        setSuggestedOrders(new Set());
         setEntries([]);
         setInterim("");
+        runningNoteRef.current = createEmptyVisitNote();
+        setRunningNote(createEmptyVisitNote());
+        setLog([]);
+        setLastLoggedKey(null);
+        pendingSegmentsRef.current = [];
+        setParseStats({});
         setElapsed(0);
         setParseThrottled(false);
         previousTranscriptsRef.current = [];
         latestTranscriptRef.current = "";
         lastParsedLengthRef.current = 0;
-        parseBackoffRef.current = 8000;
+        parseBackoffRef.current = 3000;
     };
 
     // Cleanup on unmount
     React.useEffect(() => {
         return () => {
             liveControllerRef.current?.destroy();
+            simulatorRef.current?.destroy();
             if (clockTimerRef.current) clearInterval(clockTimerRef.current);
             if (parseTimerRef.current) clearTimeout(parseTimerRef.current);
+            if (autosaveTimerRef.current) clearInterval(autosaveTimerRef.current);
+            calibratedStreamRef.current?.getTracks().forEach((t) => t.stop());
         };
     }, []);
 
@@ -492,6 +988,11 @@ export function LiveVisitScreen({
 
     return (
         <div className="flex h-full w-full flex-col" style={{ background: "var(--paper)" }}>
+            <CalibrationModal
+                open={showCalibration}
+                onCancel={handleCalibrationCancel}
+                onComplete={handleCalibrationComplete}
+            />
             {/* Patient ribbon + recording controls */}
             <div
                 className="flex items-center gap-4 px-4 py-3 md:px-6"
@@ -571,16 +1072,51 @@ export function LiveVisitScreen({
                     <Pill tone={isRecording ? "critical" : "neutral"} dot>
                         {isRecording ? "Recording" : "Paused"}
                     </Pill>
-                    <Btn kind="ghost" size="sm" onClick={reset}>
+                    {parseStats.latencyMs != null && (
+                        <span
+                            className="mono text-[11px]"
+                            style={{ color: parseStats.cacheHit ? "var(--ok)" : "var(--ink-3)" }}
+                            title={`${parseStats.provider ?? "ai"} · ${parseStats.cacheHit ? "prompt cache hit" : "fresh parse"}`}
+                        >
+                            {parseStats.provider === "anthropic"
+                                ? "Haiku"
+                                : parseStats.provider === "openrouter"
+                                ? "OR"
+                                : ""}
+                            {parseStats.provider ? " · " : ""}
+                            {parseStats.latencyMs < 1000
+                                ? `${parseStats.latencyMs}ms`
+                                : `${(parseStats.latencyMs / 1000).toFixed(1)}s`}
+                            {parseStats.cacheHit ? " · cached" : ""}
+                        </span>
+                    )}
+                    <Btn kind="ghost" size="sm" onClick={() => setShowCalibration(true)}>
+                        {calibration ? "Recalibrate" : "Calibrate"}
+                    </Btn>
+                    <Btn
+                        kind="ghost"
+                        size="sm"
+                        onClick={() =>
+                            simulating ? void stopSimulation() : void startSimulation(2)
+                        }
+                    >
+                        {simulating
+                            ? simProgress
+                                ? `Stop · ${simProgress.current}/${simProgress.total}`
+                                : "Stop sim"
+                            : "Simulate"}
+                    </Btn>
+                    <Btn kind="ghost" size="sm" onClick={reset} disabled={simulating}>
                         Reset
                     </Btn>
                     <Btn
                         kind="primary"
                         size="sm"
                         icon={<FileSignature className="h-4 w-4" />}
-                        disabled={completeCount < REQUIRED.length - 3}
+                        disabled={isSigning || completeCount < REQUIRED.length - 3}
+                        onClick={handleSignNote}
                     >
-                        Sign note
+                        {isSigning ? "Signing…" : "Sign note"}
                     </Btn>
                 </div>
             </div>
@@ -619,10 +1155,32 @@ export function LiveVisitScreen({
                     0%, 100% { transform: scaleY(0.3); }
                     50% { transform: scaleY(1); }
                 }
+                @keyframes lv-shimmer {
+                    0% { background-position: -240px 0; }
+                    100% { background-position: 240px 0; }
+                }
+                @keyframes lv-fade-in {
+                    0% { opacity: 0; }
+                    100% { opacity: 1; }
+                }
                 .lv-flash { animation: lv-flash 1100ms ease-out 1; }
                 .lv-pop { animation: lv-pop 260ms ease-out 1; }
                 .lv-rec-ring { animation: lv-ring 1400ms ease-out infinite; }
                 .lv-wave span { transform-origin: center; animation: lv-wave 900ms ease-in-out infinite; }
+                .lv-skeleton {
+                    background: linear-gradient(
+                        90deg,
+                        var(--paper-3) 0%,
+                        var(--paper-2) 50%,
+                        var(--paper-3) 100%
+                    );
+                    background-size: 240px 100%;
+                    animation: lv-shimmer 1.6s ease-in-out infinite;
+                    border-radius: 4px;
+                }
+                .lv-skeleton-card {
+                    animation: lv-fade-in 260ms ease-out 1;
+                }
             `}</style>
 
             {/* Body: 3 columns */}
@@ -737,7 +1295,12 @@ export function LiveVisitScreen({
                                 Toggle last speaker
                             </button>
                             {isParsing && !parseThrottled && <span>Applying…</span>}
-                            {parseThrottled && (
+                            {parseThrottled && parseErrorKind === "quota-exhausted" && (
+                                <span style={{ color: "var(--critical)" }}>
+                                    AI daily quota hit · add OpenRouter credit or wait for reset
+                                </span>
+                            )}
+                            {parseThrottled && parseErrorKind !== "quota-exhausted" && (
                                 <span style={{ color: "var(--warn)" }}>
                                     AI throttled · will retry
                                 </span>
@@ -804,7 +1367,19 @@ export function LiveVisitScreen({
                 </aside>
 
                 {/* ——— Center canvas ——— */}
-                <section className="scroll overflow-y-auto px-6 py-6 md:px-10">
+                <section
+                    ref={timelineScrollRef}
+                    onScroll={(e) => {
+                        const el = e.currentTarget;
+                        // Track whether the user is pinned to the bottom. If
+                        // they scroll up to read something, stop auto-scrolling
+                        // so we don't yank them down mid-read.
+                        const nearBottom =
+                            el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+                        timelinePinnedToBottomRef.current = nearBottom;
+                    }}
+                    className="scroll overflow-y-auto px-6 py-6 md:px-10"
+                >
                     {flags.length > 0 && (
                         <div
                             className="lv-pop mb-5 flex items-center gap-2.5 rounded-[10px] px-3.5 py-3"
@@ -824,16 +1399,76 @@ export function LiveVisitScreen({
                         </div>
                     )}
 
-                    {/* CC hero */}
-                    <div className="mb-5">
+                    {/* Header — clinical note building live */}
+                    <div style={{ marginBottom: 14 }}>
                         <div
-                            className="text-[10.5px] uppercase"
                             style={{
+                                fontSize: 10.5,
                                 color: "var(--ink-3)",
+                                textTransform: "uppercase",
                                 letterSpacing: "0.12em",
                                 fontWeight: 600,
                             }}
                         >
+                            Clinical note · building live
+                        </div>
+                        <div
+                            style={{
+                                display: "flex",
+                                alignItems: "baseline",
+                                gap: 10,
+                                marginTop: 4,
+                            }}
+                        >
+                            <h1
+                                className="serif"
+                                style={{
+                                    margin: 0,
+                                    fontSize: 32,
+                                    letterSpacing: "-0.02em",
+                                    lineHeight: 1.1,
+                                }}
+                            >
+                                {fields.cc
+                                    ? `${patient.fullName} · ${fields.cc}`
+                                    : "Waiting for visit to begin…"}
+                            </h1>
+                            <div
+                                className="mono"
+                                style={{
+                                    fontSize: 12,
+                                    color: "var(--ink-3)",
+                                    marginLeft: "auto",
+                                }}
+                            >
+                                {mm}:{ss} elapsed
+                            </div>
+                        </div>
+                        <div
+                            style={{
+                                fontSize: 12,
+                                color: "var(--ink-3)",
+                                marginTop: 4,
+                            }}
+                        >
+                            Each captured data point appears below in the order it was heard.
+                        </div>
+                    </div>
+
+                    {/* Vertical timeline — populated from `log` state */}
+                    <LiveTimeline
+                        log={log}
+                        note={runningNote}
+                        fields={fields}
+                        patient={patient}
+                        lastLoggedKey={lastLoggedKey}
+                        isRecording={isRecording}
+                        planDone={filled.has("plan")}
+                    />
+
+                    {/* Legacy blocks removed — replaced by the vertical timeline above */}
+                    <div style={{ display: "none" }}>
+                        <div>
                             Chief complaint · captured live
                         </div>
                         <h1
@@ -872,7 +1507,8 @@ export function LiveVisitScreen({
                         </div>
                     </div>
 
-                    {/* Fields grid */}
+                    {/* legacy blocks hidden — replaced by LiveTimeline above */}
+                    <div style={{ display: "none" }}>
                     <div
                         className="grid gap-3"
                         style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}
@@ -1019,94 +1655,10 @@ export function LiveVisitScreen({
                         </div>
                     </div>
 
-                    {/* Suggested orders */}
-                    <div className="mt-6">
-                        <div className="mb-2.5 flex items-center gap-2">
-                            <Sparkles className="h-4 w-4" style={{ color: "var(--brand-ink)" }} />
-                            <div
-                                className="text-[10.5px] uppercase"
-                                style={{
-                                    color: "var(--ink-3)",
-                                    letterSpacing: "0.12em",
-                                    fontWeight: 600,
-                                }}
-                            >
-                                AI-suggested orders
-                            </div>
-                            <div className="flex-1" />
-                            <span className="text-[11px]" style={{ color: "var(--ink-3)" }}>
-                                Based on chief complaint · tap to accept
-                            </span>
-                        </div>
-                        {suggestedOrders.size === 0 ? (
-                            <div
-                                className="rounded-xl p-4 text-center text-[12.5px]"
-                                style={{
-                                    border: "1px dashed var(--line)",
-                                    color: "var(--ink-4)",
-                                }}
-                            >
-                                Suggestions will appear as the clinical picture takes shape…
-                            </div>
-                        ) : (
-                            <div
-                                className="grid gap-2.5"
-                                style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}
-                            >
-                                {Object.entries(SUGGESTED_ORDERS)
-                                    .filter(([k]) => suggestedOrders.has(k))
-                                    .map(([k, o]) => (
-                                        <div
-                                            key={k}
-                                            className="lv-pop"
-                                            style={{
-                                                padding: 12,
-                                                borderRadius: 10,
-                                                border: "1px solid var(--brand-ink)",
-                                                background: "var(--brand-soft)",
-                                            }}
-                                        >
-                                            <div className="flex items-center gap-2">
-                                                <Pill tone="accent">{o.t}</Pill>
-                                                <div className="flex-1" />
-                                                <span
-                                                    className="text-[10px] font-semibold"
-                                                    style={{
-                                                        color: "var(--brand-ink)",
-                                                    }}
-                                                >
-                                                    NEW
-                                                </span>
-                                            </div>
-                                            <div
-                                                className="mt-2 text-[14px] font-semibold"
-                                                style={{ color: "var(--ink)" }}
-                                            >
-                                                {o.n}
-                                            </div>
-                                            <div
-                                                className="mt-0.5 text-[11.5px]"
-                                                style={{ color: "var(--ink-2)" }}
-                                            >
-                                                {o.d}
-                                            </div>
-                                            <div className="mt-2.5 flex gap-1.5">
-                                                <Btn
-                                                    kind="primary"
-                                                    size="sm"
-                                                    icon={<Check className="h-3.5 w-3.5" />}
-                                                >
-                                                    Accept
-                                                </Btn>
-                                                <Btn kind="plain" size="sm">
-                                                    Skip
-                                                </Btn>
-                                            </div>
-                                        </div>
-                                    ))}
-                            </div>
-                        )}
+                    {/* Live-data section grid (legacy) */}
+                    <LiveDataGrid note={runningNote} />
                     </div>
+
                 </section>
 
                 {/* ——— Right checklist ——— */}
@@ -1244,11 +1796,13 @@ export function LiveVisitScreen({
                                                                 : awaiting
                                                                     ? "var(--ink-2)"
                                                                     : "var(--ink)",
-                                                            textDecoration: done
-                                                                ? "line-through"
-                                                                : "none",
-                                                            textDecorationThickness: "1px",
-                                                            textDecorationColor: "var(--ink-4)",
+                                                            ...(done
+                                                                ? {
+                                                                      textDecorationLine: "line-through",
+                                                                      textDecorationThickness: "1px",
+                                                                      textDecorationColor: "var(--ink-4)",
+                                                                  }
+                                                                : null),
                                                         }}
                                                     >
                                                         {r.label}
@@ -1311,6 +1865,1245 @@ export function LiveVisitScreen({
                         </div>
                     </div>
                 </aside>
+            </div>
+        </div>
+    );
+}
+
+// ============================================================================
+// LiveTimeline — vertical timeline matching the Clearing redesign (page 7)
+// ============================================================================
+
+type TimelineTone = "accent" | "warn" | "critical" | "neutral" | "ok";
+
+const TONE_COLOR: Record<TimelineTone, string> = {
+    accent: "var(--brand-ink)",
+    warn: "var(--warn)",
+    critical: "var(--critical)",
+    neutral: "var(--ink-3)",
+    ok: "var(--ok)",
+};
+
+interface RendererMeta {
+    label: string;
+    tone: TimelineTone;
+    icon: React.ReactNode;
+}
+
+const RENDERER_META: Record<TimelineKey, RendererMeta> = {
+    cc: { label: "Chief complaint", tone: "critical", icon: <AlertTriangle className="h-3.5 w-3.5" /> },
+    onset: { label: "Onset / duration", tone: "accent", icon: <Sparkles className="h-3.5 w-3.5" /> },
+    radiation: { label: "Radiation", tone: "critical", icon: <AlertTriangle className="h-3.5 w-3.5" /> },
+    trigger: { label: "Trigger / context", tone: "accent", icon: <Sparkles className="h-3.5 w-3.5" /> },
+    severity: { label: "Pain severity", tone: "warn", icon: <AlertTriangle className="h-3.5 w-3.5" /> },
+    assoc: { label: "Associated symptoms", tone: "neutral", icon: <Stethoscope className="h-3.5 w-3.5" /> },
+    ros: { label: "Review of systems", tone: "accent", icon: <Check className="h-3.5 w-3.5" /> },
+    allergy: { label: "Allergies", tone: "critical", icon: <AlertTriangle className="h-3.5 w-3.5" /> },
+    meds: { label: "Medications", tone: "accent", icon: <Sparkles className="h-3.5 w-3.5" /> },
+    fhx: { label: "Family history", tone: "warn", icon: <AlertTriangle className="h-3.5 w-3.5" /> },
+    pmh: { label: "Past medical history", tone: "warn", icon: <AlertTriangle className="h-3.5 w-3.5" /> },
+    surgical: { label: "Surgical history", tone: "neutral", icon: <Stethoscope className="h-3.5 w-3.5" /> },
+    social: { label: "Social history", tone: "neutral", icon: <Stethoscope className="h-3.5 w-3.5" /> },
+    exam: { label: "Physical exam", tone: "ok", icon: <Stethoscope className="h-3.5 w-3.5" /> },
+    assessment: { label: "Assessment", tone: "neutral", icon: <FileSignature className="h-3.5 w-3.5" /> },
+    plan: { label: "Plan / orders", tone: "accent", icon: <Sparkles className="h-3.5 w-3.5" /> },
+};
+
+interface RendererContext {
+    note: VisitNote;
+    fields: ParsedFields;
+    patient: PatientSummary;
+}
+
+function renderField(key: TimelineKey, ctx: RendererContext): React.ReactNode {
+    const { note, fields, patient } = ctx;
+    switch (key) {
+        case "cc":
+            return (
+                <>
+                    <div
+                        className="serif"
+                        style={{ fontSize: 26, letterSpacing: "-0.02em", lineHeight: 1.1 }}
+                    >
+                        {fields.cc}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 4 }}>
+                        Patient-reported · verbatim
+                    </div>
+                </>
+            );
+        case "onset":
+            return (
+                <div>
+                    <div className="serif" style={{ fontSize: 22, letterSpacing: "-0.015em" }}>
+                        {fields.onset}
+                    </div>
+                    <div
+                        style={{
+                            position: "relative",
+                            height: 6,
+                            marginTop: 10,
+                            background: "var(--paper-3)",
+                            borderRadius: 999,
+                        }}
+                    >
+                        <div
+                            style={{
+                                position: "absolute",
+                                left: "8%",
+                                right: "4%",
+                                top: 0,
+                                bottom: 0,
+                                background: "var(--brand-soft)",
+                                borderRadius: 999,
+                            }}
+                        />
+                        <div
+                            style={{
+                                position: "absolute",
+                                left: "8%",
+                                top: -2,
+                                width: 10,
+                                height: 10,
+                                borderRadius: 999,
+                                background: "var(--brand-ink)",
+                            }}
+                        />
+                        <div
+                            style={{
+                                position: "absolute",
+                                right: "4%",
+                                top: -2,
+                                width: 10,
+                                height: 10,
+                                borderRadius: 999,
+                                background: "var(--critical)",
+                                boxShadow: "0 0 0 3px var(--critical-soft)",
+                            }}
+                        />
+                    </div>
+                    <div
+                        style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            marginTop: 4,
+                            fontSize: 10,
+                            color: "var(--ink-3)",
+                        }}
+                    >
+                        <span>Onset</span>
+                        <span>Now</span>
+                    </div>
+                </div>
+            );
+        case "radiation":
+            return (
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div
+                        className="serif"
+                        style={{ fontSize: 18, letterSpacing: "-0.01em" }}
+                    >
+                        {fields.radiation}
+                    </div>
+                    <div
+                        style={{
+                            marginLeft: "auto",
+                            fontSize: 11,
+                            color: "var(--critical)",
+                            fontWeight: 600,
+                        }}
+                    >
+                        ⚠ Classic ACS pattern
+                    </div>
+                </div>
+            );
+        case "trigger":
+            return (
+                <div>
+                    <div className="serif" style={{ fontSize: 20, letterSpacing: "-0.01em" }}>
+                        {fields.trigger}
+                    </div>
+                </div>
+            );
+        case "severity": {
+            const nMatch = fields.severity?.match(/(\d{1,2})\s*\/\s*10/);
+            const n = nMatch ? Math.min(10, Math.max(0, parseInt(nMatch[1], 10))) : 0;
+            return (
+                <div>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                        <div
+                            className="serif"
+                            style={{ fontSize: 30, letterSpacing: "-0.02em", color: "var(--warn)" }}
+                        >
+                            {n || "—"}
+                        </div>
+                        <div style={{ fontSize: 11, color: "var(--ink-3)" }}>now</div>
+                        <div style={{ fontSize: 12, color: "var(--ink-3)", marginLeft: "auto" }}>
+                            {fields.severity}
+                        </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 3, marginTop: 10 }}>
+                        {Array.from({ length: 10 }).map((_, i) => {
+                            const on = i < n;
+                            return (
+                                <div
+                                    key={i}
+                                    style={{
+                                        flex: 1,
+                                        height: 16,
+                                        borderRadius: 3,
+                                        background: on
+                                            ? i < 3
+                                                ? "var(--ok)"
+                                                : i < 6
+                                                ? "var(--warn)"
+                                                : "var(--critical)"
+                                            : "var(--paper-3)",
+                                    }}
+                                />
+                            );
+                        })}
+                    </div>
+                </div>
+            );
+        }
+        case "assoc": {
+            const text = fields.assoc ?? "";
+            return (
+                <div
+                    style={{
+                        fontSize: 13,
+                        color: "var(--ink-2)",
+                        lineHeight: 1.45,
+                    }}
+                >
+                    {text}
+                </div>
+            );
+        }
+        case "ros":
+            return (
+                <div
+                    style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(7, 1fr)",
+                        gap: 4,
+                    }}
+                >
+                    {["Const", "CV", "Resp", "GI", "GU", "Neuro", "MSK"].map((s, i) => {
+                        const done = i < 4;
+                        return (
+                            <div key={s} style={{ textAlign: "center" }}>
+                                <div
+                                    style={{
+                                        height: 24,
+                                        borderRadius: 6,
+                                        background: done ? "var(--ok-soft, var(--paper-3))" : "var(--paper-3)",
+                                        border: done ? "1px solid transparent" : "1px solid var(--line)",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        color: done ? "var(--ok)" : "var(--ink-4)",
+                                    }}
+                                >
+                                    {done ? (
+                                        <Check className="h-3 w-3" />
+                                    ) : (
+                                        <span style={{ fontSize: 10 }}>—</span>
+                                    )}
+                                </div>
+                                <div
+                                    style={{
+                                        fontSize: 9.5,
+                                        color: "var(--ink-3)",
+                                        marginTop: 3,
+                                    }}
+                                >
+                                    {s}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            );
+        case "allergy": {
+            const all = patient.allergies;
+            const names: string[] = Array.isArray(all)
+                ? (all as unknown[])
+                      .map((a) => (typeof a === "string" ? a : (a as { name?: string })?.name))
+                      .filter((s): s is string => !!s)
+                : typeof all === "object" && all
+                ? (Object.values(all as Record<string, unknown>)
+                      .map((v) => (typeof v === "string" ? v : (v as { name?: string })?.name))
+                      .filter((s): s is string => !!s))
+                : [];
+            return (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {names.length === 0 ? (
+                        <div style={{ fontSize: 12.5, color: "var(--ink-3)" }}>None on file</div>
+                    ) : (
+                        names.map((drug) => (
+                            <div
+                                key={drug}
+                                style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 8,
+                                    padding: "6px 10px",
+                                    borderRadius: 8,
+                                    background: "var(--critical-soft)",
+                                    border: "1px solid var(--critical)",
+                                }}
+                            >
+                                <AlertTriangle className="h-3.5 w-3.5" style={{ color: "var(--critical)" }} />
+                                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--critical)" }}>
+                                    {drug}
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            );
+        }
+        case "meds": {
+            const meds = (note.medications ?? []).filter(
+                (m) => m && (m.brandName || m.dosage || m.strength)
+            );
+            return (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    {meds.map((m, i) => (
+                        <div
+                            key={i}
+                            style={{
+                                display: "flex",
+                                alignItems: "baseline",
+                                gap: 6,
+                                fontSize: 12.5,
+                            }}
+                        >
+                            <span
+                                style={{
+                                    width: 4,
+                                    height: 4,
+                                    borderRadius: 999,
+                                    background: "var(--brand-ink)",
+                                    alignSelf: "center",
+                                }}
+                            />
+                            <span style={{ fontWeight: 600 }}>{m.brandName || "Medication"}</span>
+                            {m.strength && (
+                                <span className="mono" style={{ fontSize: 10.5, color: "var(--ink-3)" }}>
+                                    {m.strength}
+                                </span>
+                            )}
+                            {m.frequency && (
+                                <span
+                                    style={{ marginLeft: "auto", fontSize: 10, color: "var(--ink-3)" }}
+                                >
+                                    {m.frequency}
+                                </span>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            );
+        }
+        case "fhx":
+            return (
+                <div style={{ fontSize: 13.5, lineHeight: 1.4 }}>
+                    {fields.fhx ||
+                        (note.familyHistory || [])
+                            .map(
+                                (f) =>
+                                    `${f.relationship || ""}${
+                                        f.conditions ? ` · ${f.conditions}` : ""
+                                    }`
+                            )
+                            .filter(Boolean)
+                            .join(" / ")}
+                </div>
+            );
+        case "pmh": {
+            const pmh = (note.pastMedicalHistory ?? []).filter((p) => p?.condition?.trim());
+            return (
+                <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                    {pmh.map((p, i) => (
+                        <div
+                            key={i}
+                            style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 6,
+                                padding: "4px 8px",
+                                borderRadius: 6,
+                                background: "var(--paper-3)",
+                                fontSize: 11.5,
+                            }}
+                        >
+                            <span style={{ fontWeight: 600 }}>{p.condition}</span>
+                            {p.diagnosedDate && (
+                                <span
+                                    style={{ marginLeft: "auto", fontSize: 10, color: "var(--ink-3)" }}
+                                >
+                                    {p.diagnosedDate}
+                                </span>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            );
+        }
+        case "surgical": {
+            const sx = (note.surgicalHistory ?? []).filter((s) => s?.procedure?.trim());
+            return (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {sx.map((s, i) => (
+                        <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <div
+                                style={{
+                                    width: 30,
+                                    height: 30,
+                                    borderRadius: 8,
+                                    background: "var(--paper-3)",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    color: "var(--ink-2)",
+                                }}
+                            >
+                                <Stethoscope className="h-3.5 w-3.5" />
+                            </div>
+                            <div>
+                                <div style={{ fontSize: 13, fontWeight: 600 }}>{s.procedure}</div>
+                                {s.date && (
+                                    <div
+                                        className="mono"
+                                        style={{ fontSize: 10.5, color: "var(--ink-3)" }}
+                                    >
+                                        {s.date}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            );
+        }
+        case "social": {
+            const rf = (note.riskFlags ?? {}) as Record<string, string | undefined>;
+            const cells = [
+                { l: "Tobacco", v: rf.tobaccoUse || "—" },
+                { l: "Alcohol", v: rf.alcoholUse || "—" },
+                { l: "Work", v: rf.occupation || "—" },
+            ];
+            return (
+                <div
+                    style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(3, 1fr)",
+                        gap: 6,
+                    }}
+                >
+                    {cells.map((c) => (
+                        <div
+                            key={c.l}
+                            style={{
+                                padding: "6px 4px",
+                                borderRadius: 6,
+                                textAlign: "center",
+                                background: "var(--paper-3)",
+                            }}
+                        >
+                            <div
+                                style={{
+                                    fontSize: 9.5,
+                                    color: "var(--ink-3)",
+                                    textTransform: "uppercase",
+                                    letterSpacing: "0.08em",
+                                    fontWeight: 600,
+                                }}
+                            >
+                                {c.l}
+                            </div>
+                            <div
+                                style={{
+                                    fontSize: 12,
+                                    fontWeight: 600,
+                                    marginTop: 2,
+                                    color: "var(--ink)",
+                                }}
+                            >
+                                {c.v}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            );
+        }
+        case "exam": {
+            const findings = (note.objective?.examFindings ?? {}) as Record<string, string>;
+            const rows = Object.entries(findings)
+                .filter(([, v]) => typeof v === "string" && v.trim())
+                .slice(0, 6);
+            return (
+                <div
+                    style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(2, 1fr)",
+                        gap: 8,
+                    }}
+                >
+                    {rows.map(([sys, finding]) => (
+                        <div
+                            key={sys}
+                            style={{
+                                padding: "8px 10px",
+                                borderRadius: 8,
+                                background: "var(--paper-3)",
+                                display: "flex",
+                                alignItems: "flex-start",
+                                gap: 8,
+                            }}
+                        >
+                            <span
+                                style={{
+                                    width: 6,
+                                    height: 6,
+                                    borderRadius: 999,
+                                    marginTop: 6,
+                                    background: "var(--ok)",
+                                }}
+                            />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                                <div
+                                    style={{
+                                        fontSize: 10,
+                                        color: "var(--ink-3)",
+                                        fontWeight: 600,
+                                        textTransform: "uppercase",
+                                        letterSpacing: "0.06em",
+                                    }}
+                                >
+                                    {sys}
+                                </div>
+                                <div
+                                    style={{
+                                        fontSize: 12,
+                                        color: "var(--ink)",
+                                        marginTop: 1,
+                                        lineHeight: 1.3,
+                                    }}
+                                >
+                                    {finding}
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            );
+        }
+        case "assessment":
+            return (
+                <div
+                    style={{ display: "flex", flexDirection: "column", gap: 6 }}
+                >
+                    {(note.assessmentPlan ?? [])
+                        .filter((a) => a?.assessment?.trim())
+                        .map((a, i) => (
+                            <div
+                                key={i}
+                                className="serif"
+                                style={{
+                                    fontSize: 14,
+                                    lineHeight: 1.4,
+                                    letterSpacing: "-0.005em",
+                                }}
+                            >
+                                {a.assessment}
+                            </div>
+                        ))}
+                </div>
+            );
+        case "plan": {
+            const plans = (note.assessmentPlan ?? []).filter((a) => a?.plan?.trim());
+            const orders = (note.orders ?? []).filter((o) => o?.type || o?.details);
+            return (
+                <div
+                    style={{
+                        display: "grid",
+                        gridTemplateColumns: orders.length ? "1fr 1fr" : "1fr",
+                        gap: 12,
+                    }}
+                >
+                    {plans.length > 0 && (
+                        <div>
+                            <div
+                                style={{
+                                    fontSize: 10,
+                                    color: "var(--ink-3)",
+                                    textTransform: "uppercase",
+                                    letterSpacing: "0.1em",
+                                    fontWeight: 600,
+                                    marginBottom: 6,
+                                }}
+                            >
+                                Disposition
+                            </div>
+                            <ul
+                                style={{
+                                    margin: 0,
+                                    padding: "0 0 0 18px",
+                                    fontSize: 12.5,
+                                    lineHeight: 1.55,
+                                }}
+                            >
+                                {plans.map((a, i) => (
+                                    <li key={i}>{a.plan}</li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+                    {orders.length > 0 && (
+                        <div>
+                            <div
+                                style={{
+                                    fontSize: 10,
+                                    color: "var(--brand-ink)",
+                                    textTransform: "uppercase",
+                                    letterSpacing: "0.1em",
+                                    fontWeight: 600,
+                                    marginBottom: 6,
+                                }}
+                            >
+                                Orders queued
+                            </div>
+                            <div
+                                style={{
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    gap: 4,
+                                }}
+                            >
+                                {orders.map((o, i) => (
+                                    <div
+                                        key={i}
+                                        style={{
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: 6,
+                                            padding: "4px 8px",
+                                            background: "var(--brand-soft)",
+                                            borderRadius: 6,
+                                            fontSize: 11.5,
+                                        }}
+                                    >
+                                        <Check
+                                            className="h-3.5 w-3.5"
+                                            style={{ color: "var(--brand-ink)" }}
+                                        />
+                                        <span style={{ fontWeight: 600 }}>{o.type || o.details}</span>
+                                        {o.priority && (
+                                            <span
+                                                style={{
+                                                    marginLeft: "auto",
+                                                    fontSize: 10,
+                                                    color: "var(--brand-ink)",
+                                                    fontWeight: 600,
+                                                }}
+                                            >
+                                                {o.priority}
+                                            </span>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+    }
+}
+
+function TimelineItem({
+    entry,
+    ctx,
+    isNew,
+    isLast,
+}: {
+    entry: { key: TimelineKey; t: number };
+    ctx: RendererContext;
+    isNew: boolean;
+    isLast: boolean;
+}) {
+    const meta = RENDERER_META[entry.key];
+    const toneColor = TONE_COLOR[meta.tone];
+    const mm = String(Math.floor(entry.t / 60)).padStart(2, "0");
+    const ss = String(Math.floor(entry.t % 60)).padStart(2, "0");
+
+    return (
+        <div
+            className={isNew ? "lv-pop" : ""}
+            style={{
+                display: "grid",
+                gridTemplateColumns: "64px 36px 1fr",
+                gap: 0,
+                position: "relative",
+            }}
+        >
+            {/* Timestamp */}
+            <div style={{ textAlign: "right", paddingRight: 12, paddingTop: 16 }}>
+                <div
+                    className="mono"
+                    style={{
+                        fontSize: 11.5,
+                        color: "var(--ink-2)",
+                        fontWeight: 600,
+                        letterSpacing: "-0.01em",
+                    }}
+                >
+                    {mm}:{ss}
+                </div>
+                <div
+                    style={{
+                        fontSize: 9.5,
+                        color: "var(--ink-4)",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.1em",
+                        marginTop: 2,
+                    }}
+                >
+                    captured
+                </div>
+            </div>
+
+            {/* Spine + dot */}
+            <div
+                style={{
+                    position: "relative",
+                    display: "flex",
+                    justifyContent: "center",
+                }}
+            >
+                <div
+                    style={{
+                        position: "absolute",
+                        top: 0,
+                        bottom: isLast ? "50%" : 0,
+                        width: 2,
+                        background: "var(--line)",
+                        left: "50%",
+                        transform: "translateX(-50%)",
+                    }}
+                />
+                <div
+                    style={{
+                        marginTop: 18,
+                        position: "relative",
+                        zIndex: 1,
+                        width: 14,
+                        height: 14,
+                        borderRadius: 999,
+                        background: "var(--paper)",
+                        border: `2px solid ${toneColor}`,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: toneColor,
+                    }}
+                >
+                    <span
+                        style={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: 999,
+                            background: toneColor,
+                        }}
+                    />
+                    {isNew && (
+                        <span
+                            className="lv-rec-ring"
+                            style={{
+                                position: "absolute",
+                                inset: -4,
+                                borderRadius: 999,
+                            }}
+                        />
+                    )}
+                </div>
+            </div>
+
+            {/* Card */}
+            <div
+                style={{
+                    padding: 12,
+                    marginBottom: 10,
+                    marginTop: 8,
+                    borderRadius: 10,
+                    border: "1px solid var(--line)",
+                    background: "var(--card)",
+                    minWidth: 0,
+                }}
+            >
+                <div
+                    style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        marginBottom: 8,
+                    }}
+                >
+                    <span style={{ color: toneColor, display: "inline-flex" }}>{meta.icon}</span>
+                    <div
+                        style={{
+                            fontSize: 10.5,
+                            color: "var(--ink-3)",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.1em",
+                            fontWeight: 600,
+                        }}
+                    >
+                        {meta.label}
+                    </div>
+                    {isNew && (
+                        <Pill tone="accent" dot>
+                            Just captured
+                        </Pill>
+                    )}
+                    <Check
+                        className="h-3.5 w-3.5"
+                        style={{ marginLeft: "auto", color: "var(--ok)" }}
+                    />
+                </div>
+                <div>{renderField(entry.key, ctx)}</div>
+            </div>
+        </div>
+    );
+}
+
+function LiveTimeline({
+    log,
+    note,
+    fields,
+    patient,
+    lastLoggedKey,
+    isRecording,
+    planDone,
+}: {
+    log: { key: TimelineKey; t: number; ts: number }[];
+    note: VisitNote;
+    fields: ParsedFields;
+    patient: PatientSummary;
+    lastLoggedKey: TimelineKey | null;
+    isRecording: boolean;
+    planDone: boolean;
+}) {
+    const ctx: RendererContext = { note, fields, patient };
+    if (log.length === 0) {
+        return (
+            <div
+                style={{
+                    padding: 32,
+                    border: "1px dashed var(--line)",
+                    borderRadius: 12,
+                    textAlign: "center",
+                    color: "var(--ink-4)",
+                    fontSize: 13,
+                    fontStyle: "italic",
+                }}
+            >
+                The note will build itself as the patient speaks — each data point appears here in real time.
+            </div>
+        );
+    }
+    // Next 2 unseen keys — rendered as skeleton cards so the doctor can see
+    // what the system is still listening for. Each skeleton morphs into a
+    // real TimelineItem the moment its key is captured.
+    const seen = new Set(log.map((e) => e.key));
+    const upcoming = TIMELINE_KEYS.filter((k) => !seen.has(k)).slice(0, 2);
+
+    return (
+        <div>
+            {log.map((entry, i) => {
+                const isNew = entry.key === lastLoggedKey;
+                // `isLast` only controls spine-trimming on the final card.
+                // With skeletons below, only trim when there are no more
+                // upcoming keys either.
+                const isLast =
+                    i === log.length - 1 && upcoming.length === 0 && !planDone;
+                return (
+                    <TimelineItem
+                        key={entry.key}
+                        entry={entry}
+                        ctx={ctx}
+                        isNew={isNew}
+                        isLast={isLast}
+                    />
+                );
+            })}
+            {isRecording &&
+                upcoming.map((key, i) => (
+                    <SkeletonTimelineItem
+                        key={`skeleton-${key}`}
+                        fieldKey={key}
+                        isLast={i === upcoming.length - 1}
+                    />
+                ))}
+        </div>
+    );
+}
+
+function SkeletonTimelineItem({
+    fieldKey,
+    isLast,
+}: {
+    fieldKey: TimelineKey;
+    isLast: boolean;
+}) {
+    const meta = RENDERER_META[fieldKey];
+    return (
+        <div
+            className="lv-skeleton-card"
+            style={{
+                display: "grid",
+                gridTemplateColumns: "64px 36px 1fr",
+                gap: 0,
+                position: "relative",
+                opacity: 0.6,
+            }}
+        >
+            {/* Timestamp — dashed placeholder */}
+            <div style={{ textAlign: "right", paddingRight: 12, paddingTop: 16 }}>
+                <div
+                    className="lv-skeleton"
+                    style={{ height: 10, width: 32, marginLeft: "auto" }}
+                />
+                <div
+                    style={{
+                        fontSize: 9.5,
+                        color: "var(--ink-4)",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.1em",
+                        marginTop: 4,
+                    }}
+                >
+                    awaiting
+                </div>
+            </div>
+            {/* Spine + hollow dot */}
+            <div
+                style={{
+                    position: "relative",
+                    display: "flex",
+                    justifyContent: "center",
+                }}
+            >
+                <div
+                    style={{
+                        position: "absolute",
+                        top: 0,
+                        bottom: isLast ? "50%" : 0,
+                        width: 2,
+                        background: "var(--line)",
+                        left: "50%",
+                        transform: "translateX(-50%)",
+                        borderLeft: "2px dashed var(--line)",
+                        backgroundColor: "transparent",
+                    }}
+                />
+                <div
+                    style={{
+                        marginTop: 18,
+                        position: "relative",
+                        zIndex: 1,
+                        width: 14,
+                        height: 14,
+                        borderRadius: 999,
+                        background: "var(--paper)",
+                        border: "1.5px dashed var(--ink-4)",
+                    }}
+                />
+            </div>
+            {/* Card — dashed border, label visible, body shimmer */}
+            <div
+                style={{
+                    padding: 12,
+                    marginBottom: 10,
+                    marginTop: 8,
+                    borderRadius: 10,
+                    border: "1px dashed var(--line-strong)",
+                    background: "transparent",
+                    minWidth: 0,
+                }}
+            >
+                <div
+                    style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        marginBottom: 10,
+                    }}
+                >
+                    <span
+                        style={{
+                            color: "var(--ink-4)",
+                            display: "inline-flex",
+                            opacity: 0.7,
+                        }}
+                    >
+                        {meta.icon}
+                    </span>
+                    <div
+                        style={{
+                            fontSize: 10.5,
+                            color: "var(--ink-4)",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.1em",
+                            fontWeight: 600,
+                        }}
+                    >
+                        {meta.label}
+                    </div>
+                    <span
+                        className="text-[10px] font-semibold uppercase"
+                        style={{
+                            marginLeft: "auto",
+                            color: "var(--ink-4)",
+                            letterSpacing: "0.08em",
+                            display: "inline-flex",
+                            gap: 3,
+                            alignItems: "center",
+                        }}
+                    >
+                        <span
+                            style={{
+                                display: "inline-flex",
+                                gap: 2,
+                            }}
+                        >
+                            {[0, 1, 2].map((i) => (
+                                <span
+                                    key={i}
+                                    style={{
+                                        width: 3,
+                                        height: 3,
+                                        borderRadius: 999,
+                                        background: "var(--ink-4)",
+                                        animation: `lv-pulse 1.2s ease-in-out ${i * 0.15}s infinite`,
+                                    }}
+                                />
+                            ))}
+                        </span>
+                        Listening
+                    </span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <div className="lv-skeleton" style={{ height: 12, width: "70%" }} />
+                    <div className="lv-skeleton" style={{ height: 10, width: "45%" }} />
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function LiveDataGrid({ note }: { note: VisitNote }) {
+    const vitals = [
+        { label: "BP", value: note.objective?.bp },
+        { label: "HR", value: note.objective?.hr },
+        { label: "Temp", value: note.objective?.temp },
+        { label: "SpO₂", value: note.objective?.spo2 },
+        { label: "Weight", value: note.objective?.weight ? `${note.objective.weight} lb` : undefined },
+        { label: "Height", value: note.objective?.height ? `${note.objective.height} cm` : undefined },
+        { label: "BMI", value: note.objective?.bmi },
+    ];
+    const hasVitals = vitals.some((v) => v.value);
+    const examEntries = note.objective?.examFindings
+        ? Object.entries(note.objective.examFindings).filter(
+              ([, v]) => typeof v === "string" && v.trim()
+          )
+        : [];
+    const meds = Array.isArray(note.medications) ? note.medications.filter((m) => m && (m.brandName || m.dosage)) : [];
+    const allergies = Array.isArray((note as unknown as { allergies?: unknown[] }).allergies)
+        ? ((note as unknown as { allergies?: Array<{ name?: string }> }).allergies || []).filter((a) => a?.name)
+        : [];
+    const assessments = Array.isArray(note.assessmentPlan) ? note.assessmentPlan.filter((a) => a && (a.assessment || a.plan)) : [];
+    const orders = Array.isArray(note.orders) ? note.orders.filter((o) => o && (o.type || o.details)) : [];
+    const fhx = Array.isArray(note.familyHistory)
+        ? note.familyHistory.filter((f) => f && (f.relationship || (Array.isArray(f.conditions) && f.conditions.length)))
+        : [];
+    const hpi = note.subjective?.hpi;
+
+    return (
+        <div className="mt-6">
+            <div className="mb-2.5 flex items-center gap-2">
+                <div
+                    className="text-[10.5px] uppercase"
+                    style={{
+                        color: "var(--ink-3)",
+                        letterSpacing: "0.12em",
+                        fontWeight: 600,
+                    }}
+                >
+                    Live data · filling in real time
+                </div>
+            </div>
+
+            <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+                <SectionCard title="Vitals" empty={!hasVitals} emptyLabel="Listening for vitals…">
+                    <div className="grid grid-cols-3 gap-2">
+                        {vitals
+                            .filter((v) => v.value)
+                            .map((v) => (
+                                <div key={v.label}>
+                                    <div
+                                        className="text-[10px] uppercase"
+                                        style={{ color: "var(--ink-3)", letterSpacing: "0.08em" }}
+                                    >
+                                        {v.label}
+                                    </div>
+                                    <div className="serif" style={{ fontSize: 18, letterSpacing: "-0.01em" }}>
+                                        {v.value}
+                                    </div>
+                                </div>
+                            ))}
+                    </div>
+                </SectionCard>
+
+                <SectionCard title="HPI" empty={!hpi?.trim()} emptyLabel="Waiting for a narrative…">
+                    <div className="text-[13px]" style={{ color: "var(--ink-2)", lineHeight: 1.45 }}>
+                        {hpi}
+                    </div>
+                </SectionCard>
+
+                <SectionCard title="Medications" empty={meds.length === 0} emptyLabel="No meds mentioned yet">
+                    <ul className="space-y-1">
+                        {meds.map((m, i) => (
+                            <li key={i} className="text-[13px]" style={{ color: "var(--ink)" }}>
+                                <span style={{ fontWeight: 600 }}>{m.brandName || "Medication"}</span>
+                                {m.strength ? <span style={{ color: "var(--ink-2)" }}> · {m.strength}</span> : null}
+                                {m.dosage ? <span style={{ color: "var(--ink-2)" }}> · {m.dosage}</span> : null}
+                                {m.frequency ? <span style={{ color: "var(--ink-2)" }}> · {m.frequency}</span> : null}
+                            </li>
+                        ))}
+                    </ul>
+                </SectionCard>
+
+                <SectionCard title="Allergies" empty={allergies.length === 0} emptyLabel="None noted yet">
+                    <div className="text-[13px]" style={{ color: "var(--ink)" }}>
+                        {allergies.map((a) => a.name).join(", ")}
+                    </div>
+                </SectionCard>
+
+                <SectionCard title="Family history" empty={fhx.length === 0} emptyLabel="No family history yet">
+                    <ul className="space-y-1 text-[13px]" style={{ color: "var(--ink-2)" }}>
+                        {fhx.map((f, i) => (
+                            <li key={i}>
+                                <span style={{ fontWeight: 600, color: "var(--ink)" }}>{f.relationship}</span>
+                                {Array.isArray(f.conditions) && f.conditions.length
+                                    ? ` · ${f.conditions.join(", ")}`
+                                    : null}
+                            </li>
+                        ))}
+                    </ul>
+                </SectionCard>
+
+                <SectionCard
+                    title="Exam findings"
+                    empty={examEntries.length === 0}
+                    emptyLabel="Not yet documented"
+                >
+                    <dl className="grid grid-cols-1 gap-1">
+                        {examEntries.map(([sys, finding]) => (
+                            <div key={sys} className="text-[12.5px]">
+                                <span style={{ fontWeight: 600, color: "var(--ink)" }}>{sys}:</span>{" "}
+                                <span style={{ color: "var(--ink-2)" }}>{String(finding)}</span>
+                            </div>
+                        ))}
+                    </dl>
+                </SectionCard>
+
+                <SectionCard
+                    title="Assessment & plan"
+                    empty={assessments.length === 0}
+                    emptyLabel="No assessment yet"
+                    span={2}
+                >
+                    <ul className="space-y-2">
+                        {assessments.map((a, i) => (
+                            <li key={i} className="rounded-md" style={{ background: "var(--paper-3)", padding: 8 }}>
+                                <div className="text-[13px]" style={{ fontWeight: 600, color: "var(--ink)" }}>
+                                    {a.assessment}
+                                </div>
+                                {a.plan ? (
+                                    <div className="mt-0.5 text-[12.5px]" style={{ color: "var(--ink-2)" }}>
+                                        Plan: {a.plan}
+                                    </div>
+                                ) : null}
+                                {a.followUp ? (
+                                    <div className="text-[12px]" style={{ color: "var(--ink-3)" }}>
+                                        Follow-up: {a.followUp}
+                                    </div>
+                                ) : null}
+                            </li>
+                        ))}
+                    </ul>
+                </SectionCard>
+
+                <SectionCard title="Orders" empty={orders.length === 0} emptyLabel="No orders yet" span={2}>
+                    <ul className="space-y-1 text-[13px]">
+                        {orders.map((o, i) => (
+                            <li key={i} style={{ color: "var(--ink)" }}>
+                                <span style={{ fontWeight: 600 }}>{o.type}</span>
+                                {o.details ? <span style={{ color: "var(--ink-2)" }}> · {o.details}</span> : null}
+                                {o.priority ? <span style={{ color: "var(--ink-3)" }}> · {o.priority}</span> : null}
+                            </li>
+                        ))}
+                    </ul>
+                </SectionCard>
+            </div>
+        </div>
+    );
+}
+
+function SectionCard({
+    title,
+    children,
+    empty,
+    emptyLabel,
+    span = 1,
+}: {
+    title: string;
+    children: React.ReactNode;
+    empty: boolean;
+    emptyLabel: string;
+    span?: 1 | 2;
+}) {
+    return (
+        <div
+            style={{
+                padding: 14,
+                borderRadius: 12,
+                border: "1px solid var(--line)",
+                borderStyle: empty ? "dashed" : "solid",
+                background: empty ? "transparent" : "var(--card)",
+                gridColumn: span === 2 ? "1 / -1" : undefined,
+                minHeight: 78,
+            }}
+        >
+            <div
+                className="text-[10.5px] uppercase"
+                style={{ color: "var(--ink-3)", letterSpacing: "0.1em", fontWeight: 600 }}
+            >
+                {title}
+            </div>
+            <div className="mt-2">
+                {empty ? (
+                    <div className="text-[12.5px] italic" style={{ color: "var(--ink-4)" }}>
+                        {emptyLabel}
+                    </div>
+                ) : (
+                    children
+                )}
             </div>
         </div>
     );
