@@ -18,12 +18,6 @@ import {
 } from "@/app/_lib/ai/live-speech";
 import { parseTranscriptDraftAction } from "@/app/_actions/visits";
 
-interface AICapturePanelProps {
-  patientId: string;
-  onTranscriptReady: (transcript: string) => void;
-  onParseReady: (parsed: unknown) => void;
-}
-
 type CaptureState =
   | "idle"
   | "recording"
@@ -32,12 +26,30 @@ type CaptureState =
   | "transcribing"
   | "complete";
 
+export interface AICaptureLiveState {
+  liveTranscript: string;
+  interimTranscript: string;
+  isCapturing: boolean;
+  recordingTime: number;
+  state: CaptureState;
+}
+
+interface AICapturePanelProps {
+  patientId: string;
+  onTranscriptReady: (transcript: string) => void;
+  onParseReady: (parsed: unknown) => void;
+  onLiveState?: (state: AICaptureLiveState) => void;
+  hideLiveDraftBubble?: boolean;
+}
+
 const LIVE_PARSE_INTERVAL_MS = 5000;
 
 export function AICapturePanel({
   patientId,
   onTranscriptReady,
   onParseReady,
+  onLiveState,
+  hideLiveDraftBubble,
 }: AICapturePanelProps) {
   const [state, setState] = useState<CaptureState>("idle");
   const [isCapturing, setIsCapturing] = useState(false);
@@ -152,6 +164,16 @@ export function AICapturePanel({
   React.useEffect(() => {
     previousTranscriptsRef.current = previousTranscripts;
   }, [previousTranscripts]);
+
+  React.useEffect(() => {
+    onLiveState?.({
+      liveTranscript,
+      interimTranscript,
+      isCapturing,
+      recordingTime,
+      state,
+    });
+  }, [liveTranscript, interimTranscript, isCapturing, recordingTime, state, onLiveState]);
 
   React.useEffect(() => {
     if (navigator.onLine) {
@@ -427,7 +449,7 @@ export function AICapturePanel({
 
   return (
     <div className="fixed bottom-24 right-8 z-[100] group flex flex-col items-end gap-3">
-      {(liveTranscript || interimTranscript) && (
+      {(liveTranscript || interimTranscript) && !hideLiveDraftBubble && (
         <div
           className="pointer-events-none max-w-sm rounded-[14px] px-4 py-3 text-sm"
           style={{

@@ -34,7 +34,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SectionStepper, visitSections, getSectionsForRole } from "./section-stepper";
-import { AICapturePanel } from "./ai-capture-panel";
+import { AICapturePanel, type AICaptureLiveState } from "./ai-capture-panel";
+import { TranscriptPanel, type TranscriptEntry } from "./transcript-panel";
 import { OfflineSyncBadge } from "./offline-sync-badge";
 import { MedicalInfoPanel } from "./medical-info-panel";
 import { visitNoteSchema, type VisitNote, createEmptyVisitNote, parseVisitNote } from "@/app/_lib/visit-note/schema";
@@ -210,6 +211,8 @@ export function NewVisitForm({
   const [draftLoaded, setDraftLoaded] = React.useState(false);
   const [hasAiDraftSuggestions, setHasAiDraftSuggestions] = React.useState(false);
   const [showPreviousVisitsDialog, setShowPreviousVisitsDialog] = React.useState(false);
+  const [transcriptHistory, setTranscriptHistory] = React.useState<TranscriptEntry[]>([]);
+  const [liveCaptureState, setLiveCaptureState] = React.useState<AICaptureLiveState | null>(null);
 
   // Listen for medical panel open events from PatientChartShell
   React.useEffect(() => {
@@ -664,6 +667,18 @@ export function NewVisitForm({
   }, []);
 
   const handleTranscriptReady = async (transcript: string) => {
+    const timestamp = liveCaptureState?.recordingTime ?? 0;
+    setTranscriptHistory((prev) => [
+      ...prev,
+      {
+        id: `tx-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        text: transcript,
+        speaker: "Clinician",
+        timestamp,
+        createdAt: new Date(),
+      },
+    ]);
+
     // Store transcript in draft (non-critical — IndexedDB may be unavailable)
     try {
       await saveDraft(patientId, userId, { transcript, role: userRole });
@@ -1516,6 +1531,8 @@ export function NewVisitForm({
                 patientId={patientId}
                 onTranscriptReady={handleTranscriptReady}
                 onParseReady={handleParseReady}
+                onLiveState={setLiveCaptureState}
+                hideLiveDraftBubble
               />
             </div>
           )}
@@ -1625,6 +1642,13 @@ export function NewVisitForm({
             />
           </div>
         </div>
+
+        {/* Right: live transcript (desktop only) */}
+        {!hideAICapture && (
+          <div className="hidden lg:flex">
+            <TranscriptPanel history={transcriptHistory} live={liveCaptureState} />
+          </div>
+        )}
       </div>
 
       {/* Mobile: floating toggle for sidebar tools (AI capture + medical info) */}
@@ -1663,6 +1687,7 @@ export function NewVisitForm({
                 patientId={patientId}
                 onTranscriptReady={handleTranscriptReady}
                 onParseReady={handleParseReady}
+                onLiveState={setLiveCaptureState}
               />
             )}
           </div>
