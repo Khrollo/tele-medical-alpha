@@ -24,7 +24,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Btn, ClearingCard, SubTabHeader } from "@/components/ui/clearing";
+import { Btn, ClearingCard, SectionHeader, SubTabHeader } from "@/components/ui/clearing";
 import { updatePatientPersonalDetails } from "./actions";
 
 const personalDetailsSchema = z.object({
@@ -75,26 +75,6 @@ interface PersonalDetailsContentProps {
         updatedAt: Date | string;
     };
     patientId: string;
-}
-
-function SectionHeader({
-    icon: Icon,
-    title,
-}: {
-    icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
-    title: string;
-}) {
-    return (
-        <div className="mb-4 flex items-center gap-2">
-            <Icon className="h-4 w-4" style={{ color: "var(--ink-3)" }} />
-            <div
-                className="serif"
-                style={{ fontSize: 17, color: "var(--ink)", letterSpacing: "-0.01em" }}
-            >
-                {title}
-            </div>
-        </div>
-    );
 }
 
 function FieldDisplay({ value }: { value: string | null | undefined }) {
@@ -277,9 +257,9 @@ export function PersonalDetailsContent({
             <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-5">
                 <div className="grid gap-5 lg:grid-cols-2">
                     {/* Demographics Card */}
-                    <ClearingCard pad={20}>
+                    <ClearingCard pad={0}>
                         <SectionHeader icon={User} title="Demographics" />
-                        <div className="flex flex-col gap-4">
+                        <div className="flex flex-col gap-4 p-5">
                             <div className="grid gap-4 sm:grid-cols-2">
                                 <div className="space-y-2">
                                     <Label htmlFor="lastName">Last name</Label>
@@ -434,9 +414,9 @@ export function PersonalDetailsContent({
                     </ClearingCard>
 
                     {/* Contact Card */}
-                    <ClearingCard pad={20}>
+                    <ClearingCard pad={0}>
                         <SectionHeader icon={Phone} title="Contact" />
-                        <div className="flex flex-col gap-4">
+                        <div className="flex flex-col gap-4 p-5">
                             <div className="space-y-2">
                                 <Label htmlFor="phone">Phone</Label>
                                 {isEditing ? (
@@ -544,9 +524,9 @@ export function PersonalDetailsContent({
                 </div>
 
                 {/* Care Team / Insurance Card - full width */}
-                <ClearingCard pad={20}>
+                <ClearingCard pad={0}>
                     <SectionHeader icon={Stethoscope} title="Care team & record" />
-                    <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="grid gap-4 p-5 sm:grid-cols-2">
                         <div className="space-y-2">
                             <Label>Clinician</Label>
                             {patientData.clinicianId ? (
@@ -595,9 +575,9 @@ export function PersonalDetailsContent({
                 </ClearingCard>
 
                 {/* Emergency Contact Card - Full Width */}
-                <ClearingCard pad={20}>
+                <ClearingCard pad={0}>
                     <SectionHeader icon={Heart} title="Emergency contact" />
-                    <div className="grid gap-4 sm:grid-cols-3">
+                    <div className="grid gap-4 p-5 sm:grid-cols-3">
                         <div className="space-y-2">
                             <Label htmlFor="emergencyContactName">Full name</Label>
                             {isEditing ? (
