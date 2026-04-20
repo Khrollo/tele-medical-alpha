@@ -90,7 +90,7 @@ export function SideNav({
       items.push(
         { href: "/patients", label: "Patients", icon: <Users className="h-4 w-4" /> },
         { href: "/waiting-room", label: "Schedule", icon: <Clock className="h-4 w-4" /> },
-        { href: "/open-notes", label: "Inbox", icon: <FileText className="h-4 w-4" /> }
+        { href: "/open-notes", label: "Open notes", icon: <FileText className="h-4 w-4" /> }
       );
     }
     if (userRole === "nurse") {
