@@ -351,44 +351,58 @@ export function PatientsList({ patients, allPatients, userRole }: PatientsListPr
                                             boxShadow: "0 1px 0 oklch(0 0 0 / 0.02)",
                                         }}
                                     >
-                                        <div className="flex flex-1 flex-col p-5">
-                                            {/* Top row — avatar + status pills */}
-                                            <div className="mb-3 flex items-start justify-between gap-2">
-                                                <Avatar name={patient.fullName} size={40} />
-                                                <div className="flex flex-wrap items-center justify-end gap-1.5">
-                                                    {sPill && (
-                                                        <Pill tone={sPill.tone} dot>
-                                                            {sPill.label}
-                                                        </Pill>
-                                                    )}
-                                                    {tPill && <Pill tone={tPill.tone}>{tPill.label}</Pill>}
-                                                </div>
+                                        {/* Header — mirrors the Vitals card header:
+                                            avatar (icon) · serif name · right meta ·
+                                            ghost action · bottom divider */}
+                                        <div
+                                            className="flex flex-wrap items-center gap-2.5 px-5 py-4"
+                                            style={{ borderBottom: "1px solid var(--line)" }}
+                                        >
+                                            <Avatar name={patient.fullName} size={32} />
+                                            <div
+                                                className="serif min-w-0 truncate"
+                                                style={{
+                                                    fontSize: 18,
+                                                    letterSpacing: "-0.01em",
+                                                    color: "var(--ink)",
+                                                }}
+                                            >
+                                                {patient.fullName}
                                             </div>
+                                            <div className="flex-1" />
+                                            <div
+                                                className="mono text-[11.5px]"
+                                                style={{ color: "var(--ink-3)" }}
+                                            >
+                                                {age !== null && `${age} yrs`}
+                                                {age !== null && patient.dob ? " · " : ""}
+                                                {patient.dob ? formatDate(patient.dob) : ""}
+                                            </div>
+                                            <Btn
+                                                kind="ghost"
+                                                size="sm"
+                                                iconRight={<ChevronRight className="h-3.5 w-3.5" />}
+                                            >
+                                                Open
+                                            </Btn>
+                                        </div>
 
-                                            {/* Name + demographics */}
+                                        <div className="flex flex-1 flex-col p-5">
+                                            {/* Status pills + clinician */}
                                             <div className="mb-4">
-                                                <h3
-                                                    className="serif"
-                                                    style={{
-                                                        fontSize: 19,
-                                                        letterSpacing: "-0.015em",
-                                                        lineHeight: 1.2,
-                                                        color: "var(--ink)",
-                                                    }}
-                                                >
-                                                    {patient.fullName}
-                                                </h3>
-                                                <div
-                                                    className="mono mt-1 text-[11px]"
-                                                    style={{ color: "var(--ink-3)" }}
-                                                >
-                                                    {age !== null && `${age} yrs`}
-                                                    {age !== null && patient.dob ? " · " : ""}
-                                                    {patient.dob ? formatDate(patient.dob) : ""}
-                                                </div>
+                                                {(sPill || tPill) && (
+                                                    <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                                                        {sPill && (
+                                                            <Pill tone={sPill.tone} dot>
+                                                                {sPill.label}
+                                                            </Pill>
+                                                        )}
+                                                        {tPill && <Pill tone={tPill.tone}>{tPill.label}</Pill>}
+                                                    </div>
+                                                )}
                                                 {patient.clinicianName && (
                                                     <div
-                                                        className="mt-1.5 text-[12px]"
+                                                        className="text-[12px]"
                                                         style={{ color: "var(--ink-2)" }}
                                                     >
                                                         {patient.clinicianName}
