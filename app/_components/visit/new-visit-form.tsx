@@ -666,58 +666,71 @@ export function NewVisitForm({
     };
   }, []);
 
-  const handleTranscriptReady = async (transcript: string) => {
-    const timestamp = liveCaptureState?.recordingTime ?? 0;
-    setTranscriptHistory((prev) => [
-      ...prev,
-      {
-        id: `tx-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        text: transcript,
-        speaker: "Clinician",
-        timestamp,
-        createdAt: new Date(),
-      },
-    ]);
+  // Use a ref to read the latest recording time inside the stable callback
+  // without making the callback itself depend on it.
+  const liveCaptureStateRef = React.useRef<AICaptureLiveState | null>(null);
+  React.useEffect(() => {
+    liveCaptureStateRef.current = liveCaptureState;
+  }, [liveCaptureState]);
 
-    // Store transcript in draft (non-critical — IndexedDB may be unavailable)
-    try {
-      await saveDraft(patientId, userId, { transcript, role: userRole });
-    } catch (draftError) {
-      console.warn("Failed to save transcript to draft:", draftError);
-    }
-
-    // Save transcript to database immediately if visit exists
-    if (visitIdRemote) {
-      try {
-        await saveTranscriptAction({
-          visitId: visitIdRemote,
+  const handleTranscriptReady = React.useCallback(
+    async (transcript: string) => {
+      const timestamp = liveCaptureStateRef.current?.recordingTime ?? 0;
+      setTranscriptHistory((prev) => [
+        ...prev,
+        {
+          id: `tx-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
           text: transcript,
-          rawText: transcript,
-        });
-      } catch (error) {
-        console.error("Error saving transcript:", error);
-        // Don't block the UI if transcript save fails
+          speaker: "Clinician",
+          timestamp,
+          createdAt: new Date(),
+        },
+      ]);
+
+      // Store transcript in draft (non-critical — IndexedDB may be unavailable)
+      try {
+        await saveDraft(patientId, userId, { transcript, role: userRole });
+      } catch (draftError) {
+        console.warn("Failed to save transcript to draft:", draftError);
       }
-    }
-  };
 
-  const handleParseReady = async (parsed: unknown) => {
-    try {
-      const currentData = form.getValues() as VisitNote;
+      // Save transcript to database immediately if visit exists
+      if (visitIdRemote) {
+        try {
+          await saveTranscriptAction({
+            visitId: visitIdRemote,
+            text: transcript,
+            rawText: transcript,
+          });
+        } catch (error) {
+          console.error("Error saving transcript:", error);
+          // Don't block the UI if transcript save fails
+        }
+      }
+    },
+    [patientId, userId, userRole, visitIdRemote]
+  );
 
-      // Merge with most recent (AI) values taking precedence
-      const merged = mergeVisitNote(currentData, parsed as Partial<VisitNote>, {
-        lockedPaths: getLockedPaths(),
-      });
+  const handleParseReady = React.useCallback(
+    async (parsed: unknown) => {
+      try {
+        const currentData = form.getValues() as VisitNote;
 
-      form.reset(merged);
-      setHasAiDraftSuggestions(true);
-      toast.success("AI data applied to form");
-    } catch (error) {
-      console.error("Error merging parsed data:", error);
-      toast.error("Failed to apply AI data");
-    }
-  };
+        // Merge with most recent (AI) values taking precedence
+        const merged = mergeVisitNote(currentData, parsed as Partial<VisitNote>, {
+          lockedPaths: getLockedPaths(),
+        });
+
+        form.reset(merged);
+        setHasAiDraftSuggestions(true);
+        toast.success("AI data applied to form");
+      } catch (error) {
+        console.error("Error merging parsed data:", error);
+        toast.error("Failed to apply AI data");
+      }
+    },
+    [form, getLockedPaths]
+  );
 
   // Auto-save reviewed sections when they change
   React.useEffect(() => {
