@@ -16,6 +16,7 @@ export interface PatientBasics {
   primaryLanguage: string | null;
   preferredCommMethod: string | null;
   consentSignatureUrl: string | null;
+  avatarUrl: string | null;
   emergencyContact: unknown;
   allergies: unknown;
   currentMedications: unknown;
@@ -53,6 +54,7 @@ export async function getPatientBasics(patientId: string): Promise<PatientBasics
       primaryLanguage: patients.primaryLanguage,
       preferredCommMethod: patients.preferredCommMethod,
       consentSignatureUrl: patients.consentSignatureUrl,
+      avatarUrl: patients.avatarUrl,
       emergencyContact: patients.emergencyContact,
       allergies: patients.allergies,
       currentMedications: patients.currentMedications,

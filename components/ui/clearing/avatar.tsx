@@ -16,12 +16,18 @@ function hashStr(s: string): number {
 
 type AvatarProps = {
   name?: string;
+  /**
+   * Optional profile image URL. When present and loadable, renders the image;
+   * otherwise falls back to tinted initials derived from `name`.
+   */
+  src?: string | null;
   size?: number;
   className?: string;
   style?: React.CSSProperties;
 };
 
-export function Avatar({ name = "?", size = 32, className, style }: AvatarProps) {
+export function Avatar({ name = "?", src, size = 32, className, style }: AvatarProps) {
+  const [imgFailed, setImgFailed] = React.useState(false);
   const initials = name
     .split(" ")
     .filter(Boolean)
@@ -30,10 +36,19 @@ export function Avatar({ name = "?", size = 32, className, style }: AvatarProps)
     .join("")
     .toUpperCase();
   const [bg, fg] = TINTS[hashStr(name) % TINTS.length];
+  const showImage = Boolean(src) && !imgFailed;
+
+  React.useEffect(() => {
+    setImgFailed(false);
+  }, [src]);
+
   return (
     <span
       className={className}
+      aria-label={name}
+      role="img"
       style={{
+        position: "relative",
         display: "inline-flex",
         alignItems: "center",
         justifyContent: "center",
@@ -46,10 +61,28 @@ export function Avatar({ name = "?", size = 32, className, style }: AvatarProps)
         fontWeight: 600,
         letterSpacing: "0.02em",
         flexShrink: 0,
+        overflow: "hidden",
         ...style,
       }}
     >
-      {initials}
+      {showImage ? (
+        // We need the native error event here so broken public Storage URLs
+        // can fall back to initials immediately instead of hanging on an empty frame.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={src ?? undefined}
+          alt=""
+          onError={() => setImgFailed(true)}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            display: "block",
+          }}
+        />
+      ) : (
+        <span aria-hidden="true">{initials}</span>
+      )}
     </span>
   );
 }

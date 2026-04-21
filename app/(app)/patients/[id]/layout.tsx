@@ -39,6 +39,7 @@ export default async function PatientChartLayout({
                     id: overview.patient.id,
                     fullName: overview.patient.fullName,
                     dob: overview.patient.dob,
+                    avatarUrl: overview.patient.avatarUrl,
                     allergies: overview.patient.allergies,
                 }}
                 userRole={session.role}

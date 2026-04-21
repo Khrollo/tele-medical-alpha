@@ -45,6 +45,7 @@ interface Patient {
     dob: string | Date | null;
     phone: string | null;
     email: string | null;
+    avatarUrl: string | null;
     clinicianName: string | null;
     clinicianEmail: string | null;
     allergiesCount: number;
@@ -358,7 +359,7 @@ export function PatientsList({ patients, allPatients, userRole }: PatientsListPr
                                             className="flex flex-wrap items-center gap-2.5 px-5 py-4"
                                             style={{ borderBottom: "1px solid var(--line)" }}
                                         >
-                                            <Avatar name={patient.fullName} size={32} />
+                                            <Avatar name={patient.fullName} src={patient.avatarUrl} size={32} />
                                             <div
                                                 className="serif min-w-0 truncate"
                                                 style={{
@@ -378,13 +379,6 @@ export function PatientsList({ patients, allPatients, userRole }: PatientsListPr
                                                 {age !== null && patient.dob ? " · " : ""}
                                                 {patient.dob ? formatDate(patient.dob) : ""}
                                             </div>
-                                            <Btn
-                                                kind="ghost"
-                                                size="sm"
-                                                iconRight={<ChevronRight className="h-3.5 w-3.5" />}
-                                            >
-                                                Open
-                                            </Btn>
                                         </div>
 
                                         <div className="flex flex-1 flex-col p-5">
@@ -508,6 +502,13 @@ export function PatientsList({ patients, allPatients, userRole }: PatientsListPr
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-1.5">
+                                                    <Btn
+                                                        kind="ghost"
+                                                        size="sm"
+                                                        iconRight={<ChevronRight className="h-3.5 w-3.5" />}
+                                                    >
+                                                        Open
+                                                    </Btn>
                                                     {showContinueVisit && continueVisitHref && (
                                                         <Btn
                                                             kind="primary"

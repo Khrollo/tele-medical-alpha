@@ -13,6 +13,7 @@ export async function fetchWaitingRoomPatientsAction() {
     .select({
       id: patients.id,
       fullName: patients.fullName,
+      avatarUrl: patients.avatarUrl,
       createdAt: patients.createdAt,
     })
     .from(patients)
@@ -93,6 +94,7 @@ export async function fetchWaitingRoomPatientsAction() {
     return {
       id: patient.id,
       fullName: patient.fullName,
+      avatarUrl: patient.avatarUrl,
       createdAt: patient.createdAt.toISOString(),
       visit: visit
         ? {

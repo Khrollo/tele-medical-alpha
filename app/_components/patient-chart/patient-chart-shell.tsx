@@ -33,6 +33,7 @@ type PatientSummary = {
     id: string;
     fullName: string;
     dob: string | null;
+    avatarUrl: string | null;
     allergies: unknown;
 };
 
@@ -169,6 +170,7 @@ export function PatientChartShell({
                 {!isCreateFlow && (
                     <PatientRibbon
                         name={patientName}
+                        avatarUrl={patient?.avatarUrl ?? null}
                         dob={dobLabel}
                         mrn={mrnShort}
                         allergiesText={
@@ -196,12 +198,14 @@ export function PatientChartShell({
 
 function PatientRibbon({
     name,
+    avatarUrl,
     dob,
     mrn,
     allergiesText,
     patientId,
 }: {
     name: string;
+    avatarUrl: string | null;
     dob: string | null;
     mrn: string;
     allergiesText: string | null;
@@ -212,7 +216,7 @@ function PatientRibbon({
             className="flex items-center gap-5 px-4 py-4 md:px-8"
             style={{ background: "var(--card)", borderBottom: "1px solid var(--line)" }}
         >
-            <Avatar name={name} size={52} />
+            <Avatar name={name} src={avatarUrl} size={52} />
             <div className="min-w-0 leading-tight">
                 <h1
                     className="serif nowrap"
