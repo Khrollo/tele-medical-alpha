@@ -19,6 +19,9 @@ interface Patient {
   id: string;
   fullName: string;
   avatarUrl: string | null;
+  dob: string | null;
+  allergiesCount: number;
+  medicationsCount: number;
   createdAt: Date | null;
   visit: VisitInfo | null;
 }
@@ -67,6 +70,9 @@ export function useWaitingRoomRealtime({
         id: patient.id,
         fullName: patient.fullName,
         avatarUrl: patient.avatarUrl,
+        dob: patient.dob,
+        allergiesCount: patient.allergiesCount,
+        medicationsCount: patient.medicationsCount,
         createdAt: patient.createdAt ? new Date(patient.createdAt) : null,
         visit: patient.visit
           ? {
