@@ -381,127 +381,59 @@ export function PatientsList({ patients, allPatients, userRole }: PatientsListPr
                                             </div>
                                         </div>
 
-                                        <div className="flex flex-1 flex-col p-5">
-                                            {/* Status pills + clinician */}
-                                            <div className="mb-4">
-                                                {(sPill || tPill) && (
-                                                    <div className="mb-2 flex flex-wrap items-center gap-1.5">
-                                                        {sPill && (
-                                                            <Pill tone={sPill.tone} dot>
-                                                                {sPill.label}
-                                                            </Pill>
-                                                        )}
-                                                        {tPill && <Pill tone={tPill.tone}>{tPill.label}</Pill>}
-                                                    </div>
-                                                )}
-                                                {patient.clinicianName && (
-                                                    <div
-                                                        className="text-[12px]"
-                                                        style={{ color: "var(--ink-2)" }}
-                                                    >
-                                                        {patient.clinicianName}
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            {/* Stats grid */}
-                                            <div className="mb-4 grid grid-cols-2 gap-2.5">
-                                                <div
-                                                    className="rounded-[10px] p-2.5"
-                                                    style={{
-                                                        background: "var(--paper-3)",
-                                                        border: "1px solid var(--line)",
-                                                    }}
-                                                >
-                                                    <div
-                                                        className="text-[9.5px] uppercase"
-                                                        style={{
-                                                            color: "var(--ink-3)",
-                                                            letterSpacing: "0.1em",
-                                                            fontWeight: 600,
-                                                        }}
-                                                    >
-                                                        Meds
-                                                    </div>
-                                                    <div className="mt-1 flex items-center gap-1.5">
-                                                        <PillIcon
-                                                            className="h-3.5 w-3.5"
-                                                            style={{ color: "var(--brand-ink)" }}
-                                                        />
+                                        <div className="flex flex-1 flex-col gap-3 px-5 py-3.5">
+                                            {/* Status + appointment + clinician on one line */}
+                                            {(sPill || tPill || patient.clinicianName) && (
+                                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+                                                    {sPill && (
+                                                        <Pill tone={sPill.tone} dot>
+                                                            {sPill.label}
+                                                        </Pill>
+                                                    )}
+                                                    {tPill && <Pill tone={tPill.tone}>{tPill.label}</Pill>}
+                                                    {patient.clinicianName && (
                                                         <span
-                                                            className="serif"
-                                                            style={{
-                                                                fontSize: 16,
-                                                                color: "var(--ink)",
-                                                                letterSpacing: "-0.01em",
-                                                            }}
+                                                            className="truncate text-[12px]"
+                                                            style={{ color: "var(--ink-2)" }}
                                                         >
-                                                            {patient.medicationsCount}
+                                                            {patient.clinicianName}
                                                         </span>
-                                                    </div>
+                                                    )}
                                                 </div>
-                                                <div
-                                                    className="rounded-[10px] p-2.5"
-                                                    style={{
-                                                        background: "var(--paper-3)",
-                                                        border: "1px solid var(--line)",
-                                                    }}
-                                                >
-                                                    <div
-                                                        className="text-[9.5px] uppercase"
-                                                        style={{
-                                                            color: "var(--ink-3)",
-                                                            letterSpacing: "0.1em",
-                                                            fontWeight: 600,
-                                                        }}
-                                                    >
-                                                        Allergies
-                                                    </div>
-                                                    <div className="mt-1 flex items-center gap-1.5">
-                                                        <AlertCircle
-                                                            className="h-3.5 w-3.5"
-                                                            style={{ color: "var(--critical)" }}
-                                                        />
-                                                        <span
-                                                            className="serif"
-                                                            style={{
-                                                                fontSize: 16,
-                                                                color: "var(--ink)",
-                                                                letterSpacing: "-0.01em",
-                                                            }}
-                                                        >
-                                                            {patient.allergiesCount}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </div>
+                                            )}
 
-                                            {/* Footer */}
+                                            {/* Inline clinical signals: meds · allergies · last seen */}
                                             <div
-                                                className="mt-auto flex items-center justify-between gap-2 pt-3"
-                                                style={{ borderTop: "1px solid var(--line)" }}
+                                                className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-[12px]"
+                                                style={{ color: "var(--ink-2)" }}
                                             >
-                                                <div className="min-w-0">
-                                                    <div
-                                                        className="text-[9.5px] uppercase"
-                                                        style={{
-                                                            color: "var(--ink-3)",
-                                                            letterSpacing: "0.1em",
-                                                            fontWeight: 600,
-                                                        }}
-                                                    >
-                                                        Last seen
-                                                    </div>
-                                                    <div
-                                                        className="mono text-[11.5px]"
-                                                        style={{ color: "var(--ink-2)" }}
-                                                    >
-                                                        {patient.visit
-                                                            ? formatDate(patient.visit.createdAt)
-                                                            : "No visits"}
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center gap-1.5">
+                                                <span className="inline-flex items-center gap-1.5">
+                                                    <PillIcon
+                                                        className="h-3.5 w-3.5"
+                                                        style={{ color: "var(--brand-ink)" }}
+                                                    />
+                                                    <span>
+                                                        {patient.medicationsCount} med{patient.medicationsCount === 1 ? "" : "s"}
+                                                    </span>
+                                                </span>
+                                                <span className="inline-flex items-center gap-1.5">
+                                                    <AlertCircle
+                                                        className="h-3.5 w-3.5"
+                                                        style={{ color: patient.allergiesCount > 0 ? "var(--critical)" : "var(--ink-3)" }}
+                                                    />
+                                                    <span>
+                                                        {patient.allergiesCount} allerg{patient.allergiesCount === 1 ? "y" : "ies"}
+                                                    </span>
+                                                </span>
+                                                <span className="mono" style={{ color: "var(--ink-3)" }}>
+                                                    {patient.visit
+                                                        ? `Last seen ${formatDate(patient.visit.createdAt)}`
+                                                        : "No visits"}
+                                                </span>
+                                            </div>
+
+                                            {/* Footer — actions only */}
+                                            <div className="mt-auto flex items-center justify-end gap-1.5 pt-1">
                                                     <Btn
                                                         kind="ghost"
                                                         size="sm"
@@ -540,7 +472,6 @@ export function PatientsList({ patients, allPatients, userRole }: PatientsListPr
                                                             Call
                                                         </Btn>
                                                     )}
-                                                </div>
                                             </div>
                                         </div>
                                     </div>

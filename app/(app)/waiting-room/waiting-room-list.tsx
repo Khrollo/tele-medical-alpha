@@ -10,15 +10,19 @@ import {
   Video,
   Copy,
   Check,
+  ChevronDown,
   QrCode,
   RefreshCw,
   Clock,
   List as ListIcon,
   LayoutGrid as GridIcon,
+  Pill as PillIcon,
+  AlertCircle,
 } from "lucide-react";
 
 import { assignVisitToMeAction } from "@/app/_actions/visits";
 import { cn } from "@/app/_lib/utils/cn";
+import { formatDate } from "@/app/_lib/utils/format-date";
 import { useWaitingRoomRealtime } from "@/app/_lib/hooks/use-waiting-room-realtime";
 
 import { Avatar, Btn, ClearingCard, Pill, type PillTone } from "@/components/ui/clearing";
@@ -42,6 +46,9 @@ interface Patient {
   id: string;
   fullName: string;
   avatarUrl: string | null;
+  dob: string | null;
+  allergiesCount: number;
+  medicationsCount: number;
   createdAt: Date | null;
   visit: VisitInfo | null;
 }
@@ -49,24 +56,6 @@ interface Patient {
 interface WaitingRoomListProps {
   patients: Patient[];
   userRole?: string;
-}
-
-interface PatientSnapshot {
-  patient: {
-    fullName: string;
-    dob: string | null;
-    allergies: unknown;
-    vitals: unknown;
-    currentMedications: unknown;
-    familyHistory: unknown;
-    socialHistory: unknown;
-    pastMedicalHistory: unknown;
-  };
-  latestVisit: {
-    chiefComplaint?: string | null;
-    appointmentType?: string | null;
-    status?: string | null;
-  } | null;
 }
 
 type SortField = "name" | "waitTime" | "priority" | "appointmentType";
@@ -78,12 +67,41 @@ function getWaitMinutes(visit: VisitInfo | null): number {
   return Math.floor((Date.now() - new Date(visit.createdAt).getTime()) / 60000);
 }
 
-function formatWait(minutes: number): string {
-  if (minutes <= 0) return "New";
+/** Duration-only label for top-of-page stats. Unambiguous even when empty. */
+function formatWaitShort(minutes: number): string {
+  if (minutes <= 0) return "—";
   if (minutes < 60) return `${minutes}m`;
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+/**
+ * Per-card wait label. Distinguishes a newly-arrived patient from a
+ * measured wait time (avoids the ambiguous lone "New"/"Wait" words).
+ */
+function formatWaitPhrase(minutes: number): string {
+  if (minutes <= 0) return "Just arrived";
+  if (minutes < 60) return `Waiting ${minutes}m`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m > 0 ? `Waiting ${h}h ${m}m` : `Waiting ${h}h`;
+}
+
+function calculateAge(dob: string | null): number | null {
+  if (!dob) return null;
+  try {
+    const birth = new Date(dob);
+    const today = new Date();
+    let age = today.getUTCFullYear() - birth.getUTCFullYear();
+    const monthDiff = today.getUTCMonth() - birth.getUTCMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getUTCDate() < birth.getUTCDate())) {
+      age--;
+    }
+    return age;
+  } catch {
+    return null;
+  }
 }
 
 function priorityKey(p: string | null): Exclude<FilterKey, "all" | "virtual"> | "none" {
@@ -119,6 +137,19 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
   const [view, setView] = useState<"list" | "grid">("list");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [acknowledgedAlerts, setAcknowledgedAlerts] = useState<Record<string, boolean>>({});
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  const toggleExpanded = (patientId: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(patientId)) {
+        next.delete(patientId);
+      } else {
+        next.add(patientId);
+      }
+      return next;
+    });
+  };
 
   const { patients, refresh } = useWaitingRoomRealtime({
     initialPatients,
@@ -334,7 +365,7 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
           { k: "Critical", v: counts.critical, sub: "needs a clinician", color: "var(--critical)" },
           { k: "Urgent", v: counts.urgent, sub: "within 30 min", color: "oklch(0.5 0.12 70)" },
           { k: "Virtual", v: counts.virtual, sub: "telehealth visits", color: "var(--info)" },
-          { k: "Median wait", v: formatWait(medianWaitMinutes), sub: "across queue", color: "var(--ok)" },
+          { k: "Median wait", v: formatWaitShort(medianWaitMinutes), sub: "across queue", color: "var(--ok)" },
         ].map((m, i, arr) => (
           <div
             key={m.k}
@@ -469,6 +500,9 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
             typeof window !== "undefined" && p.visit?.id
               ? `${window.location.origin}/visit/${p.visit.id}/call`
               : "";
+          const isExpanded = expandedIds.has(p.id);
+          const age = calculateAge(p.dob);
+          const snapshotPanelId = `waiting-room-snapshot-${p.id}`;
 
           return (
             <ClearingCard
@@ -503,7 +537,81 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
                     {ap.label}
                   </Pill>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => toggleExpanded(p.id)}
+                  aria-expanded={isExpanded}
+                  aria-controls={snapshotPanelId}
+                  aria-label={isExpanded ? `Hide snapshot for ${p.fullName}` : `Show snapshot for ${p.fullName}`}
+                  className="ml-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[var(--paper-2)]"
+                  style={{ color: "var(--ink-2)" }}
+                >
+                  <ChevronDown
+                    className="h-4 w-4 transition-transform"
+                    style={{ transform: isExpanded ? "rotate(180deg)" : undefined }}
+                  />
+                </button>
               </div>
+
+              {/* Inline snapshot (accordion) */}
+              {isExpanded && (
+                <div
+                  id={snapshotPanelId}
+                  className="flex flex-col gap-2.5 px-4.5 pb-3.5 pt-0.5"
+                  style={{ borderTop: "1px solid var(--line)" }}
+                >
+                  {p.visit?.chiefComplaint && (
+                    <div className="pt-3">
+                      <div
+                        className="text-[10px] uppercase"
+                        style={{ color: "var(--ink-3)", letterSpacing: "0.1em", fontWeight: 600 }}
+                      >
+                        Chief complaint
+                      </div>
+                      <div
+                        className="text-[13px] leading-snug"
+                        style={{ color: "var(--ink)" }}
+                      >
+                        {p.visit.chiefComplaint}
+                      </div>
+                    </div>
+                  )}
+                  <div
+                    className={cn(
+                      "flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12px]",
+                      p.visit?.chiefComplaint ? "" : "pt-3"
+                    )}
+                    style={{ color: "var(--ink-2)" }}
+                  >
+                    {(age !== null || p.dob) && (
+                      <span className="inline-flex items-center gap-1">
+                        {age !== null && <span>{age} yrs</span>}
+                        {age !== null && p.dob && <span style={{ color: "var(--ink-3)" }}>·</span>}
+                        {p.dob && (
+                          <span className="mono" style={{ color: "var(--ink-3)" }}>
+                            {formatDate(p.dob)}
+                          </span>
+                        )}
+                      </span>
+                    )}
+                    <span className="inline-flex items-center gap-1.5">
+                      <PillIcon className="h-3.5 w-3.5" style={{ color: "var(--brand-ink)" }} />
+                      <span>
+                        {p.medicationsCount} med{p.medicationsCount === 1 ? "" : "s"}
+                      </span>
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <AlertCircle
+                        className="h-3.5 w-3.5"
+                        style={{ color: p.allergiesCount > 0 ? "var(--critical)" : "var(--ink-3)" }}
+                      />
+                      <span>
+                        {p.allergiesCount} allerg{p.allergiesCount === 1 ? "y" : "ies"}
+                      </span>
+                    </span>
+                  </div>
+                </div>
+              )}
 
               {/* Footer */}
               <div
@@ -515,8 +623,8 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
               >
                 <div className="flex items-center gap-1.5 text-[12px]" style={{ color: "var(--ink-3)" }}>
                   <Clock className="h-3.5 w-3.5" />
-                  <span className="mono" style={{ color: "var(--ink)", fontWeight: 500 }}>
-                    {formatWait(wait)}
+                  <span style={{ color: "var(--ink)", fontWeight: 500 }}>
+                    {formatWaitPhrase(wait)}
                   </span>
                 </div>
                 <div className="h-3.5 w-px" style={{ background: "var(--line)" }} />
