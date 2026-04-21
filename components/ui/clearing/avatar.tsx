@@ -38,6 +38,10 @@ export function Avatar({ name = "?", src, size = 32, className, style }: AvatarP
   const [bg, fg] = TINTS[hashStr(name) % TINTS.length];
   const showImage = Boolean(src) && !imgFailed;
 
+  React.useEffect(() => {
+    setImgFailed(false);
+  }, [src]);
+
   return (
     <span
       className={className}
@@ -62,6 +66,9 @@ export function Avatar({ name = "?", src, size = 32, className, style }: AvatarP
       }}
     >
       {showImage ? (
+        // We need the native error event here so broken public Storage URLs
+        // can fall back to initials immediately instead of hanging on an empty frame.
+        // eslint-disable-next-line @next/next/no-img-element
         <img
           src={src ?? undefined}
           alt=""
