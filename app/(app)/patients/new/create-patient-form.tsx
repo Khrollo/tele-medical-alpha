@@ -7,7 +7,7 @@ import * as z from "zod";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Save, Phone, Mail, Calendar, Cross, X, Clock, User, AlertCircle, Search, ChevronDown, Check, Mic, Square, AudioLines } from "lucide-react";
+import { Save, Phone, Mail, Calendar, Cross, X, Clock, AlertCircle, Search, ChevronDown, Check, Mic, Square, AudioLines } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -1162,6 +1162,7 @@ export function CreatePatientForm() {
               setCreatedPatientName(
                 `${pendingPatientData.firstName} ${pendingPatientData.lastName}`.trim()
               );
+              setCreatedPatientAvatarUrl(null);
               setPendingPatientData(null);
 
               // Close consent dialog and show post-create modal
