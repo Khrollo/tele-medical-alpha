@@ -457,7 +457,7 @@ export function VitalsContent({
             {vitals.map((vital, i, arr) => (
               <div
                 key={vital.id}
-                className="flex flex-col gap-4 px-5 py-7"
+                className="flex flex-col gap-3 px-5 py-4"
                 style={{
                   borderBottom:
                     i < arr.length - 1 ? "1px solid var(--line)" : undefined,
@@ -468,9 +468,10 @@ export function VitalsContent({
                     <div
                       className="serif"
                       style={{
-                        fontSize: 16,
+                        fontSize: 22,
                         color: "var(--ink)",
-                        letterSpacing: "-0.01em",
+                        letterSpacing: "-0.015em",
+                        lineHeight: 1.15,
                       }}
                     >
                       {formatDate(vital.date)}
