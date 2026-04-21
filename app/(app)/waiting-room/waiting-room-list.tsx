@@ -67,9 +67,10 @@ function getWaitMinutes(visit: VisitInfo | null): number {
   return Math.floor((Date.now() - new Date(visit.createdAt).getTime()) / 60000);
 }
 
-/** Duration-only label for top-of-page stats. Unambiguous even when empty. */
-function formatWaitShort(minutes: number): string {
-  if (minutes <= 0) return "—";
+/** Duration-only label for top-of-page stats. Keeps an empty queue distinct from a fresh 0m wait. */
+function formatWaitShort(minutes: number | null): string {
+  if (minutes === null) return "—";
+  if (minutes <= 0) return "0m";
   if (minutes < 60) return `${minutes}m`;
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
@@ -173,9 +174,9 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
   }, [patients]);
 
   const medianWaitMinutes = useMemo(() => {
-    if (!patients.length) return 0;
+    if (!patients.length) return null;
     const sorted = [...patients].map((p) => getWaitMinutes(p.visit)).sort((a, b) => a - b);
-    return sorted[Math.floor(sorted.length / 2)] ?? 0;
+    return sorted[Math.floor(sorted.length / 2)] ?? null;
   }, [patients]);
 
   React.useEffect(() => {
@@ -242,7 +243,8 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
         const match =
           p.fullName.toLowerCase().includes(q) ||
           (p.visit?.priority?.toLowerCase().includes(q) ?? false) ||
-          (p.visit?.appointmentType?.toLowerCase().includes(q) ?? false);
+          (p.visit?.appointmentType?.toLowerCase().includes(q) ?? false) ||
+          (p.visit?.chiefComplaint?.toLowerCase().includes(q) ?? false);
         if (!match) return false;
       }
       if (filter === "all") return true;
