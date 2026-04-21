@@ -401,7 +401,6 @@ export function NewVisitForm({
   const intakeBp = useWatch({ control: form.control, name: "objective.bp" });
   const intakeHr = useWatch({ control: form.control, name: "objective.hr" });
   const intakeTemp = useWatch({ control: form.control, name: "objective.temp" });
-  const intakeSpo2 = useWatch({ control: form.control, name: "objective.spo2" });
   const intakeWeight = useWatch({
     control: form.control,
     name: "objective.weight",
@@ -414,6 +413,9 @@ export function NewVisitForm({
   const [blurredVitals, setBlurredVitals] = React.useState<
     Partial<Record<"bp" | "hr" | "temp" | "spo2", boolean>>
   >({});
+  const objectiveBpField = form.register("objective.bp");
+  const objectiveHrField = form.register("objective.hr");
+  const objectiveTempField = form.register("objective.temp");
 
   // Calculate BMI when weight or height changes
   React.useEffect(() => {
@@ -989,10 +991,30 @@ export function NewVisitForm({
               <VisitSubCard>
                 <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
                   <VisitField label="Blood pressure" trailing={<span className="mono text-[10.5px]" style={{ color: "var(--ink-3)" }}>mmHg</span>}>
-                    <Input {...form.register("objective.bp")} placeholder="120/80" />
+                    <Input
+                      {...objectiveBpField}
+                      placeholder="120/80"
+                      onBlur={(event) => {
+                        objectiveBpField.onBlur(event);
+                        setBlurredVitals((current) => ({ ...current, bp: true }));
+                      }}
+                    />
+                    {blurredVitals.bp && getVitalAlert("bp", intakeBp || undefined) ? (
+                      <VitalAlertBadge alert={getVitalAlert("bp", intakeBp || undefined)!} />
+                    ) : null}
                   </VisitField>
                   <VisitField label="Heart rate" trailing={<span className="mono text-[10.5px]" style={{ color: "var(--ink-3)" }}>bpm</span>}>
-                    <Input {...form.register("objective.hr")} placeholder="72" />
+                    <Input
+                      {...objectiveHrField}
+                      placeholder="72"
+                      onBlur={(event) => {
+                        objectiveHrField.onBlur(event);
+                        setBlurredVitals((current) => ({ ...current, hr: true }));
+                      }}
+                    />
+                    {blurredVitals.hr && getVitalAlert("hr", intakeHr || undefined) ? (
+                      <VitalAlertBadge alert={getVitalAlert("hr", intakeHr || undefined)!} />
+                    ) : null}
                   </VisitField>
                   <VisitField
                     label="Temperature"
@@ -1007,7 +1029,17 @@ export function NewVisitForm({
                       return undefined;
                     })()}
                   >
-                    <Input {...form.register("objective.temp")} placeholder="98.6" />
+                    <Input
+                      {...objectiveTempField}
+                      placeholder="98.6"
+                      onBlur={(event) => {
+                        objectiveTempField.onBlur(event);
+                        setBlurredVitals((current) => ({ ...current, temp: true }));
+                      }}
+                    />
+                    {blurredVitals.temp && getVitalAlert("temp", intakeTemp || undefined) ? (
+                      <VitalAlertBadge alert={getVitalAlert("temp", intakeTemp || undefined)!} />
+                    ) : null}
                   </VisitField>
                   <VisitField
                     label="Weight"
@@ -1571,6 +1603,21 @@ export function NewVisitForm({
             style={{ background: "var(--paper)" }}
           >
             <div className="mx-auto w-full max-w-3xl px-4 md:px-8 py-8 flex flex-col gap-6">
+              {shouldBypassDoctorPostSaveModal && (
+                <NurseIntakeSummaryCard
+                  isExpanded={nurseIntakeExpanded}
+                  onToggle={() => setNurseIntakeExpanded((current) => !current)}
+                  chiefComplaint={form.watch("subjective.chiefComplaint")}
+                  bp={intakeBp || undefined}
+                  hr={intakeHr || undefined}
+                  temp={intakeTemp || undefined}
+                  weight={intakeWeight || undefined}
+                  triageNotes={intakeTriageNotes || undefined}
+                  allergies={patientBasics.allergies}
+                  currentMedications={patientBasics.currentMedications}
+                />
+              )}
+
               {/* Section header */}
               <div>
                 <div

@@ -1,6 +1,8 @@
 import { Suspense } from "react";
+import { redirect } from "next/navigation";
 import { SignInForm } from "./sign-in-form";
 import { Logo } from "@/components/ui/clearing/logo";
+import { getServerSession } from "@/app/_lib/supabase/server";
 
 function SignInFormFallback() {
   return (
@@ -17,7 +19,12 @@ function SignInFormFallback() {
   );
 }
 
-export default function SignInPage() {
+export default async function SignInPage() {
+  const session = await getServerSession();
+  if (session) {
+    redirect("/");
+  }
+
   return (
     <div
       className="flex min-h-screen w-full"

@@ -22,6 +22,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -81,6 +82,46 @@ interface VitalsContentProps {
   vitals: VitalEntry[];
 }
 
+type ChartSeriesKey =
+  | "bpSystolic"
+  | "bpDiastolic"
+  | "hr"
+  | "tempC"
+  | "weight"
+  | "spo2";
+
+type ChartDataPoint = {
+  id: string;
+  date: string;
+  displayDate: string;
+  bpSystolic: number | null;
+  bpDiastolic: number | null;
+  hr: number | null;
+  tempC: number | null;
+  weight: number | null;
+  spo2: number | null;
+  bpSystolicAbnormal: boolean;
+  bpDiastolicAbnormal: boolean;
+  hrAbnormal: boolean;
+  tempCAbnormal: boolean;
+  weightAbnormal: boolean;
+  spo2Abnormal: boolean;
+};
+
+const SERIES_CONFIG: Array<{
+  key: ChartSeriesKey;
+  label: string;
+  stroke: string;
+  abnormalKey: keyof ChartDataPoint;
+}> = [
+  { key: "bpSystolic", label: "BP Systolic", stroke: "var(--critical)", abnormalKey: "bpSystolicAbnormal" },
+  { key: "bpDiastolic", label: "BP Diastolic", stroke: "var(--brand-ink)", abnormalKey: "bpDiastolicAbnormal" },
+  { key: "hr", label: "Heart rate", stroke: "var(--critical)", abnormalKey: "hrAbnormal" },
+  { key: "tempC", label: "Temp (C)", stroke: "var(--warn)", abnormalKey: "tempCAbnormal" },
+  { key: "weight", label: "Weight", stroke: "var(--ink-2)", abnormalKey: "weightAbnormal" },
+  { key: "spo2", label: "SpO₂", stroke: "var(--info)", abnormalKey: "spo2Abnormal" },
+];
+
 // Parse numeric value from vitals string; returns NaN if not parseable.
 function toNumber(v: string | undefined): number {
   if (!v) return NaN;
@@ -96,6 +137,53 @@ function toSystolic(v: string | undefined): number {
   return isNaN(n) ? NaN : n;
 }
 
+function toDiastolic(v: string | undefined): number {
+  if (!v) return NaN;
+  const parts = v.split("/");
+  const n = parseFloat(parts[1] || "");
+  return isNaN(n) ? NaN : n;
+}
+
+function fahrenheitToCelsius(value: number) {
+  return Number.parseFloat((((value - 32) * 5) / 9).toFixed(1));
+}
+
+function formatInputDate(date: Date) {
+  return date.toISOString().split("T")[0];
+}
+
+function formatShortDate(dateString: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+  }).format(new Date(dateString));
+}
+
+function CustomAbnormalDot(props: {
+  cx?: number;
+  cy?: number;
+  payload?: ChartDataPoint;
+  abnormalKey: keyof ChartDataPoint;
+  stroke: string;
+}) {
+  const { cx, cy, payload, abnormalKey, stroke } = props;
+  if (cx === undefined || cy === undefined || !payload) {
+    return null;
+  }
+
+  const isAbnormal = Boolean(payload[abnormalKey]);
+  return (
+    <circle
+      cx={cx}
+      cy={cy}
+      r={isAbnormal ? 5 : 3}
+      fill={isAbnormal ? "var(--critical)" : stroke}
+      stroke="var(--card)"
+      strokeWidth={2}
+    />
+  );
+}
+
 export function VitalsContent({
   patientId,
   patientName,
@@ -108,6 +196,20 @@ export function VitalsContent({
   const [editingVital, setEditingVital] = React.useState<VitalEntry | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
+  const [selectedSeries, setSelectedSeries] = React.useState<Record<ChartSeriesKey, boolean>>({
+    bpSystolic: true,
+    bpDiastolic: true,
+    hr: true,
+    tempC: true,
+    weight: true,
+    spo2: true,
+  });
+  const [startDate, setStartDate] = React.useState(() => {
+    const date = new Date();
+    date.setDate(date.getDate() - 90);
+    return formatInputDate(date);
+  });
+  const [endDate, setEndDate] = React.useState(() => formatInputDate(new Date()));
   React.useEffect(() => {
     setVitals(initialVitals);
   }, [initialVitals]);
@@ -320,6 +422,64 @@ export function VitalsContent({
     },
   ];
 
+  const chartData = React.useMemo<ChartDataPoint[]>(() => {
+    return [...vitals]
+      .map((vital) => {
+        const bpSystolic = toSystolic(vital.bp);
+        const bpDiastolic = toDiastolic(vital.bp);
+        const hr = toNumber(vital.hr);
+        const tempF = toNumber(vital.temp);
+        const tempC = isNaN(tempF) ? NaN : fahrenheitToCelsius(tempF);
+        const weight = toNumber(vital.weight);
+        const spo2 = toNumber(vital.spo2);
+        const bpAbnormal = !isNaN(bpSystolic) && (bpSystolic > 140 || bpSystolic < 90);
+        const hrAbnormal = !isNaN(hr) && (hr > 100 || hr < 60);
+        const tempAbnormal = !isNaN(tempC) && (tempC > 38.3 || tempC < 36);
+        const spo2Abnormal = !isNaN(spo2) && spo2 < 95;
+
+        return {
+          id: vital.id,
+          date: vital.date,
+          displayDate: formatShortDate(vital.date),
+          bpSystolic: isNaN(bpSystolic) ? null : bpSystolic,
+          bpDiastolic: isNaN(bpDiastolic) ? null : bpDiastolic,
+          hr: isNaN(hr) ? null : hr,
+          tempC: isNaN(tempC) ? null : tempC,
+          weight: isNaN(weight) ? null : weight,
+          spo2: isNaN(spo2) ? null : spo2,
+          bpSystolicAbnormal: bpAbnormal,
+          bpDiastolicAbnormal: bpAbnormal,
+          hrAbnormal,
+          tempCAbnormal: tempAbnormal,
+          weightAbnormal: false,
+          spo2Abnormal,
+        };
+      })
+      .filter((point) =>
+        SERIES_CONFIG.some((series) => point[series.key] !== null)
+      )
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }, [vitals]);
+
+  const filteredChartData = React.useMemo(
+    () =>
+      chartData.filter((point) => {
+        if (startDate && point.date < startDate) {
+          return false;
+        }
+        if (endDate && point.date > endDate) {
+          return false;
+        }
+        return true;
+      }),
+    [chartData, endDate, startDate]
+  );
+
+  const activeSeries = React.useMemo(
+    () => SERIES_CONFIG.filter((series) => selectedSeries[series.key]),
+    [selectedSeries]
+  );
+
   return (
     <div className="flex flex-1 flex-col gap-5 px-4 py-6 md:px-8 md:py-8">
       <SubTabHeader
@@ -415,6 +575,154 @@ export function VitalsContent({
           );
         })}
       </div>
+
+      <ClearingCard pad={0}>
+        <div
+          className="flex flex-col gap-4 px-5 py-4"
+          style={{ borderBottom: "1px solid var(--line)" }}
+        >
+          <div className="flex flex-col gap-1">
+            <div
+              className="text-[10.5px] uppercase"
+              style={{ color: "var(--ink-3)", letterSpacing: "0.12em" }}
+            >
+              Trend view
+            </div>
+            <div
+              className="serif"
+              style={{ fontSize: 18, color: "var(--ink)", letterSpacing: "-0.01em" }}
+            >
+              Vital progression across visits
+            </div>
+            <p className="text-[13px]" style={{ color: "var(--ink-2)" }}>
+              Track BP, heart rate, temperature, weight, and oxygen saturation without
+              leaving the chart tab.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {SERIES_CONFIG.map((series) => (
+                <label
+                  key={series.key}
+                  className="inline-flex items-center gap-2 rounded-full px-3 py-1.5"
+                  style={{
+                    border: "1px solid var(--line)",
+                    background: selectedSeries[series.key] ? "var(--paper-2)" : "transparent",
+                  }}
+                >
+                  <Checkbox
+                    checked={selectedSeries[series.key]}
+                    onCheckedChange={(checked) =>
+                      setSelectedSeries((current) => ({
+                        ...current,
+                        [series.key]: checked,
+                      }))
+                    }
+                    aria-label={series.label}
+                  />
+                  <span
+                    className="text-[12px] font-medium"
+                    style={{ color: "var(--ink)" }}
+                  >
+                    {series.label}
+                  </span>
+                </label>
+              ))}
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="flex flex-col gap-1.5">
+                <span
+                  className="text-[10.5px] uppercase"
+                  style={{ color: "var(--ink-3)", letterSpacing: "0.1em" }}
+                >
+                  From
+                </span>
+                <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span
+                  className="text-[10.5px] uppercase"
+                  style={{ color: "var(--ink-3)", letterSpacing: "0.1em" }}
+                >
+                  To
+                </span>
+                <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-3 py-4 md:px-5">
+          {filteredChartData.length >= 2 && activeSeries.length > 0 ? (
+            <div style={{ height: 340 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={filteredChartData} margin={{ top: 8, right: 20, bottom: 8, left: 0 }}>
+                  <CartesianGrid
+                    stroke="var(--line)"
+                    strokeDasharray="3 3"
+                    vertical={false}
+                  />
+                  <XAxis
+                    dataKey="displayDate"
+                    stroke="var(--ink-3)"
+                    tick={{ fontSize: 11, fill: "var(--ink-3)" }}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis
+                    stroke="var(--ink-3)"
+                    tick={{ fontSize: 11, fill: "var(--ink-3)" }}
+                    tickLine={false}
+                    axisLine={false}
+                    domain={["auto", "auto"]}
+                    width={44}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      background: "var(--card)",
+                      border: "1px solid var(--line)",
+                      borderRadius: 10,
+                      fontSize: 12,
+                    }}
+                    labelStyle={{ color: "var(--ink-2)" }}
+                    itemStyle={{ color: "var(--ink)" }}
+                  />
+                  <Legend
+                    wrapperStyle={{
+                      fontSize: 11,
+                      color: "var(--ink-3)",
+                    }}
+                  />
+                  {activeSeries.map((series) => (
+                    <Line
+                      key={series.key}
+                      type="monotone"
+                      dataKey={series.key}
+                      name={series.label}
+                      stroke={series.stroke}
+                      strokeWidth={2.25}
+                      connectNulls
+                      dot={<CustomAbnormalDot abnormalKey={series.abnormalKey} stroke={series.stroke} />}
+                      activeDot={{ r: 6 }}
+                    />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div className="flex min-h-[220px] flex-col items-center justify-center gap-2 text-center">
+              <TrendingUp className="h-7 w-7" style={{ color: "var(--ink-3)" }} />
+              <p className="text-[13px]" style={{ color: "var(--ink-2)" }}>
+                {activeSeries.length === 0
+                  ? "Select at least one vital series to render the progression chart."
+                  : "Need at least 2 visits in the selected range to render a progression chart."}
+              </p>
+            </div>
+          )}
+        </div>
+      </ClearingCard>
 
       {/* Entries */}
       {vitals.length === 0 ? (
