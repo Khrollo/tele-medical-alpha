@@ -214,22 +214,24 @@ function PatientRibbon({
         >
             <Avatar name={name} size={52} />
             <div className="min-w-0 leading-tight">
-                <div className="flex flex-wrap items-baseline gap-2">
-                    <h1
-                        className="serif nowrap"
-                        style={{ margin: 0, fontSize: 28, letterSpacing: "-0.015em", color: "var(--ink)" }}
-                    >
-                        {name}
-                    </h1>
-                    {dob && <StatusPill tone="neutral">DOB {dob}</StatusPill>}
-                    {allergiesText && (
-                        <StatusPill tone="critical" dot>
-                            Allergies
-                        </StatusPill>
-                    )}
-                </div>
+                <h1
+                    className="serif nowrap"
+                    style={{ margin: 0, fontSize: 28, letterSpacing: "-0.015em", color: "var(--ink)" }}
+                >
+                    {name}
+                </h1>
+                {(dob || allergiesText) && (
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        {dob && <StatusPill tone="neutral">DOB {dob}</StatusPill>}
+                        {allergiesText && (
+                            <StatusPill tone="critical" dot>
+                                Allergies
+                            </StatusPill>
+                        )}
+                    </div>
+                )}
                 <div
-                    className="mono mt-1 max-w-[520px] truncate text-[11.5px]"
+                    className="mono mt-1.5 max-w-[520px] truncate text-[11.5px]"
                     style={{ color: "var(--ink-3)" }}
                 >
                     MRN {mrn}
