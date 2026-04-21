@@ -14,6 +14,17 @@ export interface VitalEntry {
   rr?: string; // Respiratory rate
   bmi?: string; // BMI (calculated)
   notes?: string;
+  // Optional clinician-facing notes attached to each individual vital value
+  // (e.g. "slight dizziness" next to a BP reading). Stored on the JSONB
+  // entry so no migration is needed.
+  bpNote?: string;
+  hrNote?: string;
+  tempNote?: string;
+  weightNote?: string;
+  heightNote?: string;
+  spo2Note?: string;
+  rrNote?: string;
+  bmiNote?: string;
 }
 
 /**
