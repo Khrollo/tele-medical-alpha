@@ -41,6 +41,7 @@ interface VisitInfo {
 interface Patient {
   id: string;
   fullName: string;
+  avatarUrl: string | null;
   createdAt: Date | null;
   visit: VisitInfo | null;
 }
@@ -482,7 +483,7 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
             >
               {/* Head */}
               <div className="flex items-start gap-3 px-4.5 py-3.5">
-                <Avatar name={p.fullName} size={40} />
+                <Avatar name={p.fullName} src={p.avatarUrl} size={40} />
                 <div className="min-w-0 flex-1 leading-tight">
                   <div className="flex flex-wrap items-baseline gap-2">
                     <span

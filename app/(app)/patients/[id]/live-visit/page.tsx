@@ -29,6 +29,7 @@ export default async function LiveVisitPage({
             patient={{
                 fullName: overview.patient.fullName,
                 dob: overview.patient.dob,
+                avatarUrl: overview.patient.avatarUrl,
                 allergies: overview.patient.allergies,
                 vitals: overview.patient.vitals,
             }}

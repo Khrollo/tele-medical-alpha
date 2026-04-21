@@ -18,6 +18,7 @@ interface VisitInfo {
 interface Patient {
   id: string;
   fullName: string;
+  avatarUrl: string | null;
   createdAt: Date | null;
   visit: VisitInfo | null;
 }
@@ -65,6 +66,7 @@ export function useWaitingRoomRealtime({
       const transformedPatients: Patient[] = result.map((patient) => ({
         id: patient.id,
         fullName: patient.fullName,
+        avatarUrl: patient.avatarUrl,
         createdAt: patient.createdAt ? new Date(patient.createdAt) : null,
         visit: patient.visit
           ? {

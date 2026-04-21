@@ -321,6 +321,7 @@ function matchField(text: string, re: RegExp): string | undefined {
 type PatientSummary = {
     fullName: string;
     dob: string | null;
+    avatarUrl: string | null;
     allergies: unknown;
     vitals: unknown;
 };
@@ -1010,7 +1011,7 @@ export function LiveVisitScreen({
                 >
                     <ArrowLeft className="h-4 w-4" />
                 </Link>
-                <Avatar name={patient.fullName} size={38} />
+                <Avatar name={patient.fullName} src={patient.avatarUrl} size={38} />
                 <div className="min-w-0 leading-tight">
                     <div className="flex items-baseline gap-2">
                         <span

@@ -1470,7 +1470,7 @@ export function NewVisitForm({
               <ChevronLeft className="h-4 w-4" />
             </button>
           </Link>
-          <Avatar name={patientBasics.fullName} size={34} />
+          <Avatar name={patientBasics.fullName} src={patientBasics.avatarUrl} size={34} />
           <div className="min-w-0 leading-tight">
             <div className="flex flex-wrap items-baseline gap-2">
               <span
@@ -1728,7 +1728,7 @@ export function NewVisitForm({
               onClick={() => handlePostSaveAction("view")}
               disabled={isProcessingAction}
             >
-              <User className="h-5 w-5 mr-3" />
+              <Avatar name={patientBasics.fullName} src={patientBasics.avatarUrl} size={22} className="mr-3" />
               <div className="text-left">
                 <div className="font-medium">View Patient</div>
                 <div className="text-sm text-muted-foreground">
