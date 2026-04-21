@@ -31,6 +31,7 @@ export interface CreatePatientPayload {
   emergencyContactPhone?: string;
   primaryCareProvider?: string;
   consentSignatureUrl?: string;
+  avatarUrl?: string;
 }
 
 export interface PatientVoicePrefill {
@@ -111,6 +112,7 @@ export async function createPatientAction(payload: CreatePatientPayload) {
       emergencyContactPhone: payload.emergencyContactPhone || null,
       primaryCareProvider: payload.primaryCareProvider || null,
       consentSignatureUrl: payload.consentSignatureUrl || null,
+      avatarUrl: payload.avatarUrl || null,
     });
 
     // Revalidate cache tags
@@ -269,6 +271,39 @@ export async function updatePatientAssignmentAction(
         : "Failed to update patient assignment"
     );
   }
+}
+
+/**
+ * Update patient avatar URL (INT-250)
+ */
+export async function updatePatientAvatarAction(
+  patientId: string,
+  avatarUrl: string | null
+) {
+  const session = await getServerSession();
+
+  if (!session) {
+    redirect("/sign-in");
+  }
+
+  if (session.role !== "doctor" && session.role !== "nurse") {
+    throw new Error(
+      "Unauthorized: Only doctors and nurses can update patient profile images"
+    );
+  }
+
+  await db
+    .update(patients)
+    .set({ avatarUrl, updatedAt: new Date() })
+    .where(eq(patients.id, patientId));
+
+  revalidateTag(`patient:${patientId}`, "max");
+  revalidateTag("patients", "max");
+  revalidateTag("waiting-room", "max");
+  revalidatePath("/patients");
+  revalidatePath(`/patients/${patientId}`);
+
+  return { success: true };
 }
 
 /**

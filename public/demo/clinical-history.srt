@@ -1,0 +1,1804 @@
+1
+00:00:08,198 --> 00:00:10,259
+Hello, my name is Gemma Hurley.
+
+2
+00:00:10,380 --> 00:00:15,766
+I'm a senior lecturer at Kingston University and St George's University of London.
+
+3
+00:00:15,785 --> 00:00:21,021
+I'm also a nurse practitioner where health history forms a key part of my role.
+
+4
+00:00:21,812 --> 00:00:30,013
+History taking forms the cornerstone of patient health assessment and so I would like to take you through the core principles of history taking.
+
+5
+00:00:30,603 --> 00:00:36,606
+To do that, I'm going to bring in a patient and demonstrate the key steps involved in history taking.
+
+6
+00:00:57,929 --> 00:00:59,350
+Come on in and have a seat.
+
+7
+00:01:00,770 --> 00:01:01,113
+Thank you.
+
+8
+00:01:02,756 --> 00:01:04,379
+Hi, my name is Gemma Hurley.
+
+9
+00:01:04,399 --> 00:01:06,602
+I'm a nurse practitioner and you are?
+
+10
+00:01:07,444 --> 00:01:07,944
+Paul Collins.
+
+11
+00:01:08,364 --> 00:01:11,170
+Okay, Mr. Collins, how would you like me to call you?
+
+12
+00:01:11,189 --> 00:01:11,469
+Paul's fine.
+
+13
+00:01:11,971 --> 00:01:12,572
+Is that okay?
+
+14
+00:01:12,731 --> 00:01:13,112
+All right.
+
+15
+00:01:13,914 --> 00:01:24,209
+Well, for me to be able to help you today, I need to take a history which will involve me asking you questions about your health and also about your social circumstances.
+
+16
+00:01:24,670 --> 00:01:25,932
+Is that okay with you?
+
+17
+00:01:25,951 --> 00:01:26,332
+It's fine.
+
+18
+00:01:26,313 --> 00:01:27,094
+OK.
+
+19
+00:01:27,114 --> 00:01:29,861
+Before we start, I just wanted to confirm your details.
+
+20
+00:01:29,921 --> 00:01:34,031
+So, it's Paul Collins and you're 46 years old.
+
+21
+00:01:34,051 --> 00:01:35,033
+And is this your address?
+
+22
+00:01:35,734 --> 00:01:36,176
+That's right.
+
+23
+00:01:36,596 --> 00:01:37,278
+Perfect.
+
+24
+00:01:37,459 --> 00:01:37,879
+Great.
+
+25
+00:01:38,061 --> 00:01:38,602
+OK.
+
+26
+00:01:38,621 --> 00:01:39,162
+Excellent.
+
+27
+00:01:39,183 --> 00:01:40,706
+So, how can I help you today?
+
+28
+00:01:40,986 --> 00:01:42,411
+Well, I've had a cough for a few days.
+
+29
+00:01:42,531 --> 00:01:44,676
+It's just driving me nuts, really.
+
+30
+00:01:44,656 --> 00:01:47,560
+Right, how long has the cough been there for?
+
+31
+00:01:47,579 --> 00:01:49,001
+I suppose about 3 or 4 days now.
+
+32
+00:01:49,203 --> 00:01:50,224
+Has it?
+
+33
+00:01:50,243 --> 00:01:52,307
+And have you got any other symptoms with that cough?
+
+34
+00:01:53,168 --> 00:01:55,891
+I've got quite a sore throat, that's quite bad as well.
+
+35
+00:01:56,072 --> 00:02:00,177
+Right, and a sore throat, has it been there the same amount of time?
+
+36
+00:02:00,379 --> 00:02:02,621
+Yes, yeah, they're both pretty much the same time.
+
+37
+00:02:02,962 --> 00:02:04,063
+Gosh, okay.
+
+38
+00:02:04,084 --> 00:02:09,390
+And the cough and sore throat, is it worse any particular time of the day or night?
+
+39
+00:02:09,532 --> 00:02:11,358
+Well, cough's probably worse.
+
+40
+00:02:12,098 --> 00:02:17,262
+first thing in the morning, I notice it particularly when I get up, sore throat's there all the time really.
+
+41
+00:02:17,481 --> 00:02:17,842
+Is it?
+
+42
+00:02:17,962 --> 00:02:20,105
+Are you able to swallow with that sore throat?
+
+43
+00:02:20,126 --> 00:02:20,366
+Yes.
+
+44
+00:02:20,466 --> 00:02:21,888
+You can, you can drink.
+
+45
+00:02:22,127 --> 00:02:22,508
+OK.
+
+46
+00:02:23,169 --> 00:02:25,552
+And the cough, can you describe it for me?
+
+47
+00:02:26,133 --> 00:02:30,038
+It's just a fairly meaty cough, you know, all sorts of muck really.
+
+48
+00:02:30,058 --> 00:02:30,960
+Right, OK.
+
+49
+00:02:31,820 --> 00:02:34,384
+What colour is the muck that you're coughing up?
+
+50
+00:02:35,044 --> 00:02:36,266
+Green really.
+
+51
+00:02:36,707 --> 00:02:38,490
+Is it large amounts or?
+
+52
+00:02:38,469 --> 00:02:39,771
+A fair amount.
+
+53
+00:02:39,792 --> 00:02:40,112
+Is it?
+
+54
+00:02:40,493 --> 00:02:41,574
+Is there any blood in it?
+
+55
+00:02:42,257 --> 00:02:43,378
+No, I haven't seen any blood.
+
+56
+00:02:43,840 --> 00:02:44,700
+Okay.
+
+57
+00:02:44,721 --> 00:02:48,728
+And how bad on a scale of nought to ten is that cough for you?
+
+58
+00:02:48,747 --> 00:02:50,211
+Ten being the worst possible.
+
+59
+00:02:50,731 --> 00:02:53,195
+I suppose it's about 6 or 7 really.
+
+60
+00:02:53,216 --> 00:02:53,597
+Right.
+
+61
+00:02:54,057 --> 00:03:00,062
+And is there any area in your throat or anywhere in your chest that's painful?
+
+62
+00:03:00,674 --> 00:03:03,453
+Well, I mean, my throat and neck are sore when I cough.
+
+63
+00:03:03,693 --> 00:03:04,074
+Right.
+
+64
+00:03:04,093 --> 00:03:07,377
+But other than that, no, it's just the sore throat.
+
+65
+00:03:07,457 --> 00:03:07,758
+Okay.
+
+66
+00:03:07,818 --> 00:03:10,021
+Does it travel anywhere else, this sore throat?
+
+67
+00:03:10,102 --> 00:03:12,425
+Any sort of radiation of pain?
+
+68
+00:03:12,444 --> 00:03:13,406
+No, no.
+
+69
+00:03:13,485 --> 00:03:14,046
+Okay.
+
+70
+00:03:14,687 --> 00:03:15,109
+Okay.
+
+71
+00:03:15,688 --> 00:03:18,092
+And has any other persons been affected by this?
+
+72
+00:03:18,873 --> 00:03:23,139
+Have they been sort of coughing around you, been in contact with anyone?
+
+73
+00:03:23,759 --> 00:03:27,444
+Well, my girlfriend, she had a cough last week.
+
+74
+00:03:27,425 --> 00:03:28,126
+Has she?
+
+75
+00:03:28,385 --> 00:03:29,167
+Okay.
+
+76
+00:03:29,187 --> 00:03:31,609
+And has she been well in the cell for?
+
+77
+00:03:31,688 --> 00:03:33,151
+She was ill for a few days.
+
+78
+00:03:33,170 --> 00:03:33,670
+Has she?
+
+79
+00:03:33,912 --> 00:03:34,192
+Okay.
+
+80
+00:03:34,211 --> 00:03:35,432
+But she's better now.
+
+81
+00:03:35,453 --> 00:03:35,552
+Okay.
+
+82
+00:03:35,913 --> 00:03:38,116
+What makes a cough and a sore throat better for you?
+
+83
+00:03:38,135 --> 00:03:40,078
+Is there any relieving factors?
+
+84
+00:03:40,198 --> 00:03:42,240
+Well, a cough, nothing really.
+
+85
+00:03:42,860 --> 00:03:46,584
+You know, I've tried over-the-counter sort of stuff from the chemist and that didn't work.
+
+86
+00:03:46,704 --> 00:03:47,305
+It didn't help?
+
+87
+00:03:47,324 --> 00:03:49,867
+The throat, if I have a warm drink, that helps.
+
+88
+00:03:50,288 --> 00:03:51,288
+Okay, okay.
+
+89
+00:03:51,909 --> 00:03:54,192
+Anything make it worse at all, this cough?
+
+90
+00:03:54,171 --> 00:03:55,913
+No, not really.
+
+91
+00:03:56,294 --> 00:03:57,455
+Nothing at all.
+
+92
+00:03:57,496 --> 00:03:58,236
+Okay.
+
+93
+00:03:58,257 --> 00:03:59,581
+What do you think it is?
+
+94
+00:04:00,560 --> 00:04:00,979
+I don't know.
+
+95
+00:04:01,020 --> 00:04:02,862
+I just think I need some antibiotics.
+
+96
+00:04:02,883 --> 00:04:03,282
+Right.
+
+97
+00:04:03,443 --> 00:04:03,743
+Okay.
+
+98
+00:04:04,425 --> 00:04:05,566
+Okay.
+
+99
+00:04:05,586 --> 00:04:08,028
+I just want to ask you more specific questions now.
+
+100
+00:04:08,088 --> 00:04:14,356
+You said there's no blood in the phlegm, but is there any fever, any feeling shivery?
+
+101
+00:04:14,336 --> 00:04:19,742
+The first day I was ill I was a bit shaky like that but now I'm not.
+
+102
+00:04:20,242 --> 00:04:22,504
+Okay and what about breathlessness?
+
+103
+00:04:22,584 --> 00:04:25,146
+So you've got any breathing problem or chest tightness?
+
+104
+00:04:25,387 --> 00:04:25,687
+No.
+
+105
+00:04:26,146 --> 00:04:27,067
+Nothing at all.
+
+106
+00:04:27,329 --> 00:04:32,752
+Okay and when you go to bed at night are you able to lie on your same amount of pillows?
+
+107
+00:04:32,773 --> 00:04:33,074
+Yes.
+
+108
+00:04:33,653 --> 00:04:34,235
+You are.
+
+109
+00:04:34,774 --> 00:04:42,521
+Okay and what about, are you feeling, because I know you're coughing up lots of green phlegm, is any dripping at the back of your throat at all?
+
+110
+00:04:42,502 --> 00:04:42,983
+No.
+
+111
+00:04:43,944 --> 00:04:45,865
+Nothing like that, okay.
+
+112
+00:04:45,886 --> 00:04:49,091
+And have you had any unexplained weight loss at all?
+
+113
+00:04:49,110 --> 00:04:50,232
+No, none at all.
+
+114
+00:04:50,252 --> 00:04:50,833
+Good.
+
+115
+00:04:50,853 --> 00:04:52,394
+Any recent travel abroad?
+
+116
+00:04:53,937 --> 00:04:54,276
+for months.
+
+117
+00:04:54,577 --> 00:04:55,980
+Okay, okay.
+
+118
+00:04:56,000 --> 00:05:01,367
+I just want to go through some of your key sort of body systems, Paul, just to find out about your overall health.
+
+119
+00:05:01,447 --> 00:05:06,112
+Can you tell me about, have you suffered headaches at all?
+
+120
+00:05:06,093 --> 00:05:08,694
+Sometimes I get headaches.
+
+121
+00:05:08,714 --> 00:05:09,175
+Do you?
+
+122
+00:05:09,396 --> 00:05:09,755
+Okay.
+
+123
+00:05:09,916 --> 00:05:12,093
+How often do you get headaches?
+
+124
+00:05:12,999 --> 00:05:15,641
+Once every month, something like that.
+
+125
+00:05:15,661 --> 00:05:15,922
+Is it?
+
+126
+00:05:15,942 --> 00:05:17,923
+And have you seen your doctor for that?
+
+127
+00:05:17,944 --> 00:05:20,947
+No, I just take some painkillers and they go away.
+
+128
+00:05:20,987 --> 00:05:21,747
+They go away.
+
+129
+00:05:21,867 --> 00:05:22,127
+Okay.
+
+130
+00:05:22,387 --> 00:05:23,970
+Have you ever had any head injuries?
+
+131
+00:05:24,290 --> 00:05:24,413
+No.
+
+132
+00:05:25,211 --> 00:05:25,850
+Okay.
+
+133
+00:05:25,870 --> 00:05:26,052
+Good.
+
+134
+00:05:26,211 --> 00:05:26,531
+Okay.
+
+135
+00:05:26,872 --> 00:05:28,012
+And what about your vision?
+
+136
+00:05:28,033 --> 00:05:29,334
+Do you wear glasses?
+
+137
+00:05:29,774 --> 00:05:29,915
+No.
+
+138
+00:05:29,935 --> 00:05:30,196
+Okay.
+
+139
+00:05:30,255 --> 00:05:30,975
+Vision's good?
+
+140
+00:05:31,276 --> 00:05:31,716
+Yeah.
+
+141
+00:05:31,737 --> 00:05:31,997
+Okay.
+
+142
+00:05:32,016 --> 00:05:34,494
+Do you ever suffer with nasal congestion or?
+
+143
+00:05:35,170 --> 00:05:36,843
+Sinus problems?
+
+144
+00:05:37,204 --> 00:05:38,966
+The only time I do is with cats really.
+
+145
+00:05:39,889 --> 00:05:40,925
+They set me off.
+
+146
+00:05:41,891 --> 00:05:42,853
+Are you allergic to cats?
+
+147
+00:05:42,894 --> 00:05:43,615
+I think I must be.
+
+148
+00:05:46,040 --> 00:05:47,802
+What about your tastes?
+
+149
+00:05:48,103 --> 00:05:49,526
+Any change in taste?
+
+150
+00:05:50,367 --> 00:05:50,747
+No.
+
+151
+00:05:51,269 --> 00:05:52,992
+Do you get mouth ulcers at all?
+
+152
+00:05:52,971 --> 00:05:54,233
+Sometimes I do.
+
+153
+00:05:54,473 --> 00:05:54,954
+Do you?
+
+154
+00:05:55,334 --> 00:05:58,540
+If I'm busy at work or something, sometimes I get mouth ulcers.
+
+155
+00:05:58,560 --> 00:06:03,086
+Okay, and you have a sore throat now, but do you get recurrent sore throats?
+
+156
+00:06:03,665 --> 00:06:03,726
+No.
+
+157
+00:06:03,747 --> 00:06:04,206
+You don't?
+
+158
+00:06:04,427 --> 00:06:05,309
+Years.
+
+159
+00:06:05,329 --> 00:06:05,910
+Good, good.
+
+160
+00:06:06,350 --> 00:06:11,476
+And any sort of problems with your chest in terms of heart problems, breathing problems?
+
+161
+00:06:11,497 --> 00:06:13,680
+No, nothing that.
+
+162
+00:06:13,660 --> 00:06:15,882
+And your bowels working all right?
+
+163
+00:06:15,903 --> 00:06:16,163
+They're fine.
+
+164
+00:06:16,184 --> 00:06:16,444
+Good.
+
+165
+00:06:16,783 --> 00:06:18,586
+Waterworks okay?
+
+166
+00:06:18,607 --> 00:06:18,706
+Yeah.
+
+167
+00:06:18,726 --> 00:06:19,108
+Excellent.
+
+168
+00:06:19,728 --> 00:06:23,713
+I hope you don't mind, but could I just ask a little bit about your sexual history?
+
+169
+00:06:24,134 --> 00:06:25,297
+Are you in a relationship?
+
+170
+00:06:25,916 --> 00:06:26,137
+Yeah.
+
+171
+00:06:26,158 --> 00:06:26,338
+Okay.
+
+172
+00:06:26,358 --> 00:06:28,982
+Are you heterosexual or gay?
+
+173
+00:06:29,802 --> 00:06:29,903
+Yeah.
+
+174
+00:06:29,923 --> 00:06:30,603
+Okay.
+
+175
+00:06:30,624 --> 00:06:32,005
+And contraception?
+
+176
+00:06:32,225 --> 00:06:34,889
+Do you use barrier methods?
+
+177
+00:06:35,089 --> 00:06:36,192
+I work with my girlfriends on the pill.
+
+178
+00:06:36,211 --> 00:06:36,411
+Okay.
+
+179
+00:06:36,492 --> 00:06:38,334
+And it's a long-term relationship, I said?
+
+180
+00:06:38,394 --> 00:06:40,117
+Yeah, it's been for a few years.
+
+181
+00:06:40,137 --> 00:06:40,257
+Okay.
+
+182
+00:06:40,278 --> 00:06:40,377
+Okay.
+
+183
+00:06:40,418 --> 00:06:41,680
+And what about your bones?
+
+184
+00:06:41,699 --> 00:06:43,262
+Any joint problems?
+
+185
+00:06:43,242 --> 00:06:49,050
+Well, you're sort of aches and pains if you've been busy at work, but no, not really.
+
+186
+00:06:49,209 --> 00:06:49,831
+Okay, good.
+
+187
+00:06:50,011 --> 00:06:51,872
+Okay, and how's your mood?
+
+188
+00:06:51,992 --> 00:06:53,595
+How do you feel in yourself?
+
+189
+00:06:53,716 --> 00:06:54,576
+Fed up at the moment.
+
+190
+00:06:54,896 --> 00:06:56,598
+Normally good, but I just want to get rid of this cough.
+
+191
+00:06:56,619 --> 00:07:02,487
+The cough, okay, but no sleeping problems and feeling low moods in terms of No, no, no.
+
+192
+00:07:02,507 --> 00:07:03,588
+Good, excellent.
+
+193
+00:07:04,048 --> 00:07:06,952
+A little bit about your surgical in the past.
+
+194
+00:07:06,992 --> 00:07:08,574
+Have you ever had any operations?
+
+195
+00:07:08,555 --> 00:07:15,605
+I had an operation, it must be 20 years ago, some sort of operation on my back.
+
+196
+00:07:15,625 --> 00:07:16,107
+Ah, right.
+
+197
+00:07:16,807 --> 00:07:18,170
+Do you remember, recall?
+
+198
+00:07:18,189 --> 00:07:21,714
+It was a, a pie something, pilo.
+
+199
+00:07:22,175 --> 00:07:23,557
+Pilonidal sinus.
+
+200
+00:07:23,817 --> 00:07:24,119
+That's the one.
+
+201
+00:07:24,139 --> 00:07:25,060
+Okay, okay.
+
+202
+00:07:25,079 --> 00:07:26,663
+And has it been alright since then?
+
+203
+00:07:27,163 --> 00:07:27,684
+Yeah, no problems at all.
+
+204
+00:07:27,704 --> 00:07:27,803
+Okay.
+
+205
+00:07:27,824 --> 00:07:29,567
+And no other operations?
+
+206
+00:07:29,547 --> 00:07:30,028
+Okay.
+
+207
+00:07:30,288 --> 00:07:43,913
+I'm just going to list off, just to probe your mind a bit, in terms of medical history, have you or any of your first degree relatives, so mum, dad, siblings, ever suffered with any jaundice where you've seen yourself go yellow?
+
+208
+00:07:45,055 --> 00:07:45,355
+No.
+
+209
+00:07:45,375 --> 00:07:46,036
+Okay.
+
+210
+00:07:46,057 --> 00:07:47,485
+Any anaemia at all?
+
+211
+00:07:48,129 --> 00:07:49,262
+Iron deficiency?
+
+212
+00:07:49,281 --> 00:07:49,422
+No, no.
+
+213
+00:07:49,882 --> 00:07:50,283
+Good.
+
+214
+00:07:50,444 --> 00:07:55,850
+Okay, have you ever had a heart attack or any member of your family?
+
+215
+00:07:55,870 --> 00:07:55,930
+No.
+
+216
+00:07:56,012 --> 00:07:56,411
+Okay.
+
+217
+00:07:57,293 --> 00:07:58,415
+What about TB?
+
+218
+00:07:58,574 --> 00:08:01,839
+Anybody with TB or you've been No, not as far as I know.
+
+219
+00:08:02,000 --> 00:08:02,360
+Good.
+
+220
+00:08:02,701 --> 00:08:04,002
+Any thyroid problems?
+
+221
+00:08:05,404 --> 00:08:05,524
+No.
+
+222
+00:08:05,545 --> 00:08:05,725
+Okay.
+
+223
+00:08:05,865 --> 00:08:09,209
+Any rheumatic fever or rheumatoid arthritis?
+
+224
+00:08:09,230 --> 00:08:09,310
+No.
+
+225
+00:08:09,891 --> 00:08:10,291
+Good.
+
+226
+00:08:10,451 --> 00:08:10,771
+Okay.
+
+227
+00:08:10,872 --> 00:08:12,615
+Any heart problems?
+
+228
+00:08:12,595 --> 00:08:13,235
+No.
+
+229
+00:08:14,358 --> 00:08:15,459
+Okay, any high blood pressure?
+
+230
+00:08:15,841 --> 00:08:17,302
+Well, I've got high blood pressure.
+
+231
+00:08:17,322 --> 00:08:17,944
+Oh, you have?
+
+232
+00:08:18,144 --> 00:08:18,625
+Okay.
+
+233
+00:08:19,005 --> 00:08:20,387
+And when was that diagnosed for?
+
+234
+00:08:20,408 --> 00:08:22,732
+That was diagnosed, what, 2 years ago now?
+
+235
+00:08:22,752 --> 00:08:23,252
+Was it?
+
+236
+00:08:23,273 --> 00:08:24,836
+And is it well controlled?
+
+237
+00:08:24,855 --> 00:08:26,137
+Well, I go, yeah, I think so.
+
+238
+00:08:26,298 --> 00:08:28,942
+I go to the doctor regularly and have my blood pressure checked.
+
+239
+00:08:29,023 --> 00:08:29,785
+It seems okay.
+
+240
+00:08:30,004 --> 00:08:30,526
+Perfect.
+
+241
+00:08:30,605 --> 00:08:31,747
+When was it last checked?
+
+242
+00:08:31,767 --> 00:08:33,591
+It was last checked about 2 weeks ago.
+
+243
+00:08:33,571 --> 00:08:35,535
+And everything was great?
+
+244
+00:08:35,556 --> 00:08:36,357
+Yeah, I think so.
+
+245
+00:08:36,378 --> 00:08:37,019
+Perfect.
+
+246
+00:08:37,038 --> 00:08:37,821
+It was okay.
+
+247
+00:08:37,841 --> 00:08:38,282
+Okay.
+
+248
+00:08:38,722 --> 00:08:40,307
+And what about diabetes?
+
+249
+00:08:40,346 --> 00:08:41,629
+Do you have any diabetes?
+
+250
+00:08:42,110 --> 00:08:42,873
+Yes, yes.
+
+251
+00:08:43,013 --> 00:08:43,494
+Or you do?
+
+252
+00:08:43,553 --> 00:08:44,736
+Yes, I'm diabetic.
+
+253
+00:08:45,238 --> 00:08:45,698
+Right.
+
+254
+00:08:45,719 --> 00:08:46,922
+And do you know what type?
+
+255
+00:08:47,604 --> 00:08:48,947
+It's the one with the tablet.
+
+256
+00:08:48,927 --> 00:08:50,549
+Okay, so you take tablets.
+
+257
+00:08:50,990 --> 00:08:51,150
+I do.
+
+258
+00:08:51,171 --> 00:08:54,556
+Okay, when were you diagnosed with diabetes?
+
+259
+00:08:54,576 --> 00:08:56,679
+That was about 3 years ago now.
+
+260
+00:08:56,720 --> 00:09:00,065
+Okay, and when was your last check-up for your diabetes?
+
+261
+00:09:00,085 --> 00:09:03,610
+I had that at the same time as I had my blood pressure.
+
+262
+00:09:03,971 --> 00:09:05,313
+Perfect, and they were happy?
+
+263
+00:09:05,533 --> 00:09:06,655
+Yeah.
+
+264
+00:09:07,057 --> 00:09:08,259
+Okay, perfect.
+
+265
+00:09:08,278 --> 00:09:09,341
+Any asthma at all?
+
+266
+00:09:09,360 --> 00:09:10,142
+No.
+
+267
+00:09:10,121 --> 00:09:11,605
+Okay, any strokes?
+
+268
+00:09:12,006 --> 00:09:15,895
+You had any many sort of numbness or family members?
+
+269
+00:09:15,956 --> 00:09:19,493
+No, my dad died 2 years ago with a stroke.
+
+270
+00:09:20,145 --> 00:09:20,827
+How old was he?
+
+271
+00:09:21,048 --> 00:09:21,870
+He was 72.
+
+272
+00:09:22,171 --> 00:09:22,871
+72.
+
+273
+00:09:22,993 --> 00:09:25,919
+Okay, and any cancers in the family or you've been?
+
+274
+00:09:27,394 --> 00:09:27,903
+Okay, good.
+
+275
+00:09:28,102 --> 00:09:28,464
+Okay.
+
+276
+00:09:28,864 --> 00:09:29,304
+Brilliant.
+
+277
+00:09:29,384 --> 00:09:31,787
+I just want to move you along a bit further.
+
+278
+00:09:32,607 --> 00:09:34,549
+Do you take any prescribed medicines?
+
+279
+00:09:34,610 --> 00:09:37,232
+I know that you've got diabetes and high blood pressure.
+
+280
+00:09:37,253 --> 00:09:38,375
+I do.
+
+281
+00:09:38,434 --> 00:09:42,399
+I take Ramipril.
+
+282
+00:09:42,418 --> 00:09:42,820
+Okay.
+
+283
+00:09:44,140 --> 00:09:50,327
+And I take netformin and there's another one that begins with G for the diabetes.
+
+284
+00:09:50,607 --> 00:09:52,269
+Glycozide.
+
+285
+00:09:52,350 --> 00:09:52,910
+Glycozide.
+
+286
+00:09:53,130 --> 00:09:53,652
+Excellent.
+
+287
+00:09:53,772 --> 00:09:54,412
+Okay.
+
+288
+00:09:54,432 --> 00:09:56,835
+And do you know the dosage of the Ramipril?
+
+289
+00:09:56,815 --> 00:10:00,419
+I think it's 5 milligrams.
+
+290
+00:10:00,440 --> 00:10:01,600
+5 milligrams.
+
+291
+00:10:01,620 --> 00:10:02,842
+And do you take it regularly?
+
+292
+00:10:03,143 --> 00:10:03,923
+Oh yeah, yeah.
+
+293
+00:10:03,943 --> 00:10:04,345
+Good.
+
+294
+00:10:04,365 --> 00:10:05,546
+I take it every evening.
+
+295
+00:10:05,566 --> 00:10:07,589
+And no side effects with it?
+
+296
+00:10:07,609 --> 00:10:11,533
+I did have an awful cough to start with but that's stopped now.
+
+297
+00:10:11,553 --> 00:10:12,635
+It's settled, good.
+
+298
+00:10:13,015 --> 00:10:15,178
+Okay and do you know the metformin?
+
+299
+00:10:15,198 --> 00:10:18,082
+Do you take it, do you do it in a dosage and how often?
+
+300
+00:10:18,283 --> 00:10:21,287
+I take it 3 times a day but I don't know what dose that is.
+
+301
+00:10:21,267 --> 00:10:22,871
+Okay, we can check that out.
+
+302
+00:10:22,912 --> 00:10:24,096
+We can follow that up.
+
+303
+00:10:24,256 --> 00:10:25,220
+Okay.
+
+304
+00:10:25,240 --> 00:10:27,466
+And what about allergies?
+
+305
+00:10:27,515 --> 00:10:28,765
+Are you allergic to anything?
+
+306
+00:10:29,666 --> 00:10:34,065
+Well, the only thing I think I'm allergic to is cats, but no one's ever told me that.
+
+307
+00:10:34,085 --> 00:10:35,607
+Okay, so that's the environment.
+
+308
+00:10:35,847 --> 00:10:37,471
+Do you know if you've got any drug allergies?
+
+309
+00:10:38,817 --> 00:10:39,713
+No, no, I don't think so.
+
+310
+00:10:39,995 --> 00:10:43,019
+And any foods like nut allergy or anything like that?
+
+311
+00:10:43,360 --> 00:10:43,559
+No.
+
+312
+00:10:43,961 --> 00:10:45,383
+Okay, perfect, good.
+
+313
+00:10:45,803 --> 00:10:47,286
+Okay, I need to ask you this.
+
+314
+00:10:47,505 --> 00:10:49,830
+Do you take any recreational drugs at all?
+
+315
+00:10:49,850 --> 00:10:51,272
+No, I don't have anything to do with them.
+
+316
+00:10:51,653 --> 00:10:52,674
+Excellent, good.
+
+317
+00:10:53,095 --> 00:10:55,070
+Any over-the-counter, you said you've been to?
+
+318
+00:10:56,001 --> 00:10:58,182
+Well, I had some cough medicine.
+
+319
+00:10:58,202 --> 00:11:01,190
+Okay.
+
+320
+00:11:01,490 --> 00:11:09,048
+And have you had paracetamol recently?
+
+321
+00:11:09,068 --> 00:11:12,275
+I had it a few days ago for the sore throat which it helped a bit.
+
+322
+00:11:12,255 --> 00:11:13,318
+It helped a little bit.
+
+323
+00:11:13,499 --> 00:11:14,201
+Okay.
+
+324
+00:11:14,221 --> 00:11:16,808
+And do you do any herbal remedies at all?
+
+325
+00:11:16,828 --> 00:11:17,571
+Nothing at all.
+
+326
+00:11:17,790 --> 00:11:18,273
+Excellent.
+
+327
+00:11:18,293 --> 00:11:19,095
+That's brilliant.
+
+328
+00:11:19,636 --> 00:11:20,018
+Okay.
+
+329
+00:11:21,321 --> 00:11:24,529
+Well, a little bit about your social background, if you don't mind me asking.
+
+330
+00:11:24,870 --> 00:11:25,953
+What's your occupation?
+
+331
+00:11:26,294 --> 00:11:27,278
+I'm a builder.
+
+332
+00:11:27,258 --> 00:11:28,318
+Right, okay.
+
+333
+00:11:28,899 --> 00:11:35,565
+And have you been lately exposed to dust or any sort of new substances?
+
+334
+00:11:35,585 --> 00:11:38,567
+No, no, so it's a fairly standard new build at the moment.
+
+335
+00:11:38,748 --> 00:11:40,669
+Okay, and you're happy with work?
+
+336
+00:11:41,549 --> 00:11:43,412
+plenty of work at the moment, so that's good.
+
+337
+00:11:43,432 --> 00:11:44,873
+Great, excellent.
+
+338
+00:11:44,893 --> 00:11:48,015
+And what about, you said you've got a girlfriend, do you live with her?
+
+339
+00:11:48,036 --> 00:11:48,375
+I do.
+
+340
+00:11:48,796 --> 00:11:49,777
+Right, okay.
+
+341
+00:11:49,797 --> 00:11:52,298
+And you're happy, everything's good at home?
+
+342
+00:11:52,639 --> 00:11:53,059
+Yeah, it's fine.
+
+343
+00:11:53,080 --> 00:11:53,860
+No stresses?
+
+344
+00:11:54,540 --> 00:11:55,422
+No, no.
+
+345
+00:11:55,442 --> 00:11:56,623
+Excellent, okay.
+
+346
+00:11:56,602 --> 00:11:59,908
+And do you live in a house or a flat or?
+
+347
+00:11:59,928 --> 00:12:00,769
+It's a 2bed house.
+
+348
+00:12:00,930 --> 00:12:02,133
+It's a 2bedroom house.
+
+349
+00:12:02,492 --> 00:12:03,895
+Are you a house owner, are you?
+
+350
+00:12:04,716 --> 00:12:04,917
+Yes.
+
+351
+00:12:05,437 --> 00:12:06,460
+You own your own house.
+
+352
+00:12:06,620 --> 00:12:07,120
+Excellent.
+
+353
+00:12:07,181 --> 00:12:07,442
+Good.
+
+354
+00:12:07,802 --> 00:12:09,625
+Can I ask you, do you smoke at all?
+
+355
+00:12:10,125 --> 00:12:10,947
+Yeah, I do smoke.
+
+356
+00:12:11,268 --> 00:12:11,688
+Do you?
+
+357
+00:12:12,049 --> 00:12:12,450
+OK.
+
+358
+00:12:13,591 --> 00:12:15,134
+Can I ask what you smoke?
+
+359
+00:12:15,115 --> 00:12:17,379
+I just smoke cigarettes, low tar cigarettes.
+
+360
+00:12:17,418 --> 00:12:18,441
+Low tar.
+
+361
+00:12:18,461 --> 00:12:20,764
+And how many cigarettes do you go through in a day?
+
+362
+00:12:21,927 --> 00:12:23,090
+Well, it's about 3 packs.
+
+363
+00:12:23,450 --> 00:12:25,394
+About 2 packs every 3 days.
+
+364
+00:12:25,413 --> 00:12:25,754
+Is it?
+
+365
+00:12:25,835 --> 00:12:26,134
+Okay.
+
+366
+00:12:26,515 --> 00:12:29,040
+And at what age did you start smoking?
+
+367
+00:12:29,922 --> 00:12:31,581
+It would have been about 30.
+
+368
+00:12:32,326 --> 00:12:33,629
+Age 30.
+
+369
+00:12:33,649 --> 00:12:34,029
+Okay.
+
+370
+00:12:34,049 --> 00:12:35,453
+Have you thought about giving up?
+
+371
+00:12:36,001 --> 00:12:38,005
+Well, not really, not at the moment.
+
+372
+00:12:38,918 --> 00:12:41,081
+You don't want to consider that at the moment?
+
+373
+00:12:42,306 --> 00:12:42,482
+No, no.
+
+374
+00:12:42,502 --> 00:12:43,063
+Okay.
+
+375
+00:12:43,084 --> 00:12:46,008
+Well, when you do, we're here any time.
+
+376
+00:12:46,048 --> 00:12:54,000
+We've got lots of support strategies in place, so whenever you feel you would like to talk about stopping smoking, we're here just to let you know, okay?
+
+377
+00:12:54,561 --> 00:12:56,663
+I just want to ask you about your alcohol intake.
+
+378
+00:12:56,683 --> 00:12:57,164
+Do you drink?
+
+379
+00:12:57,686 --> 00:12:58,486
+I do drink, yeah.
+
+380
+00:12:58,466 --> 00:12:59,028
+OK.
+
+381
+00:12:59,588 --> 00:13:00,490
+What do you normally drink?
+
+382
+00:13:00,970 --> 00:13:01,250
+Wine.
+
+383
+00:13:01,730 --> 00:13:02,152
+OK.
+
+384
+00:13:02,492 --> 00:13:03,894
+And how much wine do you drink?
+
+385
+00:13:04,575 --> 00:13:05,355
+Not a lot really.
+
+386
+00:13:05,375 --> 00:13:06,817
+A couple of glasses a week.
+
+387
+00:13:06,837 --> 00:13:07,298
+In the week?
+
+388
+00:13:07,359 --> 00:13:07,558
+Yeah.
+
+389
+00:13:07,600 --> 00:13:08,800
+Not a lot at all really.
+
+390
+00:13:08,821 --> 00:13:09,081
+OK.
+
+391
+00:13:09,101 --> 00:13:09,642
+Good.
+
+392
+00:13:09,662 --> 00:13:10,302
+And your diet?
+
+393
+00:13:10,322 --> 00:13:11,043
+Do you eat well?
+
+394
+00:13:11,305 --> 00:13:11,544
+Yeah.
+
+395
+00:13:11,565 --> 00:13:12,446
+No, we eat really well.
+
+396
+00:13:13,067 --> 00:13:17,452
+My girlfriend's, you know, really into healthy eating so we grow our own vegetables at home.
+
+397
+00:13:17,472 --> 00:13:18,254
+Wonderful.
+
+398
+00:13:18,815 --> 00:13:19,375
+Excellent.
+
+399
+00:13:19,475 --> 00:13:19,875
+Great.
+
+400
+00:13:20,336 --> 00:13:21,859
+And do you exercise?
+
+401
+00:13:21,838 --> 00:13:28,992
+Not really, because I'm just on site so much, I'm busy all day, I'm very active during the day, but I don't really exercise outside.
+
+402
+00:13:29,092 --> 00:13:29,374
+Right.
+
+403
+00:13:29,834 --> 00:13:37,889
+I suppose if you could find that time, it would be relaxing, I suppose, to help, you know, good for your diabetes as well, if we could.
+
+404
+00:13:37,870 --> 00:13:40,533
+I just want to sum up, Paul, if you don't mind.
+
+405
+00:13:41,274 --> 00:13:43,697
+Please correct me if I've got any of it wrong.
+
+406
+00:13:44,158 --> 00:13:47,504
+You've had this cough and sore throat for the last 3 days.
+
+407
+00:13:47,543 --> 00:13:52,651
+Nothing makes it really better, or you have taken your paracetamol.
+
+408
+00:13:52,671 --> 00:13:54,072
+That's helped a little bit.
+
+409
+00:13:54,553 --> 00:14:00,822
+You've not had any blood in that phlegm, no fever, no unexplained weight loss.
+
+410
+00:14:00,802 --> 00:14:03,267
+Breathing's okay as well.
+
+411
+00:14:03,867 --> 00:14:10,717
+You've got type 2 diabetes because you take tablets for that and it's well controlled and so is your blood pressure.
+
+412
+00:14:11,359 --> 00:14:14,484
+Your dad died sadly of a stroke.
+
+413
+00:14:15,826 --> 00:14:20,172
+You live with your girlfriend and you're quite happy.
+
+414
+00:14:20,192 --> 00:14:26,642
+Work is good and you just really want us to sort out your sore throat and cough.
+
+415
+00:14:26,622 --> 00:14:27,884
+Yes, please.
+
+416
+00:14:27,943 --> 00:14:28,806
+Okay, okay.
+
+417
+00:14:28,846 --> 00:14:32,052
+Is there anything else you want to add to that before we move on?
+
+418
+00:14:32,933 --> 00:14:33,654
+No, no, that's it I think.
+
+419
+00:14:33,956 --> 00:14:35,117
+Alright, okay.
+
+420
+00:14:35,137 --> 00:14:45,316
+Well, what we need to do now is to check some vital signs and I need to examine you before we could decide, you know, what's going on with your sore throat and cough and take it from there.
+
+421
+00:14:45,437 --> 00:14:46,398
+Is that okay with you?
+
+422
+00:14:47,586 --> 00:14:47,661
+fine.
+
+423
+00:14:47,681 --> 00:14:48,446
+Good, thank you.
+
+424
+00:14:50,529 --> 00:14:53,894
+Well that concludes our demonstration of the history taking process.
+
+425
+00:14:54,395 --> 00:15:00,560
+Paul is a senior lecturer at the University and has kindly offered to give feedback from a patient perspective.
+
+426
+00:15:01,362 --> 00:15:11,331
+The key principles used in the history taking process was first and foremost me as the practitioner ensuring that the environment was safe and accessible for the patient.
+
+427
+00:15:11,951 --> 00:15:18,973
+I was also mindful to avoid interruptions thus maintaining the patient's privacy and confidentiality.
+
+428
+00:15:19,841 --> 00:15:26,250
+As I called a patient in I was mindful not to use the patient's first name but to seek permission.
+
+429
+00:15:26,892 --> 00:15:29,355
+So how did you feel about that Paul?
+
+430
+00:15:29,375 --> 00:15:40,757
+I thought that was quite appropriate and I felt that you respected my right to be called Mr Collins or Paul accordingly and I was happy to be called Paul.
+
+431
+00:15:40,737 --> 00:15:41,718
+Great.
+
+432
+00:15:41,738 --> 00:15:51,910
+I also felt it was imperative that I gained informed consent and so I told the patient at the outset what was to be expected and seeked consent from him.
+
+433
+00:15:52,750 --> 00:16:01,740
+I also thought that it was important that I used an open-ended question at the outset so that the patient could tell his story in his own words.
+
+434
+00:16:02,280 --> 00:16:03,623
+How did you find that?
+
+435
+00:16:03,603 --> 00:16:10,413
+I thought that was good and I certainly had the opportunity to talk about what was concerning me which was obviously the cough.
+
+436
+00:16:12,255 --> 00:16:14,519
+So yeah, I got that out of the way quite quickly I think.
+
+437
+00:16:14,799 --> 00:16:15,641
+Great, all good.
+
+438
+00:16:16,021 --> 00:16:26,277
+The other thing is although I'm wanting the patient to tell their own story, I also am mindful of the red flags, thus ruling out life-threatening causes.
+
+439
+00:16:26,918 --> 00:16:32,866
+I tried to be systematic but I also wanted to respond to the patient's cues as well.
+
+440
+00:16:32,846 --> 00:16:42,038
+And so whenever the patient gave a leading answer, I would allow him the scope to explore that further.
+
+441
+00:16:43,139 --> 00:16:53,791
+I then went through the key processes of history taking and then allowed at the very end to sum up, thus allowing the patient to clarify from their perspective.
+
+442
+00:16:53,771 --> 00:17:05,826
+I was mindful as well not to use jargons but how did you feel because sometimes we get lost as practitioners and we see medical jargons as normal terminology.
+
+443
+00:17:05,846 --> 00:17:19,422
+I think on the whole it was very good and for the most part it was fairly free of medical jargon although I know at 1 point you did ask about social history which I think had the potential to confuse somebody
+
+444
+00:17:20,354 --> 00:17:23,432
+Of course, I didn't think of it like that, but that's so right.
+
+445
+00:17:24,012 --> 00:17:25,778
+Absolutely.
+
+446
+00:17:25,837 --> 00:17:31,373
+I mean, the questions, once you'd said you were going to ask about the social history, I think the questions were absolutely fine.
+
+447
+00:17:31,413 --> 00:17:36,807
+It's just that headlining really of that particular area of history taking, perhaps.
+
+448
+00:17:36,787 --> 00:17:40,094
+and that's important for me to note as a practitioner.
+
+449
+00:17:40,853 --> 00:17:50,750
+Well, that concludes the key steps in history taking process and we hope that we've helped you to add structure and depth to your history taking in the clinical setting.
+
+450
+00:17:52,270 --> 00:18:00,766
+And I will put some referencing online for you that will help you to explore further the key issues surrounding history taking.
+
+451
+00:18:01,305 --> 00:18:02,077
+Thank you very much.
+

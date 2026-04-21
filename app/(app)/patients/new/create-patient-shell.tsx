@@ -2,10 +2,9 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { Search } from "lucide-react";
 import { SideNav } from "@/components/side-nav";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Menu } from "lucide-react";
+import { TopBar } from "@/components/top-bar";
 
 interface CreatePatientShellProps {
     children: React.ReactNode;
@@ -15,7 +14,6 @@ interface CreatePatientShellProps {
 
 export function CreatePatientShell({ children, userRole, userName }: CreatePatientShellProps) {
     const router = useRouter();
-    const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
     const openSidebarRef = React.useRef<(() => void) | null>(null);
 
     const handleSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -29,12 +27,10 @@ export function CreatePatientShell({ children, userRole, userName }: CreatePatie
         }
     };
 
-    // Prevent body scrolling when this component is mounted
     React.useEffect(() => {
         const originalStyle = window.getComputedStyle(document.body).overflow;
         document.body.style.overflow = "hidden";
         document.documentElement.style.overflow = "hidden";
-        
         return () => {
             document.body.style.overflow = originalStyle;
             document.documentElement.style.overflow = originalStyle;
@@ -42,43 +38,39 @@ export function CreatePatientShell({ children, userRole, userName }: CreatePatie
     }, []);
 
     return (
-        <div className="fixed inset-0 flex overflow-hidden bg-background">
-            {/* SideNav */}
+        <div className="fixed inset-0 flex overflow-hidden" style={{ background: "var(--paper)" }}>
             <SideNav
                 userRole={userRole}
                 userName={userName}
-                onMobileStateChange={setIsSidebarOpen}
                 openMenuRef={openSidebarRef}
             />
 
-            {/* Main Content Area */}
             <div className="flex flex-1 flex-col min-w-0 overflow-hidden transition-all duration-300 ease-in-out">
-                {/* Top Bar */}
-                <div className="flex h-16 shrink-0 items-center gap-4 border-b border-border bg-background px-6">
-                    {/* Mobile hamburger button - inline with search */}
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="md:hidden shrink-0"
-                        onClick={() => {
-                            openSidebarRef.current?.();
+                <TopBar
+                    breadcrumb={["Patients", "New patient"]}
+                    onOpenMobileMenu={() => openSidebarRef.current?.()}
+                >
+                    <label
+                        className="flex h-9 items-center gap-2 rounded-md px-3 text-[13px]"
+                        style={{
+                            flex: "0 1 340px",
+                            background: "var(--paper-2)",
+                            border: "1px solid var(--line)",
+                            color: "var(--ink-3)",
                         }}
                     >
-                        <Menu className="h-5 w-5" />
-                        <span className="sr-only">Open menu</span>
-                    </Button>
-                    <div className="flex-1 min-w-0">
-                        <Input
-                            placeholder="Search patients, MRN, or DOB (press Enter to search)"
-                            className="max-w-md w-full"
+                        <Search className="h-3.5 w-3.5" />
+                        <input
+                            placeholder="Search patients, MRN, or DOB (press Enter)"
+                            className="min-w-0 flex-1 border-0 bg-transparent outline-none"
+                            style={{ color: "var(--ink)" }}
                             id="create-patient-search"
                             onKeyDown={handleSearch}
                         />
-                    </div>
-                </div>
+                    </label>
+                </TopBar>
 
-                {/* Page Content */}
-                <div className="flex-1 min-h-0 overflow-y-auto bg-background overscroll-contain">
+                <div className="scroll flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ background: "var(--paper)" }}>
                     {children}
                 </div>
             </div>

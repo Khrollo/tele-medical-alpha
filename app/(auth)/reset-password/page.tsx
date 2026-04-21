@@ -1,10 +1,15 @@
-"use client";
-
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { getServerSession } from "@/app/_lib/supabase/server";
 
-export default function ResetPasswordPage() {
+export default async function ResetPasswordPage() {
+  const session = await getServerSession();
+  if (session) {
+    redirect("/");
+  }
+
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-4">
       <Card className="w-full max-w-md">

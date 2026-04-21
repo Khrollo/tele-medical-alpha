@@ -2,8 +2,7 @@
 
 import * as React from "react";
 import { SideNav } from "@/components/side-nav";
-import { Button } from "@/components/ui/button";
-import { Menu } from "lucide-react";
+import { TopBar } from "@/components/top-bar";
 import { WorkflowCommandSearch } from "@/components/workflow-command-search";
 
 interface PatientsShellProps {
@@ -13,42 +12,27 @@ interface PatientsShellProps {
 }
 
 export function PatientsShell({ children, userRole, userName }: PatientsShellProps) {
-    const [, setIsSidebarOpen] = React.useState(false);
     const openSidebarRef = React.useRef<(() => void) | null>(null);
 
     return (
-        <div className="flex h-screen w-full overflow-hidden bg-background">
-            {/* SideNav */}
+        <div className="flex h-screen w-full overflow-hidden" style={{ background: "var(--paper)" }}>
             <SideNav
                 userRole={userRole}
                 userName={userName}
-                onMobileStateChange={setIsSidebarOpen}
                 openMenuRef={openSidebarRef}
             />
 
-            {/* Main Content Area */}
             <div className="flex flex-1 flex-col overflow-hidden transition-all duration-300 ease-in-out">
-                {/* Top Bar */}
-                <div className="flex h-16 items-center gap-4 border-b border-border bg-background px-6 sticky top-0 z-10">
-                    {/* Mobile hamburger button */}
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="md:hidden shrink-0"
-                        onClick={() => {
-                            openSidebarRef.current?.();
-                        }}
-                    >
-                        <Menu className="h-5 w-5" />
-                        <span className="sr-only">Open menu</span>
-                    </Button>
-                    <div className="flex-1 min-w-0 max-w-md relative">
+                <TopBar
+                    breadcrumb={["Clinic", "Patients"]}
+                    onOpenMobileMenu={() => openSidebarRef.current?.()}
+                >
+                    <div className="max-w-md">
                         <WorkflowCommandSearch placeholder="Search patients, visits, or workflows..." />
                     </div>
-                </div>
+                </TopBar>
 
-                {/* Page Content */}
-                <div className="flex-1 overflow-y-auto">
+                <div className="scroll flex-1 overflow-y-auto">
                     {children}
                 </div>
             </div>

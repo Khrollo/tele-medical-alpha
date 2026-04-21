@@ -6,8 +6,17 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { toast } from "sonner";
-import { Plus, Trash2, Pencil, Search, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import {
+  Plus,
+  Trash2,
+  Pencil,
+  Search,
+  X,
+  Users,
+  Heart,
+  AlertCircle,
+  RefreshCw,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -25,8 +34,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import {
+  Btn,
+  ClearingCard,
+  Pill,
+  SubTabHeader,
+  type PillTone,
+} from "@/components/ui/clearing";
 import {
   addFamilyHistoryAction,
   updateFamilyHistoryAction,
@@ -48,6 +62,8 @@ interface FamilyHistoryContentProps {
   patientName: string;
   familyHistory: FamilyHistoryEntry[];
 }
+
+type FilterType = "all" | "living" | "deceased";
 
 const RELATIONSHIPS = [
   "Mother",
@@ -76,6 +92,17 @@ const COMMON_CONDITIONS = [
   "Mental Health",
 ];
 
+function statusTone(status: string): { tone: PillTone; label: string } {
+  switch (status) {
+    case "Living":
+      return { tone: "ok", label: "Living" };
+    case "Deceased":
+      return { tone: "neutral", label: "Deceased" };
+    default:
+      return { tone: "neutral", label: status };
+  }
+}
+
 export function FamilyHistoryContent({
   patientId,
   patientName,
@@ -92,6 +119,7 @@ export function FamilyHistoryContent({
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
   const [searchQuery, setSearchQuery] = React.useState("");
   const [customConditions, setCustomConditions] = React.useState<string[]>([]);
+  const [filter, setFilter] = React.useState<FilterType>("all");
 
   React.useEffect(() => {
     setFamilyHistory(initialFamilyHistory);
@@ -211,119 +239,250 @@ export function FamilyHistoryContent({
     );
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "Living":
-        return {
-          variant: "default" as const,
-          label: status,
-          className:
-            "bg-green-500/10 text-green-700 dark:text-green-400 border-green-500",
-        };
-      case "Deceased":
-        return { variant: "secondary" as const, label: status };
-      default:
-        return { variant: "secondary" as const, label: status };
+  const totalRelatives = familyHistory.length;
+  const livingCount = familyHistory.filter((e) => e.status === "Living").length;
+  const deceasedCount = familyHistory.filter((e) => e.status === "Deceased").length;
+  const uniqueConditions = React.useMemo(() => {
+    const set = new Set<string>();
+    familyHistory.forEach((e) => e.conditions?.forEach((c) => set.add(c)));
+    return set.size;
+  }, [familyHistory]);
+
+  const filteredEntries = React.useMemo(() => {
+    if (filter === "living") {
+      return familyHistory.filter((e) => e.status === "Living");
     }
-  };
+    if (filter === "deceased") {
+      return familyHistory.filter((e) => e.status === "Deceased");
+    }
+    return familyHistory;
+  }, [familyHistory, filter]);
+
+  const summaryMetrics = [
+    { k: "Relatives recorded", v: totalRelatives, icon: Users, tone: "var(--ink-3)" },
+    { k: "Living", v: livingCount, icon: Heart, tone: "var(--ok)" },
+    { k: "Deceased", v: deceasedCount, icon: AlertCircle, tone: "var(--ink-3)" },
+    { k: "Distinct conditions", v: uniqueConditions, icon: RefreshCw, tone: "var(--ink-3)" },
+  ];
+
+  const filterTabs: Array<[FilterType, string, number]> = [
+    ["all", "All", totalRelatives],
+    ["living", "Living", livingCount],
+    ["deceased", "Deceased", deceasedCount],
+  ];
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
+    <div className="flex flex-1 flex-col gap-5 px-4 py-6 md:px-8 md:py-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Family History</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Manage family history for {patientName}
-          </p>
-        </div>
-        <Button onClick={() => setShowAddModal(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Family History
-        </Button>
+      <SubTabHeader
+        eyebrow="Chart · Family history"
+        title="Family history"
+        subtitle={`Manage family history for ${patientName}.`}
+        actions={
+          <Btn
+            kind="accent"
+            icon={<Plus className="h-4 w-4" />}
+            onClick={() => setShowAddModal(true)}
+          >
+            Add family history
+          </Btn>
+        }
+      />
+
+      {/* Summary strip */}
+      <div
+        className="grid overflow-hidden rounded-2xl"
+        style={{
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          border: "1px solid var(--line)",
+          background: "var(--card)",
+        }}
+      >
+        {summaryMetrics.map((m, i, arr) => {
+          const Icon = m.icon;
+          return (
+            <div
+              key={m.k}
+              className="flex flex-col gap-1.5 px-5 py-4"
+              style={{
+                borderRight: i < arr.length - 1 ? "1px solid var(--line)" : undefined,
+              }}
+            >
+              <div className="flex items-center justify-between">
+                <div
+                  className="text-[11px] uppercase"
+                  style={{ color: "var(--ink-3)", letterSpacing: "0.1em" }}
+                >
+                  {m.k}
+                </div>
+                <Icon className="h-3.5 w-3.5" style={{ color: m.tone }} />
+              </div>
+              <div
+                className="serif"
+                style={{
+                  fontSize: 32,
+                  lineHeight: 0.95,
+                  letterSpacing: "-0.02em",
+                  color: "var(--ink)",
+                }}
+              >
+                {m.v}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      {/* Family History List */}
-      {familyHistory.length === 0 ? (
-        <Card>
-          <CardContent className="flex items-center justify-center py-12">
-            <div className="text-center">
-              <p className="text-muted-foreground mb-4">
-                No family history recorded
-              </p>
-              <Button onClick={() => setShowAddModal(true)} variant="outline">
-                <Plus className="h-4 w-4 mr-2" />
-                Add First Entry
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-          {familyHistory.map((entry) => {
-            const statusBadge = getStatusBadge(entry.status);
+      {/* Family relatives */}
+      <ClearingCard pad={0}>
+        <div
+          className="flex flex-wrap items-center gap-3 px-5 py-3.5"
+          style={{ borderBottom: "1px solid var(--line)" }}
+        >
+          <div
+            className="serif"
+            style={{ fontSize: 18, color: "var(--ink)", letterSpacing: "-0.01em" }}
+          >
+            Relatives
+          </div>
+          <div className="flex-1" />
+          <div
+            className="flex gap-1 rounded-full p-1"
+            style={{ border: "1px solid var(--line)", background: "var(--paper-2)" }}
+          >
+            {filterTabs.map(([k, label, n]) => {
+              const active = filter === k;
+              return (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setFilter(k)}
+                  className="h-7 rounded-full px-3.5 text-[12.5px] font-medium tracking-tight transition-colors"
+                  style={{
+                    background: active ? "var(--ink)" : "transparent",
+                    color: active ? "var(--paper)" : "var(--ink-2)",
+                  }}
+                >
+                  {label} <span className="mono ml-1 opacity-70">{n}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
-            return (
-              <Card key={entry.id} className="relative">
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <CardTitle className="text-lg font-semibold">
-                      {entry.relationship}
-                    </CardTitle>
-                    <div className="flex gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => handleEdit(entry)}
+        {filteredEntries.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-3 py-12">
+            <p className="text-[13px]" style={{ color: "var(--ink-3)" }}>
+              {filter === "all"
+                ? "No family history recorded"
+                : `No ${filter} relatives found`}
+            </p>
+            {filter === "all" && (
+              <Btn
+                kind="soft"
+                icon={<Plus className="h-3.5 w-3.5" />}
+                onClick={() => setShowAddModal(true)}
+              >
+                Add first entry
+              </Btn>
+            )}
+          </div>
+        ) : (
+          <div
+            className="grid gap-px"
+            style={{
+              gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+              background: "var(--line)",
+            }}
+          >
+            {filteredEntries.map((entry) => {
+              const st = statusTone(entry.status);
+              return (
+                <div
+                  key={entry.id}
+                  className="flex flex-col gap-3 p-5"
+                  style={{ background: "var(--card)" }}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div
+                        className="serif"
+                        style={{
+                          fontSize: 17,
+                          color: "var(--ink)",
+                          letterSpacing: "-0.01em",
+                        }}
                       >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-destructive hover:text-destructive"
+                        {entry.relationship}
+                      </div>
+                      <div className="mt-1.5">
+                        <Pill tone={st.tone} dot>
+                          {st.label}
+                        </Pill>
+                      </div>
+                    </div>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        onClick={() => handleEdit(entry)}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md"
+                        style={{ color: "var(--ink-2)" }}
+                        onMouseEnter={(e) => {
+                          (e.currentTarget as HTMLButtonElement).style.background = "var(--paper-3)";
+                        }}
+                        onMouseLeave={(e) => {
+                          (e.currentTarget as HTMLButtonElement).style.background = "transparent";
+                        }}
+                        aria-label="Edit"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => handleDelete(entry.id)}
                         disabled={deletingId === entry.id}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md disabled:opacity-50"
+                        style={{ color: "var(--critical)" }}
+                        onMouseEnter={(e) => {
+                          (e.currentTarget as HTMLButtonElement).style.background = "var(--critical-soft)";
+                        }}
+                        onMouseLeave={(e) => {
+                          (e.currentTarget as HTMLButtonElement).style.background = "transparent";
+                        }}
+                        aria-label="Delete"
                       >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
                     </div>
                   </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex flex-wrap gap-2">
-                    <Badge
-                      variant={statusBadge.variant}
-                      className={statusBadge.className || ""}
-                    >
-                      {statusBadge.label}
-                    </Badge>
-                  </div>
-                  {entry.conditions && entry.conditions.length > 0 && (
+
+                  {entry.conditions && entry.conditions.length > 0 ? (
                     <div>
-                      <p className="text-xs text-muted-foreground mb-2">
-                        Known Conditions
-                      </p>
-                      <div className="flex flex-wrap gap-2">
+                      <div
+                        className="text-[10.5px] uppercase"
+                        style={{ color: "var(--ink-3)", letterSpacing: "0.1em" }}
+                      >
+                        Known conditions
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
                         {entry.conditions.map((condition, index) => (
-                          <Badge
-                            key={index}
-                            variant="outline"
-                            className="text-xs"
-                          >
+                          <Pill key={index} tone="neutral">
                             {condition}
-                          </Badge>
+                          </Pill>
                         ))}
                       </div>
                     </div>
+                  ) : (
+                    <div className="text-[12.5px]" style={{ color: "var(--ink-3)" }}>
+                      No conditions recorded
+                    </div>
                   )}
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </ClearingCard>
 
       {/* Add/Edit Family History Modal */}
       <Dialog
@@ -338,10 +497,10 @@ export function FamilyHistoryContent({
           }
         }}
       >
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {editingEntry ? "Edit Family History" : "Add Family History"}
+              {editingEntry ? "Edit family history" : "Add family history"}
             </DialogTitle>
             <DialogDescription>
               {editingEntry
@@ -351,7 +510,9 @@ export function FamilyHistoryContent({
           </DialogHeader>
           <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="relationship">RELATIONSHIP</Label>
+              <Label htmlFor="relationship">
+                Relationship <span style={{ color: "var(--critical)" }}>*</span>
+              </Label>
               <Select
                 value={form.watch("relationship")}
                 onValueChange={(value) => form.setValue("relationship", value)}
@@ -368,96 +529,96 @@ export function FamilyHistoryContent({
                 </SelectContent>
               </Select>
               {form.formState.errors.relationship && (
-                <p className="text-sm text-destructive">
+                <p className="text-sm" style={{ color: "var(--critical)" }}>
                   {form.formState.errors.relationship.message}
                 </p>
               )}
             </div>
 
             <div className="space-y-2">
-              <Label>STATUS</Label>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant={form.watch("status") === "Living" ? "default" : "outline"}
-                  className={cn(
-                    "flex-1",
-                    form.watch("status") === "Living" &&
-                      "bg-primary text-primary-foreground"
-                  )}
-                  onClick={() => form.setValue("status", "Living")}
-                >
-                  Living
-                </Button>
-                <Button
-                  type="button"
-                  variant={form.watch("status") === "Deceased" ? "default" : "outline"}
-                  className={cn(
-                    "flex-1",
-                    form.watch("status") === "Deceased" &&
-                      "bg-primary text-primary-foreground"
-                  )}
-                  onClick={() => form.setValue("status", "Deceased")}
-                >
-                  Deceased
-                </Button>
+              <Label>Status</Label>
+              <div
+                className="flex gap-1 rounded-full p-1"
+                style={{ border: "1px solid var(--line)", background: "var(--paper-2)" }}
+              >
+                {(["Living", "Deceased"] as const).map((s) => {
+                  const active = form.watch("status") === s;
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => form.setValue("status", s)}
+                      className="h-8 flex-1 rounded-full text-[12.5px] font-medium tracking-tight transition-colors"
+                      style={{
+                        background: active ? "var(--ink)" : "transparent",
+                        color: active ? "var(--paper)" : "var(--ink-2)",
+                      }}
+                    >
+                      {s}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label>KNOWN CONDITIONS</Label>
+                <Label>Known conditions</Label>
                 {selectedConditions.length > 0 && (
-                  <Button
-                    type="button"
-                    variant="ghost"
+                  <Btn
+                    kind="plain"
                     size="sm"
-                    className="h-7 text-xs text-muted-foreground"
+                    type="button"
                     onClick={() => form.setValue("conditions", [])}
                   >
                     Clear all
-                  </Button>
+                  </Btn>
                 )}
               </div>
               <div className="flex flex-wrap gap-2">
                 {COMMON_CONDITIONS.map((condition) => {
                   const isSelected = selectedConditions.includes(condition);
                   return (
-                    <Button
+                    <button
                       key={condition}
                       type="button"
-                      variant={isSelected ? "default" : "outline"}
-                      size="sm"
-                      className={cn(
-                        "h-8 rounded-full",
-                        isSelected && "bg-primary text-primary-foreground"
-                      )}
                       onClick={() => toggleCondition(condition)}
+                      className={cn(
+                        "h-8 rounded-full px-3.5 text-[12.5px] font-medium tracking-tight transition-colors"
+                      )}
+                      style={{
+                        background: isSelected ? "var(--ink)" : "var(--paper-2)",
+                        color: isSelected ? "var(--paper)" : "var(--ink-2)",
+                        border: `1px solid ${isSelected ? "var(--ink)" : "var(--line)"}`,
+                      }}
                     >
                       {condition}
-                    </Button>
+                    </button>
                   );
                 })}
               </div>
               {selectedConditions.length > 0 && (
                 <div className="mt-2 space-y-2">
-                  <p className="text-xs text-muted-foreground">Selected Conditions:</p>
+                  <p
+                    className="text-[11px] uppercase"
+                    style={{ color: "var(--ink-3)", letterSpacing: "0.1em" }}
+                  >
+                    Selected conditions
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     {selectedConditions.map((condition) => (
-                      <Badge
-                        key={condition}
-                        variant="secondary"
-                        className="flex items-center gap-1"
-                      >
-                        {condition}
+                      <Pill key={condition} tone="accent">
+                        <span>{condition}</span>
                         <button
                           type="button"
                           onClick={() => removeCondition(condition)}
-                          className="ml-1 hover:bg-destructive/20 rounded-full p-0.5"
+                          className="ml-0.5 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full"
+                          style={{ color: "var(--brand-ink)" }}
+                          aria-label={`Remove ${condition}`}
                         >
-                          <X className="h-3 w-3" />
+                          <X className="h-2.5 w-2.5" />
                         </button>
-                      </Badge>
+                      </Pill>
                     ))}
                   </div>
                 </div>
@@ -465,10 +626,13 @@ export function FamilyHistoryContent({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="search-condition">Search other conditions...</Label>
+              <Label htmlFor="search-condition">Search other conditions…</Label>
               <div className="flex gap-2">
                 <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Search
+                    className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4"
+                    style={{ color: "var(--ink-3)" }}
+                  />
                   <Input
                     id="search-condition"
                     placeholder="Search other conditions..."
@@ -483,27 +647,30 @@ export function FamilyHistoryContent({
                     className="pl-9"
                   />
                 </div>
-                <Button
+                <Btn
+                  kind="ghost"
                   type="button"
-                  variant="outline"
                   onClick={handleAddCustomCondition}
-                  disabled={!searchQuery.trim() || selectedConditions.includes(searchQuery.trim())}
+                  disabled={
+                    !searchQuery.trim() ||
+                    selectedConditions.includes(searchQuery.trim())
+                  }
                 >
                   Add
-                </Button>
+                </Btn>
               </div>
             </div>
 
             {form.formState.errors.conditions && (
-              <p className="text-sm text-destructive">
+              <p className="text-sm" style={{ color: "var(--critical)" }}>
                 {form.formState.errors.conditions.message}
               </p>
             )}
 
             <DialogFooter>
-              <Button
+              <Btn
+                kind="ghost"
                 type="button"
-                variant="outline"
                 onClick={() => {
                   setShowAddModal(false);
                   setEditingEntry(null);
@@ -514,14 +681,14 @@ export function FamilyHistoryContent({
                 disabled={isSubmitting}
               >
                 Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
+              </Btn>
+              <Btn kind="accent" type="submit" disabled={isSubmitting}>
                 {isSubmitting
-                  ? "Saving..."
+                  ? "Saving…"
                   : editingEntry
-                  ? "Update History"
-                  : "Save Family History"}
-              </Button>
+                  ? "Update history"
+                  : "Save family history"}
+              </Btn>
             </DialogFooter>
           </form>
         </DialogContent>

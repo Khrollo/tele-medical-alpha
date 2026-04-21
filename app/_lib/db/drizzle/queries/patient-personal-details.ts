@@ -103,6 +103,7 @@ export async function createPatient(data: {
   emergencyContactPhone?: string | null;
   primaryCareProvider?: string | null;
   consentSignatureUrl?: string | null;
+  avatarUrl?: string | null;
 }) {
   // Combine street address, city, state, zip into address field
   const addressParts: string[] = [];
@@ -151,6 +152,7 @@ export async function createPatient(data: {
       // Store emergency contact in emergency_contact JSONB field
       emergencyContact: emergencyContact,
       consentSignatureUrl: data.consentSignatureUrl || null,
+      avatarUrl: data.avatarUrl || null,
     })
     .returning();
 

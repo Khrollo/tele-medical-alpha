@@ -56,6 +56,10 @@ export async function getUnassignedPatientsWithVisits() {
     .select({
       id: patients.id,
       fullName: patients.fullName,
+      avatarUrl: patients.avatarUrl,
+      dob: patients.dob,
+      allergies: patients.allergies,
+      currentMedications: patients.currentMedications,
       createdAt: patients.createdAt,
     })
     .from(patients)
@@ -138,6 +142,12 @@ export async function getUnassignedPatientsWithVisits() {
     return {
       id: patient.id,
       fullName: patient.fullName,
+      avatarUrl: patient.avatarUrl,
+      dob: patient.dob,
+      allergiesCount: Array.isArray(patient.allergies) ? patient.allergies.length : 0,
+      medicationsCount: Array.isArray(patient.currentMedications)
+        ? patient.currentMedications.length
+        : 0,
       createdAt: patient.createdAt,
       visit: visit
         ? {
@@ -205,6 +215,7 @@ export async function getAllPatients() {
       phone: patients.phone,
       email: patients.email,
       clinicianId: patients.clinicianId,
+      avatarUrl: patients.avatarUrl,
       allergies: patients.allergies,
       currentMedications: patients.currentMedications,
       createdAt: patients.createdAt,
@@ -311,6 +322,7 @@ async function buildPatientsWithDetails(patientRows: Array<{
   phone: string | null;
   email: string | null;
   clinicianId: string | null;
+  avatarUrl: string | null;
   allergies: unknown;
   currentMedications: unknown;
   createdAt: Date;
@@ -453,6 +465,7 @@ export async function getDoctorScopedPatients(clinicianId: string) {
           phone: patients.phone,
           email: patients.email,
           clinicianId: patients.clinicianId,
+          avatarUrl: patients.avatarUrl,
           allergies: patients.allergies,
           currentMedications: patients.currentMedications,
           createdAt: patients.createdAt,
@@ -490,6 +503,7 @@ export async function getNurseFocusedPatients() {
           phone: patients.phone,
           email: patients.email,
           clinicianId: patients.clinicianId,
+          avatarUrl: patients.avatarUrl,
           allergies: patients.allergies,
           currentMedications: patients.currentMedications,
           createdAt: patients.createdAt,
@@ -522,6 +536,7 @@ export async function getPatientOverview(patientId: string) {
       id: patients.id,
       fullName: patients.fullName,
       dob: patients.dob,
+      avatarUrl: patients.avatarUrl,
       allergies: patients.allergies,
       vitals: patients.vitals,
       currentMedications: patients.currentMedications,

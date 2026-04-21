@@ -4,18 +4,54 @@ import * as React from "react";
 import NextImage from "next/image";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowLeft, Edit, FileText, AudioWaveform, File, Clock, User, CheckCircle2, AlertCircle, FileSignature, Eye, Download, ImageIcon, Video } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { markVisitInProgressAction } from "@/app/_actions/visits";
+import {
+  ArrowLeft,
+  Edit,
+  FileText,
+  AudioWaveform,
+  File,
+  Clock,
+  User,
+  CheckCircle2,
+  AlertCircle,
+  FileSignature,
+  Eye,
+  Download,
+  ImageIcon,
+  Video,
+  ClipboardList,
+  Stethoscope,
+  Activity,
+  Pill as PillIcon,
+  Syringe,
+  Users as UsersIcon,
+  AlertTriangle,
+  Scissors,
+  History,
+  FlaskConical,
+  ClipboardCheck,
+} from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  markVisitInProgressAction,
+  finalizeVisitAction,
+} from "@/app/_actions/visits";
 import { getDocumentSignedUrlAction } from "@/app/_actions/documents";
-import { cn } from "@/app/_lib/utils/cn";
 import { formatVisitStatusLabel } from "@/app/_lib/utils/visit-status-label";
 import type { VisitNote } from "@/app/_lib/visit-note/schema";
+import {
+  Btn,
+  ClearingCard,
+  Pill,
+  SubTabHeader,
+  Divider,
+  type PillTone,
+} from "@/components/ui/clearing";
 import Link from "next/link";
 
 interface VisitDetailsContentProps {
@@ -87,14 +123,17 @@ type NoteMedication = VisitNote["medications"][number] & {
   sideEffectsNotes?: string;
 };
 
-type AssessmentMedication = VisitNote["assessmentPlan"][number]["medications"][number];
+type AssessmentMedication =
+  VisitNote["assessmentPlan"][number]["medications"][number];
 type NoteOrder = VisitNote["orders"][number];
 type VaccineEntry = VisitNote["vaccines"][number];
 type FamilyHistoryEntry = VisitNote["familyHistory"][number];
 type SurgicalHistoryEntry = VisitNote["surgicalHistory"][number];
 type PastMedicalHistoryEntry = VisitNote["pastMedicalHistory"][number];
 
-type VisitDetailsNote = Partial<Omit<VisitNote, "assessmentPlan" | "objective">> & {
+type VisitDetailsNote = Partial<
+  Omit<VisitNote, "assessmentPlan" | "objective">
+> & {
   assessmentPlan?: VisitNote["assessmentPlan"] | LegacyAssessmentPlan;
   objective?:
     | (Partial<VisitNote["objective"]> & {
@@ -117,6 +156,86 @@ function isObjectiveRecord(
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function visitStatusTone(status: string | null): PillTone {
+  if (!status) return "neutral";
+  const s = status.toLowerCase();
+  if (
+    status === "Signed & Complete" ||
+    s === "signed" ||
+    s === "completed" ||
+    s === "signed & complete" ||
+    s === "finalized"
+  ) {
+    return "ok";
+  }
+  if (status === "Waiting" || s === "waiting") return "info";
+  if (status === "In Progress" || s === "in_progress" || s === "in progress")
+    return "accent";
+  if (s === "draft") return "neutral";
+  return "neutral";
+}
+
+type SectionHeadingProps = {
+  icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+  iconColor?: string;
+  title: string;
+  count?: number;
+};
+
+function SectionHeading({
+  icon: Icon,
+  iconColor = "var(--ink-3)",
+  title,
+  count,
+}: SectionHeadingProps) {
+  return (
+    <div className="mb-3 flex items-center gap-2">
+      <Icon className="h-4 w-4" style={{ color: iconColor }} />
+      <div
+        className="serif"
+        style={{ fontSize: 17, color: "var(--ink)" }}
+      >
+        {title}
+      </div>
+      {typeof count === "number" && (
+        <span
+          className="mono ml-1 text-[11.5px]"
+          style={{ color: "var(--ink-3)" }}
+        >
+          {count}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function Field({
+  label,
+  children,
+  className,
+}: {
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <span
+        className="text-[11px] uppercase"
+        style={{ color: "var(--ink-3)", letterSpacing: "0.1em" }}
+      >
+        {label}
+      </span>
+      <div
+        className="mt-0.5 text-[13px]"
+        style={{ color: "var(--ink)" }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export function VisitDetailsContent({
   visitId,
   patientId,
@@ -131,16 +250,20 @@ export function VisitDetailsContent({
 }: VisitDetailsContentProps) {
   const router = useRouter();
   const [isMarkingInProgress, setIsMarkingInProgress] = React.useState(false);
-  const [activeTab, setActiveTab] = React.useState("notes");
-  const [previewDocument, setPreviewDocument] = React.useState<typeof documents[0] | null>(null);
+  const [isSigning, setIsSigning] = React.useState(false);
+  const [activeTab, setActiveTab] = React.useState<
+    "notes" | "transcripts" | "documents" | "audit"
+  >("notes");
+  const [previewDocument, setPreviewDocument] = React.useState<
+    typeof documents[0] | null
+  >(null);
   const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = React.useState(false);
   const [isDownloading, setIsDownloading] = React.useState<string | null>(null);
 
   const isSigned = visit.status === "Signed & Complete";
   const isInProgress = visit.status === "In Progress";
-  const canEdit = isSigned || isInProgress; // Can edit if signed or in progress
-  // Match server finalize rules: patient assignee OR visit row clinician
+  const canEdit = isSigned || isInProgress;
   const canSignNote =
     patient.clinicianId === currentUserId ||
     visit.clinicianId === currentUserId;
@@ -148,13 +271,11 @@ export function VisitDetailsContent({
   const handleEdit = async () => {
     if (!canEdit) return;
 
-    // If already in progress, just navigate to edit
     if (isInProgress) {
       router.push(`/patients/${patientId}/new-visit?visitId=${visitId}`);
       return;
     }
 
-    // If signed, mark as in progress first
     if (isSigned) {
       const reason = window.prompt(
         "Provide an amendment reason before reopening this signed note."
@@ -167,8 +288,13 @@ export function VisitDetailsContent({
 
       setIsMarkingInProgress(true);
       try {
-        await markVisitInProgressAction(visitId, reason.trim());
-        toast.success("Visit marked as in progress. You can now edit the note.");
+        await markVisitInProgressAction(
+          visitId,
+          "User initiated edit of signed note"
+        );
+        toast.success(
+          "Visit marked as in progress. You can now edit the note."
+        );
         router.push(`/patients/${patientId}/new-visit?visitId=${visitId}`);
       } catch (error) {
         console.error("Error marking visit in progress:", error);
@@ -181,7 +307,18 @@ export function VisitDetailsContent({
 
   const handleSign = async () => {
     if (isSigned) return;
-    router.push(`/patients/${patientId}/visit-close?visitId=${visitId}`);
+
+    setIsSigning(true);
+    try {
+      await finalizeVisitAction(visitId, "signed");
+      toast.success("Note signed successfully");
+      router.refresh();
+    } catch (error) {
+      console.error("Error signing note:", error);
+      toast.error("Failed to sign note");
+    } finally {
+      setIsSigning(false);
+    }
   };
 
   const formatDateTime = (date: Date | string | null) => {
@@ -196,62 +333,28 @@ export function VisitDetailsContent({
     });
   };
 
-  const getStatusBadge = (status: string | null) => {
-    if (!status) {
-      return { variant: "secondary" as const, className: "" };
-    }
-    const statusLower = status.toLowerCase();
-
-    // Handle both new and old status values for backward compatibility
-    if (
-      status === "Signed & Complete" ||
-      statusLower === "signed" ||
-      statusLower === "completed" ||
-      statusLower === "signed & complete"
-    ) {
-      return {
-        variant: "default" as const,
-        className: "bg-green-500 text-white border-green-600 dark:bg-green-600",
-      };
-    }
-    if (status === "Waiting" || statusLower === "waiting") {
-      return {
-        variant: "outline" as const,
-        className: "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500 dark:border-blue-400",
-      };
-    }
-    if (
-      status === "In Progress" ||
-      statusLower === "in_progress" ||
-      statusLower === "in progress"
-    ) {
-      return {
-        variant: "outline" as const,
-        className: "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-yellow-500 dark:border-yellow-400",
-      };
-    }
-    if (statusLower === "draft") {
-      return {
-        variant: "secondary" as const,
-        className: "bg-gray-500/10 text-gray-700 dark:text-gray-400 border-gray-500 dark:border-gray-400",
-      };
-    }
-    return { variant: "outline" as const, className: "" };
-  };
-
   const getActionIcon = (action: string) => {
     switch (action) {
       case "finalized":
       case "signed":
-        return <CheckCircle2 className="h-4 w-4 text-green-500" />;
+        return (
+          <CheckCircle2 className="h-4 w-4" style={{ color: "var(--ok)" }} />
+        );
       case "edited_after_signing":
-        return <AlertCircle className="h-4 w-4 text-orange-500" />;
+        return (
+          <AlertCircle
+            className="h-4 w-4"
+            style={{ color: "oklch(0.5 0.12 70)" }}
+          />
+        );
       case "sent_to_waiting_room":
-        return <Clock className="h-4 w-4 text-blue-500" />;
+        return <Clock className="h-4 w-4" style={{ color: "var(--info)" }} />;
       case "assigned_to_me":
-        return <User className="h-4 w-4 text-purple-500" />;
+        return (
+          <User className="h-4 w-4" style={{ color: "var(--brand-ink)" }} />
+        );
       default:
-        return <Clock className="h-4 w-4 text-muted-foreground" />;
+        return <Clock className="h-4 w-4" style={{ color: "var(--ink-3)" }} />;
     }
   };
 
@@ -275,39 +378,47 @@ export function VisitDetailsContent({
   const formatStatus = (status: string | null) => {
     if (!status) return "—";
     const statusLower = status.toLowerCase();
-    // Map old status values to new ones
-    if (statusLower === "finalized" || statusLower === "signed" || statusLower === "completed") {
+    if (
+      statusLower === "finalized" ||
+      statusLower === "signed" ||
+      statusLower === "completed"
+    ) {
       return "Signed & Complete";
     }
-    if (statusLower === "draft" || statusLower === "in_progress" || statusLower === "in progress") {
+    if (
+      statusLower === "draft" ||
+      statusLower === "in_progress" ||
+      statusLower === "in progress"
+    ) {
       return "In Progress";
     }
     return status;
   };
 
   // Parse note content
-  const noteData = (notes[0]?.note as VisitDetailsNote | null | undefined) ?? null;
+  const noteData =
+    (notes[0]?.note as VisitDetailsNote | null | undefined) ?? null;
   const objectiveData = isObjectiveRecord(noteData?.objective)
     ? noteData.objective
     : null;
 
-  // Deduplicate documents - remove duplicates by ID, storageUrl, or filename+size combination
-  // Use a Map to track seen documents for better performance
+  // Deduplicate documents
   const uniqueDocuments = React.useMemo(() => {
     const seen = new Map<string, boolean>();
 
     return documents.filter((doc) => {
-      // Create unique keys for checking duplicates
       const idKey = `id:${doc.id}`;
       const storageKey = doc.storageUrl ? `storage:${doc.storageUrl}` : null;
       const fileKey = `file:${doc.filename}:${doc.size}`;
 
-      // Check if we've seen this document by any identifier
-      if (seen.has(idKey) || (storageKey && seen.has(storageKey)) || seen.has(fileKey)) {
+      if (
+        seen.has(idKey) ||
+        (storageKey && seen.has(storageKey)) ||
+        seen.has(fileKey)
+      ) {
         return false;
       }
 
-      // Mark all identifiers as seen
       seen.set(idKey, true);
       if (storageKey) {
         seen.set(storageKey, true);
@@ -346,7 +457,6 @@ export function VisitDetailsContent({
         throw new Error(result.error || "Failed to get download URL");
       }
 
-      // Open in new tab for viewing/downloading
       window.open(result.signedUrl, "_blank");
       toast.success("Opening document...");
     } catch (error) {
@@ -420,994 +530,1573 @@ export function VisitDetailsContent({
     return true;
   };
 
-  const formatObjectiveValue = (
-    key: string,
-    value: unknown
-  ): React.ReactNode | null => {
-    if (!value || value === "") {
-      return null;
-    }
+  const tabs = [
+    { k: "notes" as const, label: "Notes", icon: FileText, n: null as number | null },
+    {
+      k: "transcripts" as const,
+      label: "Transcripts",
+      icon: AudioWaveform,
+      n: transcripts.length,
+    },
+    {
+      k: "documents" as const,
+      label: "Documents",
+      icon: File,
+      n: uniqueDocuments.length,
+    },
+    {
+      k: "audit" as const,
+      label: "Audit log",
+      icon: Clock,
+      n: auditLogs.length,
+    },
+  ];
 
-    if (key === "examFindings") {
-      if (typeof value === "string") {
-        return (
-          <div className="space-y-1">
-            <div className="font-medium">Exam Findings:</div>
-            <div className="text-muted-foreground whitespace-pre-wrap">{value}</div>
+  return (
+    <div className="flex flex-1 flex-col gap-5 px-4 py-6 md:px-8 md:py-8">
+      {/* Header */}
+      <div className="flex items-start gap-3">
+        <Link href={`/patients/${patientId}/visit-history`}>
+          <button
+            type="button"
+            className="mt-1 inline-flex h-7 w-7 items-center justify-center rounded-md"
+            style={{ color: "var(--ink-2)" }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.background =
+                "var(--paper-3)";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.background =
+                "transparent";
+            }}
+            aria-label="Back"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+        </Link>
+        <div className="flex-1">
+          <SubTabHeader
+            eyebrow="Chart · Visit details"
+            title="Visit details"
+            subtitle={`${patient.fullName} · ${formatDateTime(visit.createdAt)}`}
+            actions={
+              <>
+                {visit.appointmentType?.toLowerCase() === "virtual" &&
+                  visit.twilioRoomName && (
+                    <Btn
+                      kind="accent"
+                      icon={<Video className="h-4 w-4" />}
+                      onClick={() => router.push(`/visit/${visitId}/call`)}
+                    >
+                      Join call
+                    </Btn>
+                  )}
+                {canEdit && (
+                  <Btn
+                    kind="soft"
+                    icon={<Edit className="h-4 w-4" />}
+                    onClick={handleEdit}
+                    disabled={isMarkingInProgress}
+                  >
+                    {isMarkingInProgress ? "Processing…" : "Edit note"}
+                  </Btn>
+                )}
+                {isInProgress && !isSigned && canSignNote && (
+                  <Btn
+                    kind="accent"
+                    icon={<FileSignature className="h-4 w-4" />}
+                    onClick={handleSign}
+                    disabled={isSigning}
+                  >
+                    {isSigning ? "Signing…" : "Sign note"}
+                  </Btn>
+                )}
+              </>
+            }
+          />
+        </div>
+      </div>
+
+      {/* Patient context + status strip */}
+      <div
+        className="grid overflow-hidden rounded-2xl"
+        style={{
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          border: "1px solid var(--line)",
+          background: "var(--card)",
+        }}
+      >
+        <div
+          className="flex flex-col gap-1.5 px-5 py-4"
+          style={{ borderRight: "1px solid var(--line)" }}
+        >
+          <div
+            className="text-[11px] uppercase"
+            style={{ color: "var(--ink-3)", letterSpacing: "0.1em" }}
+          >
+            Patient
           </div>
-        );
-      }
+          <div
+            className="serif"
+            style={{
+              fontSize: 22,
+              lineHeight: 1.1,
+              letterSpacing: "-0.01em",
+              color: "var(--ink)",
+            }}
+          >
+            {patient.fullName}
+          </div>
+          <div
+            className="mono text-[11px]"
+            style={{ color: "var(--ink-3)" }}
+          >
+            {patient.id.slice(0, 8)}
+          </div>
+        </div>
+        <div
+          className="flex flex-col gap-1.5 px-5 py-4"
+          style={{ borderRight: "1px solid var(--line)" }}
+        >
+          <div
+            className="text-[11px] uppercase"
+            style={{ color: "var(--ink-3)", letterSpacing: "0.1em" }}
+          >
+            Status
+          </div>
+          <div className="mt-1 flex items-center">
+            <Pill tone={visitStatusTone(visit.status)} dot>
+              {formatVisitStatusLabel(visit.status)}
+            </Pill>
+          </div>
+          {finalizedByName && visit.notesFinalizedAt && (
+            <div
+              className="mt-1 text-[11.5px]"
+              style={{ color: "var(--ink-3)" }}
+            >
+              Finalized by {finalizedByName}
+              <div className="mono" style={{ color: "var(--ink-2)" }}>
+                {formatDateTime(visit.notesFinalizedAt)}
+              </div>
+            </div>
+          )}
+        </div>
+        <div
+          className="flex flex-col gap-1.5 px-5 py-4"
+          style={{ borderRight: "1px solid var(--line)" }}
+        >
+          <div
+            className="text-[11px] uppercase"
+            style={{ color: "var(--ink-3)", letterSpacing: "0.1em" }}
+          >
+            Appointment
+          </div>
+          <div
+            className="text-[13.5px] font-medium"
+            style={{ color: "var(--ink)" }}
+          >
+            {visit.appointmentType === "in-person"
+              ? "In-person"
+              : visit.appointmentType === "virtual"
+              ? "Virtual"
+              : visit.appointmentType || "—"}
+          </div>
+          {visit.priority && (
+            <div>
+              <Pill tone="info">{visit.priority}</Pill>
+            </div>
+          )}
+        </div>
+        <div className="flex flex-col gap-1.5 px-5 py-4">
+          <div
+            className="text-[11px] uppercase"
+            style={{ color: "var(--ink-3)", letterSpacing: "0.1em" }}
+          >
+            Created
+          </div>
+          <div
+            className="mono text-[13px]"
+            style={{ color: "var(--ink)" }}
+          >
+            {formatDateTime(visit.createdAt)}
+          </div>
+          <div
+            className="mono text-[11px]"
+            style={{ color: "var(--ink-3)" }}
+          >
+            Visit {visit.id.slice(0, 8)}
+          </div>
+        </div>
+      </div>
 
-      if (typeof value === "object" && !Array.isArray(value)) {
-        const examFindings = value as Record<string, unknown>;
-        const visibleFindings = objectiveExamFindingCategories.filter((category) => {
-          const categoryValue = examFindings[category.key];
-          return typeof categoryValue === "string" && categoryValue.trim() !== "";
-        });
+      {/* Tabs */}
+      <div
+        className="flex gap-1 rounded-full p-1 self-start"
+        style={{
+          border: "1px solid var(--line)",
+          background: "var(--paper-2)",
+        }}
+      >
+        {tabs.map((t) => {
+          const active = activeTab === t.k;
+          const Icon = t.icon;
+          return (
+            <button
+              key={t.k}
+              type="button"
+              onClick={() => setActiveTab(t.k)}
+              className="inline-flex h-8 items-center gap-1.5 rounded-full px-3.5 text-[12.5px] font-medium tracking-tight transition-colors"
+              style={{
+                background: active ? "var(--ink)" : "transparent",
+                color: active ? "var(--paper)" : "var(--ink-2)",
+              }}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {t.label}
+              {typeof t.n === "number" && (
+                <span className="mono ml-1 opacity-70">{t.n}</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
 
-        if (visibleFindings.length === 0) {
-          return null;
-        }
+      {/* Notes Tab */}
+      {activeTab === "notes" && (
+        <div className="flex flex-col gap-5">
+          {!noteData ? (
+            <ClearingCard>
+              <p className="text-[13px]" style={{ color: "var(--ink-3)" }}>
+                No notes available
+              </p>
+            </ClearingCard>
+          ) : (
+            <>
+              {/* Subjective */}
+              {noteData.subjective &&
+                (noteData.subjective.chiefComplaint ||
+                  noteData.subjective.hpi) && (
+                  <ClearingCard>
+                    <SectionHeading
+                      icon={ClipboardList}
+                      iconColor="var(--info)"
+                      title="Subjective"
+                    />
+                    <div className="flex flex-col gap-3">
+                      {noteData.subjective.chiefComplaint && (
+                        <Field label="Chief complaint">
+                          {noteData.subjective.chiefComplaint}
+                        </Field>
+                      )}
+                      {noteData.subjective.hpi && (
+                        <Field label="HPI">
+                          <span className="whitespace-pre-wrap">
+                            {noteData.subjective.hpi}
+                          </span>
+                        </Field>
+                      )}
+                    </div>
+                  </ClearingCard>
+                )}
 
-        return (
-          <div className="space-y-3">
-            <div className="font-medium">Physical Examination:</div>
-            <div className="grid gap-3 md:grid-cols-2">
-              {visibleFindings.map((category) => (
-                <div key={category.key} className="space-y-1">
-                  <div className="font-medium">{category.label}:</div>
-                  <div className="text-muted-foreground whitespace-pre-wrap">
-                    {String(examFindings[category.key])}
+              {/* Objective */}
+              {objectiveData &&
+                Object.values(objectiveData).some((value) =>
+                  hasValue(value)
+                ) && (
+                  <ClearingCard>
+                    <SectionHeading
+                      icon={Stethoscope}
+                      iconColor="var(--brand-ink)"
+                      title="Objective"
+                    />
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {objectiveData.bp && (
+                        <Field label="Blood pressure">
+                          <span className="mono">{objectiveData.bp}</span>
+                        </Field>
+                      )}
+                      {objectiveData.hr && (
+                        <Field label="Heart rate">
+                          <span className="mono">{objectiveData.hr}</span>
+                        </Field>
+                      )}
+                      {objectiveData.temp && (
+                        <Field label="Temperature">
+                          <span className="mono">{objectiveData.temp}</span>
+                        </Field>
+                      )}
+                      {objectiveData.weight && (
+                        <Field label="Weight">
+                          <span className="mono">
+                            {objectiveData.weight} lbs
+                          </span>
+                        </Field>
+                      )}
+                      {objectiveData.height && (
+                        <Field label="Height">
+                          <span className="mono">
+                            {objectiveData.height} cm
+                          </span>
+                        </Field>
+                      )}
+                    </div>
+                    {objectiveData.examFindings && (
+                      <div className="mt-4">
+                        <Divider />
+                        <div
+                          className="mt-3 text-[11px] uppercase"
+                          style={{
+                            color: "var(--ink-3)",
+                            letterSpacing: "0.1em",
+                          }}
+                        >
+                          Physical examination
+                        </div>
+                        {typeof objectiveData.examFindings === "string" ? (
+                          <div
+                            className="mt-2 whitespace-pre-wrap text-[13px]"
+                            style={{ color: "var(--ink)" }}
+                          >
+                            {objectiveData.examFindings}
+                          </div>
+                        ) : (
+                          <div className="mt-2 grid gap-3 md:grid-cols-2">
+                            {(() => {
+                              const examFindings = objectiveData.examFindings;
+                              if (!examFindings || typeof examFindings === "string") {
+                                return null;
+                              }
+                              return objectiveExamFindingCategories.map(
+                                (category) => {
+                                  const value =
+                                    examFindings[
+                                      category.key as keyof typeof examFindings
+                                    ];
+                                  return value && value !== "" ? (
+                                    <Field
+                                      key={category.key}
+                                      label={category.label}
+                                    >
+                                      <span className="whitespace-pre-wrap">
+                                        {String(value)}
+                                      </span>
+                                    </Field>
+                                  ) : null;
+                                }
+                              );
+                            })()}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {(objectiveData.visionOd ||
+                      objectiveData.visionOs ||
+                      objectiveData.visionOu) && (
+                      <div className="mt-4">
+                        <Divider />
+                        <div
+                          className="mt-3 text-[11px] uppercase"
+                          style={{
+                            color: "var(--ink-3)",
+                            letterSpacing: "0.1em",
+                          }}
+                        >
+                          Vision
+                        </div>
+                        <div className="mt-2 grid gap-2 md:grid-cols-2">
+                          {objectiveData.visionOd && (
+                            <Field label="OD">
+                              <span className="mono">
+                                {objectiveData.visionOd}
+                              </span>
+                            </Field>
+                          )}
+                          {objectiveData.visionOs && (
+                            <Field label="OS">
+                              <span className="mono">
+                                {objectiveData.visionOs}
+                              </span>
+                            </Field>
+                          )}
+                          {objectiveData.visionOu && (
+                            <Field label="OU">
+                              <span className="mono">
+                                {objectiveData.visionOu}
+                              </span>
+                            </Field>
+                          )}
+                          {objectiveData.visionCorrection && (
+                            <Field label="Correction">
+                              {objectiveData.visionCorrection}
+                            </Field>
+                          )}
+                          {objectiveData.visionBlurry && (
+                            <Field label="Blurry">
+                              {objectiveData.visionBlurry}
+                            </Field>
+                          )}
+                          {objectiveData.visionFloaters && (
+                            <Field label="Floaters">
+                              {objectiveData.visionFloaters}
+                            </Field>
+                          )}
+                          {objectiveData.visionPain && (
+                            <Field label="Pain">
+                              {objectiveData.visionPain}
+                            </Field>
+                          )}
+                          {objectiveData.visionLastExamDate && (
+                            <Field label="Last exam date">
+                              <span className="mono">
+                                {objectiveData.visionLastExamDate}
+                              </span>
+                            </Field>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </ClearingCard>
+                )}
+
+              {/* Point of Care */}
+              {noteData.pointOfCare &&
+                ((noteData.pointOfCare.diabetes &&
+                  Object.values(noteData.pointOfCare.diabetes).some((value) =>
+                    hasValue(value)
+                  )) ||
+                  (noteData.pointOfCare.hiv &&
+                    noteData.pointOfCare.hiv !== "") ||
+                  (noteData.pointOfCare.syphilis &&
+                    (noteData.pointOfCare.syphilis.result ||
+                      noteData.pointOfCare.syphilis.reactivity))) && (
+                  <ClearingCard>
+                    <SectionHeading
+                      icon={FlaskConical}
+                      iconColor="var(--info)"
+                      title="Point of care"
+                    />
+                    <div className="flex flex-col gap-4">
+                      {noteData.pointOfCare.diabetes &&
+                        Object.values(noteData.pointOfCare.diabetes).some(
+                          (value) => hasValue(value)
+                        ) && (
+                          <div>
+                            <div
+                              className="mb-2 text-[11px] uppercase"
+                              style={{
+                                color: "var(--ink-3)",
+                                letterSpacing: "0.1em",
+                              }}
+                            >
+                              Diabetes
+                            </div>
+                            <div className="grid gap-2 md:grid-cols-2">
+                              {noteData.pointOfCare.diabetes
+                                .fastingGlucose && (
+                                <Field label="Fasting glucose">
+                                  <span className="mono">
+                                    {
+                                      noteData.pointOfCare.diabetes
+                                        .fastingGlucose
+                                    }
+                                  </span>
+                                </Field>
+                              )}
+                              {noteData.pointOfCare.diabetes
+                                .randomGlucose && (
+                                <Field label="Random glucose">
+                                  <span className="mono">
+                                    {
+                                      noteData.pointOfCare.diabetes
+                                        .randomGlucose
+                                    }
+                                  </span>
+                                </Field>
+                              )}
+                              {noteData.pointOfCare.diabetes.hbA1cValue && (
+                                <Field label="HbA1c">
+                                  <span className="mono">
+                                    {
+                                      noteData.pointOfCare.diabetes
+                                        .hbA1cValue
+                                    }
+                                  </span>
+                                  {noteData.pointOfCare.diabetes
+                                    .hbA1cDate && (
+                                    <span
+                                      className="mono ml-2"
+                                      style={{ color: "var(--ink-3)" }}
+                                    >
+                                      (
+                                      {
+                                        noteData.pointOfCare.diabetes
+                                          .hbA1cDate
+                                      }
+                                      )
+                                    </span>
+                                  )}
+                                </Field>
+                              )}
+                              {noteData.pointOfCare.diabetes
+                                .homeMonitoring && (
+                                <Field label="Home monitoring">
+                                  {
+                                    noteData.pointOfCare.diabetes
+                                      .homeMonitoring
+                                  }
+                                </Field>
+                              )}
+                              {noteData.pointOfCare.diabetes
+                                .averageReadings && (
+                                <Field label="Average readings">
+                                  <span className="mono">
+                                    {
+                                      noteData.pointOfCare.diabetes
+                                        .averageReadings
+                                    }
+                                  </span>
+                                </Field>
+                              )}
+                              {noteData.pointOfCare.diabetes
+                                .hypoglycemiaEpisodes && (
+                                <Field label="Hypoglycemia episodes">
+                                  {
+                                    noteData.pointOfCare.diabetes
+                                      .hypoglycemiaEpisodes
+                                  }
+                                </Field>
+                              )}
+                              {noteData.pointOfCare.diabetes
+                                .hyperglycemiaSymptoms && (
+                                <Field label="Hyperglycemia symptoms">
+                                  {
+                                    noteData.pointOfCare.diabetes
+                                      .hyperglycemiaSymptoms
+                                  }
+                                </Field>
+                              )}
+                              {noteData.pointOfCare.diabetes.footExam && (
+                                <Field label="Foot exam">
+                                  {noteData.pointOfCare.diabetes.footExam}
+                                </Field>
+                              )}
+                              {noteData.pointOfCare.diabetes.eyeExamDue && (
+                                <Field label="Eye exam due">
+                                  {noteData.pointOfCare.diabetes.eyeExamDue}
+                                </Field>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                      {noteData.pointOfCare.hiv &&
+                        noteData.pointOfCare.hiv !== "" && (
+                          <div>
+                            <div
+                              className="mb-2 text-[11px] uppercase"
+                              style={{
+                                color: "var(--ink-3)",
+                                letterSpacing: "0.1em",
+                              }}
+                            >
+                              HIV
+                            </div>
+                            <Field label="Result">
+                              {noteData.pointOfCare.hiv}
+                            </Field>
+                          </div>
+                        )}
+
+                      {noteData.pointOfCare.syphilis &&
+                        (noteData.pointOfCare.syphilis.result ||
+                          noteData.pointOfCare.syphilis.reactivity) && (
+                          <div>
+                            <div
+                              className="mb-2 text-[11px] uppercase"
+                              style={{
+                                color: "var(--ink-3)",
+                                letterSpacing: "0.1em",
+                              }}
+                            >
+                              Syphilis
+                            </div>
+                            <div className="grid gap-2 md:grid-cols-2">
+                              {noteData.pointOfCare.syphilis.result && (
+                                <Field label="Result">
+                                  {noteData.pointOfCare.syphilis.result}
+                                </Field>
+                              )}
+                              {noteData.pointOfCare.syphilis.reactivity && (
+                                <Field label="Reactivity">
+                                  {noteData.pointOfCare.syphilis.reactivity}
+                                </Field>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                    </div>
+                  </ClearingCard>
+                )}
+
+              {/* Medications */}
+              {noteData.medications &&
+                Array.isArray(noteData.medications) &&
+                noteData.medications.length > 0 && (
+                  <ClearingCard>
+                    <SectionHeading
+                      icon={PillIcon}
+                      iconColor="var(--brand-ink)"
+                      title="Medications"
+                      count={noteData.medications.length}
+                    />
+                    <div className="flex flex-col gap-3">
+                      {noteData.medications.map(
+                        (med: NoteMedication, index: number) => (
+                          <div
+                            key={index}
+                            className="rounded-[10px] px-3 py-2.5"
+                            style={{
+                              background: "var(--paper-2)",
+                              border: "1px solid var(--line)",
+                            }}
+                          >
+                            {med.name && (
+                              <div
+                                className="text-[13px] font-medium"
+                                style={{ color: "var(--ink)" }}
+                              >
+                                {med.name}
+                              </div>
+                            )}
+                            {med.dosage && (
+                              <div
+                                className="mono mt-0.5 text-[11.5px]"
+                                style={{ color: "var(--ink-3)" }}
+                              >
+                                {med.dosage}
+                              </div>
+                            )}
+                            <div
+                              className="mt-2 flex flex-wrap gap-1.5"
+                            >
+                              <Pill
+                                tone={med.takingAsPrescribed ? "ok" : "warn"}
+                              >
+                                {med.takingAsPrescribed
+                                  ? "Taking as prescribed"
+                                  : "Not as prescribed"}
+                              </Pill>
+                              <Pill
+                                tone={med.missedDoses ? "warn" : "neutral"}
+                              >
+                                {med.missedDoses
+                                  ? "Missed doses"
+                                  : "No missed doses"}
+                              </Pill>
+                              <Pill
+                                tone={
+                                  med.sideEffects ? "critical" : "neutral"
+                                }
+                              >
+                                {med.sideEffects
+                                  ? "Side effects"
+                                  : "No side effects"}
+                              </Pill>
+                            </div>
+                            {med.sideEffectsNotes && (
+                              <div
+                                className="mt-2 text-[12.5px]"
+                                style={{ color: "var(--ink-2)" }}
+                              >
+                                {med.sideEffectsNotes}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      )}
+                    </div>
+                  </ClearingCard>
+                )}
+
+              {/* Assessment & Plan */}
+              {noteData.assessmentPlan &&
+                ((Array.isArray(noteData.assessmentPlan) &&
+                  noteData.assessmentPlan.length > 0) ||
+                  (isLegacyAssessmentPlan(noteData.assessmentPlan) &&
+                    (!!noteData.assessmentPlan.assessment ||
+                      !!noteData.assessmentPlan.plan))) && (
+                  <ClearingCard>
+                    <SectionHeading
+                      icon={ClipboardCheck}
+                      iconColor="var(--ok)"
+                      title="Assessment & plan"
+                    />
+                    <div className="flex flex-col gap-4">
+                      {Array.isArray(noteData.assessmentPlan) ? (
+                        noteData.assessmentPlan.map(
+                          (
+                            item: VisitNote["assessmentPlan"][number],
+                            index: number
+                          ) => (
+                            <div
+                              key={index}
+                              className="flex flex-col gap-2"
+                              style={{
+                                borderBottom:
+                                  index <
+                                  (noteData.assessmentPlan as VisitNote["assessmentPlan"])
+                                    .length -
+                                    1
+                                    ? "1px solid var(--line)"
+                                    : undefined,
+                                paddingBottom:
+                                  index <
+                                  (noteData.assessmentPlan as VisitNote["assessmentPlan"])
+                                    .length -
+                                    1
+                                    ? 16
+                                    : 0,
+                              }}
+                            >
+                              {item.assessment && (
+                                <Field label="Assessment">
+                                  <span className="whitespace-pre-wrap">
+                                    {item.assessment}
+                                  </span>
+                                </Field>
+                              )}
+                              {item.plan && (
+                                <Field label="Plan">
+                                  <span className="whitespace-pre-wrap">
+                                    {item.plan}
+                                  </span>
+                                </Field>
+                              )}
+                              {item.medications &&
+                                Array.isArray(item.medications) &&
+                                item.medications.length > 0 && (
+                                  <Field label="Medications">
+                                    <div className="flex flex-col gap-1">
+                                      {item.medications.map(
+                                        (
+                                          med: AssessmentMedication,
+                                          medIndex: number
+                                        ) => (
+                                          <div
+                                            key={medIndex}
+                                            className="text-[12.5px]"
+                                          >
+                                            <span className="font-medium">
+                                              {med.brandName}
+                                            </span>
+                                            {med.dosage && (
+                                              <span className="mono ml-2">
+                                                {med.dosage}
+                                              </span>
+                                            )}
+                                            {med.frequency && (
+                                              <span
+                                                className="mono ml-2"
+                                                style={{
+                                                  color: "var(--ink-3)",
+                                                }}
+                                              >
+                                                {med.frequency}
+                                              </span>
+                                            )}
+                                          </div>
+                                        )
+                                      )}
+                                    </div>
+                                  </Field>
+                                )}
+                              {item.orders &&
+                              Array.isArray(item.orders) &&
+                              item.orders.length > 0 ? (
+                                <Field label="Orders">
+                                  <div className="flex flex-col gap-1">
+                                    {item.orders.map(
+                                      (
+                                        order: NoteOrder,
+                                        orderIndex: number
+                                      ) => (
+                                        <div
+                                          key={orderIndex}
+                                          className="text-[12.5px]"
+                                        >
+                                          {order.details || "None"}
+                                        </div>
+                                      )
+                                    )}
+                                  </div>
+                                </Field>
+                              ) : (
+                                <Field label="Orders">
+                                  <span style={{ color: "var(--ink-3)" }}>
+                                    None
+                                  </span>
+                                </Field>
+                              )}
+                              {item.followUp && (
+                                <Field label="Follow-up">
+                                  <span className="whitespace-pre-wrap">
+                                    {item.followUp}
+                                  </span>
+                                </Field>
+                              )}
+                              {item.education && (
+                                <Field label="Education">
+                                  <span className="whitespace-pre-wrap">
+                                    {item.education}
+                                  </span>
+                                </Field>
+                              )}
+                              {item.coordination && (
+                                <Field label="Coordination">
+                                  <span className="whitespace-pre-wrap">
+                                    {item.coordination}
+                                  </span>
+                                </Field>
+                              )}
+                            </div>
+                          )
+                        )
+                      ) : isLegacyAssessmentPlan(noteData.assessmentPlan) ? (
+                        <>
+                          {noteData.assessmentPlan.assessment && (
+                            <Field label="Assessment">
+                              <span className="whitespace-pre-wrap">
+                                {noteData.assessmentPlan.assessment}
+                              </span>
+                            </Field>
+                          )}
+                          {noteData.assessmentPlan.plan && (
+                            <Field label="Plan">
+                              <span className="whitespace-pre-wrap">
+                                {noteData.assessmentPlan.plan}
+                              </span>
+                            </Field>
+                          )}
+                        </>
+                      ) : null}
+                    </div>
+                  </ClearingCard>
+                )}
+
+              {/* Vaccines */}
+              {noteData.vaccines &&
+                Array.isArray(noteData.vaccines) &&
+                noteData.vaccines.length > 0 && (
+                  <ClearingCard>
+                    <SectionHeading
+                      icon={Syringe}
+                      iconColor="var(--info)"
+                      title="Vaccines"
+                      count={noteData.vaccines.length}
+                    />
+                    <div className="flex flex-col gap-3">
+                      {noteData.vaccines.map(
+                        (vaccine: VaccineEntry, index: number) => (
+                          <div
+                            key={index}
+                            className="rounded-[10px] px-3 py-2.5"
+                            style={{
+                              background: "var(--paper-2)",
+                              border: "1px solid var(--line)",
+                            }}
+                          >
+                            {vaccine.name && (
+                              <div
+                                className="text-[13px] font-medium"
+                                style={{ color: "var(--ink)" }}
+                              >
+                                {vaccine.name}
+                              </div>
+                            )}
+                            <div className="mt-2 grid gap-1 md:grid-cols-2">
+                              {vaccine.date && (
+                                <Field label="Date">
+                                  <span className="mono">{vaccine.date}</span>
+                                </Field>
+                              )}
+                              {vaccine.dose && (
+                                <Field label="Dose">{vaccine.dose}</Field>
+                              )}
+                              {vaccine.site && (
+                                <Field label="Site">{vaccine.site}</Field>
+                              )}
+                              {vaccine.route && (
+                                <Field label="Route">{vaccine.route}</Field>
+                              )}
+                              {vaccine.lotNumber && (
+                                <Field label="Lot number">
+                                  <span className="mono">
+                                    {vaccine.lotNumber}
+                                  </span>
+                                </Field>
+                              )}
+                              {vaccine.manufacturer && (
+                                <Field label="Manufacturer">
+                                  {vaccine.manufacturer}
+                                </Field>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  </ClearingCard>
+                )}
+
+              {/* Family History */}
+              {noteData.familyHistory &&
+                Array.isArray(noteData.familyHistory) &&
+                noteData.familyHistory.length > 0 && (
+                  <ClearingCard>
+                    <SectionHeading
+                      icon={UsersIcon}
+                      iconColor="var(--ink-3)"
+                      title="Family history"
+                      count={noteData.familyHistory.length}
+                    />
+                    <div className="flex flex-col gap-2">
+                      {noteData.familyHistory.map(
+                        (fh: FamilyHistoryEntry, index: number) => (
+                          <div
+                            key={index}
+                            className="rounded-[10px] px-3 py-2.5"
+                            style={{
+                              background: "var(--paper-2)",
+                              border: "1px solid var(--line)",
+                            }}
+                          >
+                            {fh.relationship && (
+                              <div
+                                className="text-[13px] font-medium"
+                                style={{ color: "var(--ink)" }}
+                              >
+                                {fh.relationship}
+                              </div>
+                            )}
+                            <div
+                              className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[12.5px]"
+                              style={{ color: "var(--ink-2)" }}
+                            >
+                              {fh.status && <span>Status: {fh.status}</span>}
+                              {fh.conditions && (
+                                <span>Conditions: {fh.conditions}</span>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  </ClearingCard>
+                )}
+
+              {/* Risk Flags */}
+              {noteData.riskFlags &&
+                Object.values(noteData.riskFlags).some((value) =>
+                  hasValue(value)
+                ) && (
+                  <ClearingCard>
+                    <SectionHeading
+                      icon={AlertTriangle}
+                      iconColor="var(--critical)"
+                      title="Risk flags"
+                    />
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {noteData.riskFlags.tobaccoUse && (
+                        <Field label="Tobacco use">
+                          {noteData.riskFlags.tobaccoUse}
+                        </Field>
+                      )}
+                      {noteData.riskFlags.tobaccoAmount && (
+                        <Field label="Tobacco amount">
+                          {noteData.riskFlags.tobaccoAmount}
+                        </Field>
+                      )}
+                      {noteData.riskFlags.alcoholUse && (
+                        <Field label="Alcohol use">
+                          {noteData.riskFlags.alcoholUse}
+                        </Field>
+                      )}
+                      {noteData.riskFlags.alcoholFrequency && (
+                        <Field label="Alcohol frequency">
+                          {noteData.riskFlags.alcoholFrequency}
+                        </Field>
+                      )}
+                      {noteData.riskFlags.housingStatus && (
+                        <Field label="Housing status">
+                          {noteData.riskFlags.housingStatus}
+                        </Field>
+                      )}
+                      {noteData.riskFlags.occupation && (
+                        <Field label="Occupation">
+                          {noteData.riskFlags.occupation}
+                        </Field>
+                      )}
+                    </div>
+                  </ClearingCard>
+                )}
+
+              {/* Surgical History */}
+              {noteData.surgicalHistory &&
+                Array.isArray(noteData.surgicalHistory) &&
+                noteData.surgicalHistory.length > 0 && (
+                  <ClearingCard>
+                    <SectionHeading
+                      icon={Scissors}
+                      iconColor="var(--ink-3)"
+                      title="Surgical history"
+                      count={noteData.surgicalHistory.length}
+                    />
+                    <div className="flex flex-col gap-2">
+                      {noteData.surgicalHistory.map(
+                        (surg: SurgicalHistoryEntry, index: number) => (
+                          <div
+                            key={index}
+                            className="rounded-[10px] px-3 py-2.5"
+                            style={{
+                              background: "var(--paper-2)",
+                              border: "1px solid var(--line)",
+                            }}
+                          >
+                            {surg.procedure && (
+                              <div
+                                className="text-[13px] font-medium"
+                                style={{ color: "var(--ink)" }}
+                              >
+                                {surg.procedure}
+                              </div>
+                            )}
+                            <div className="mt-1 grid gap-1 md:grid-cols-2 text-[12.5px]" style={{ color: "var(--ink-2)" }}>
+                              {surg.date && (
+                                <div>
+                                  Date:{" "}
+                                  <span className="mono">{surg.date}</span>
+                                </div>
+                              )}
+                              {surg.site && <div>Site: {surg.site}</div>}
+                              {surg.surgeon && (
+                                <div>Surgeon: {surg.surgeon}</div>
+                              )}
+                              {surg.outcome && (
+                                <div>Outcome: {surg.outcome}</div>
+                              )}
+                              {surg.source && (
+                                <div className="md:col-span-2">
+                                  Source: {surg.source}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  </ClearingCard>
+                )}
+
+              {/* Past Medical History */}
+              {noteData.pastMedicalHistory &&
+                Array.isArray(noteData.pastMedicalHistory) &&
+                noteData.pastMedicalHistory.length > 0 && (
+                  <ClearingCard>
+                    <SectionHeading
+                      icon={History}
+                      iconColor="var(--ink-3)"
+                      title="Past medical history"
+                      count={noteData.pastMedicalHistory.length}
+                    />
+                    <div className="flex flex-col gap-2">
+                      {noteData.pastMedicalHistory.map(
+                        (pmh: PastMedicalHistoryEntry, index: number) => (
+                          <div
+                            key={index}
+                            className="rounded-[10px] px-3 py-2.5"
+                            style={{
+                              background: "var(--paper-2)",
+                              border: "1px solid var(--line)",
+                            }}
+                          >
+                            {pmh.condition && (
+                              <div
+                                className="text-[13px] font-medium"
+                                style={{ color: "var(--ink)" }}
+                              >
+                                {pmh.condition}
+                              </div>
+                            )}
+                            <div className="mt-1 grid gap-1 md:grid-cols-2 text-[12.5px]" style={{ color: "var(--ink-2)" }}>
+                              {pmh.status && <div>Status: {pmh.status}</div>}
+                              {pmh.diagnosedDate && (
+                                <div>
+                                  Diagnosed:{" "}
+                                  <span className="mono">
+                                    {pmh.diagnosedDate}
+                                  </span>
+                                </div>
+                              )}
+                              {pmh.impact && <div>Impact: {pmh.impact}</div>}
+                              {pmh.icd10 && (
+                                <div>
+                                  ICD-10:{" "}
+                                  <span className="mono">{pmh.icd10}</span>
+                                </div>
+                              )}
+                              {pmh.source && (
+                                <div className="md:col-span-2">
+                                  Source: {pmh.source}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  </ClearingCard>
+                )}
+
+              {/* Orders */}
+              {noteData.orders &&
+                Array.isArray(noteData.orders) &&
+                noteData.orders.length > 0 && (
+                  <ClearingCard>
+                    <SectionHeading
+                      icon={Activity}
+                      iconColor="var(--warn)"
+                      title="Orders"
+                      count={noteData.orders.length}
+                    />
+                    <div className="flex flex-col gap-2">
+                      {noteData.orders.map(
+                        (order: NoteOrder, index: number) => (
+                          <div
+                            key={index}
+                            className="rounded-[10px] px-3 py-2.5"
+                            style={{
+                              background: "var(--paper-2)",
+                              border: "1px solid var(--line)",
+                            }}
+                          >
+                            {order.type && (
+                              <div
+                                className="text-[13px] font-medium"
+                                style={{ color: "var(--ink)" }}
+                              >
+                                {order.type}
+                              </div>
+                            )}
+                            <div className="mt-1 grid gap-1 md:grid-cols-2 text-[12.5px]" style={{ color: "var(--ink-2)" }}>
+                              {order.priority && (
+                                <div>Priority: {order.priority}</div>
+                              )}
+                              {order.status && (
+                                <div>Status: {order.status}</div>
+                              )}
+                              {order.dateOrdered && (
+                                <div>
+                                  Date ordered:{" "}
+                                  <span className="mono">
+                                    {order.dateOrdered}
+                                  </span>
+                                </div>
+                              )}
+                              {order.details && (
+                                <div className="md:col-span-2">
+                                  Details: {order.details}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  </ClearingCard>
+                )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Transcripts Tab */}
+      {activeTab === "transcripts" && (
+        <ClearingCard>
+          <SectionHeading
+            icon={AudioWaveform}
+            iconColor="var(--info)"
+            title="Transcripts"
+            count={transcripts.length}
+          />
+          {transcripts.length > 0 ? (
+            <div className="flex flex-col gap-3">
+              {transcripts.map((transcript, index) => (
+                <div
+                  key={transcript.id}
+                  className="rounded-[10px] px-3.5 py-3"
+                  style={{
+                    background: "var(--paper-2)",
+                    border: "1px solid var(--line)",
+                  }}
+                >
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span
+                      className="text-[13px] font-medium"
+                      style={{ color: "var(--ink)" }}
+                    >
+                      Transcript {index + 1}
+                    </span>
+                    <span
+                      className="mono text-[11px]"
+                      style={{ color: "var(--ink-3)" }}
+                    >
+                      {formatDateTime(transcript.createdAt)}
+                    </span>
+                  </div>
+                  <p
+                    className="whitespace-pre-wrap text-[12.5px] leading-5"
+                    style={{ color: "var(--ink-2)" }}
+                  >
+                    {transcript.text ||
+                      transcript.rawText ||
+                      "No transcript text"}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-[13px]" style={{ color: "var(--ink-3)" }}>
+              No transcripts available
+            </p>
+          )}
+        </ClearingCard>
+      )}
+
+      {/* Documents Tab */}
+      {activeTab === "documents" && (
+        <ClearingCard pad={0}>
+          <div
+            className="flex items-center gap-2 px-5 py-3.5"
+            style={{ borderBottom: "1px solid var(--line)" }}
+          >
+            <File className="h-4 w-4" style={{ color: "var(--ink-3)" }} />
+            <div
+              className="serif"
+              style={{ fontSize: 17, color: "var(--ink)" }}
+            >
+              Documents
+            </div>
+            <span
+              className="mono ml-1 text-[11.5px]"
+              style={{ color: "var(--ink-3)" }}
+            >
+              {uniqueDocuments.length}
+            </span>
+          </div>
+          {uniqueDocuments.length > 0 ? (
+            <div>
+              {uniqueDocuments.map((doc, i, arr) => {
+                const previewable = canPreview(doc.mimeType);
+                return (
+                  <div
+                    key={doc.id}
+                    className="flex items-center gap-3 px-5 py-3"
+                    style={{
+                      borderBottom:
+                        i < arr.length - 1
+                          ? "1px solid var(--line)"
+                          : undefined,
+                      cursor: previewable ? "pointer" : undefined,
+                    }}
+                    onClick={() => previewable && handlePreview(doc)}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLDivElement).style.background =
+                        "var(--paper-2)";
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLDivElement).style.background =
+                        "transparent";
+                    }}
+                  >
+                    <div style={{ color: "var(--ink-3)" }}>
+                      {getFileIcon(doc.mimeType)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div
+                        className="truncate text-[13.5px] font-medium"
+                        style={{ color: "var(--ink)" }}
+                      >
+                        {doc.filename}
+                      </div>
+                      <div
+                        className="mono text-[11px]"
+                        style={{ color: "var(--ink-3)" }}
+                      >
+                        {doc.mimeType} · {formatFileSize(doc.size)}
+                      </div>
+                    </div>
+                    <div
+                      className="mono hidden text-[11px] sm:block"
+                      style={{ color: "var(--ink-3)" }}
+                    >
+                      {formatDateTime(doc.uploadedAt)}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {previewable && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handlePreview(doc);
+                          }}
+                          disabled={
+                            isLoadingPreview && previewDocument?.id === doc.id
+                          }
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md disabled:opacity-50"
+                          style={{ color: "var(--ink-2)" }}
+                          onMouseEnter={(e) => {
+                            (
+                              e.currentTarget as HTMLButtonElement
+                            ).style.background = "var(--paper-3)";
+                          }}
+                          onMouseLeave={(e) => {
+                            (
+                              e.currentTarget as HTMLButtonElement
+                            ).style.background = "transparent";
+                          }}
+                          title="Preview"
+                          aria-label="Preview"
+                        >
+                          {isLoadingPreview &&
+                          previewDocument?.id === doc.id ? (
+                            <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                          ) : (
+                            <Eye className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDownload(doc);
+                        }}
+                        disabled={isDownloading === doc.id}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md disabled:opacity-50"
+                        style={{ color: "var(--ink-2)" }}
+                        onMouseEnter={(e) => {
+                          (
+                            e.currentTarget as HTMLButtonElement
+                          ).style.background = "var(--paper-3)";
+                        }}
+                        onMouseLeave={(e) => {
+                          (
+                            e.currentTarget as HTMLButtonElement
+                          ).style.background = "transparent";
+                        }}
+                        title="Download"
+                        aria-label="Download"
+                      >
+                        {isDownloading === doc.id ? (
+                          <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                        ) : (
+                          <Download className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p
+              className="px-5 py-6 text-[13px]"
+              style={{ color: "var(--ink-3)" }}
+            >
+              No documents available
+            </p>
+          )}
+        </ClearingCard>
+      )}
+
+      {/* Audit Log Tab */}
+      {activeTab === "audit" && (
+        <ClearingCard pad={0}>
+          <div
+            className="flex items-center gap-2 px-5 py-3.5"
+            style={{ borderBottom: "1px solid var(--line)" }}
+          >
+            <Clock className="h-4 w-4" style={{ color: "var(--ink-3)" }} />
+            <div
+              className="serif"
+              style={{ fontSize: 17, color: "var(--ink)" }}
+            >
+              Audit log
+            </div>
+            <span
+              className="mono ml-1 text-[11.5px]"
+              style={{ color: "var(--ink-3)" }}
+            >
+              {auditLogs.length}
+            </span>
+          </div>
+          {auditLogs.length > 0 ? (
+            <div>
+              {auditLogs.map((log, index) => (
+                <div
+                  key={index}
+                  className="flex gap-3 px-5 py-3.5"
+                  style={{
+                    borderBottom:
+                      index < auditLogs.length - 1
+                        ? "1px solid var(--line)"
+                        : undefined,
+                  }}
+                >
+                  <div
+                    className="mono w-[160px] shrink-0 text-[11.5px] leading-5"
+                    style={{ color: "var(--ink-3)" }}
+                  >
+                    <div style={{ color: "var(--ink)" }}>
+                      {formatDateTime(log.timestamp)}
+                    </div>
+                  </div>
+                  <div
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
+                    style={{
+                      background: "var(--paper-2)",
+                      border: "1px solid var(--line)",
+                    }}
+                  >
+                    {getActionIcon(log.action)}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className="text-[13px] font-medium"
+                        style={{ color: "var(--ink)" }}
+                      >
+                        {formatActionName(log.action)}
+                      </span>
+                      {log.fromStatus && (
+                        <>
+                          <span
+                            className="mono text-[11px]"
+                            style={{ color: "var(--ink-3)" }}
+                          >
+                            →
+                          </span>
+                          <Pill
+                            tone={visitStatusTone(log.fromStatus)}
+                          >
+                            {formatStatus(log.fromStatus)}
+                          </Pill>
+                          <span
+                            className="mono text-[11px]"
+                            style={{ color: "var(--ink-3)" }}
+                          >
+                            →
+                          </span>
+                        </>
+                      )}
+                      <Pill tone={visitStatusTone(log.toStatus)} dot>
+                        {formatStatus(log.toStatus)}
+                      </Pill>
+                    </div>
+                    <div
+                      className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px]"
+                      style={{ color: "var(--ink-3)" }}
+                    >
+                      <div className="flex items-center gap-1">
+                        <User className="h-3 w-3" />
+                        {log.userName || log.userId || "Unknown"}
+                      </div>
+                    </div>
+                    {log.reason && (
+                      <div
+                        className="mt-1 text-[12px] italic"
+                        style={{ color: "var(--ink-3)" }}
+                      >
+                        Reason: {log.reason}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
             </div>
-          </div>
-        );
-      }
-    }
-
-    if (typeof value === "object") {
-      return null;
-    }
-
-    return (
-      <div>
-        <span className="font-medium capitalize">
-          {key.replace(/([A-Z])/g, " $1").trim()}:{" "}
-        </span>
-        {String(value)}
-      </div>
-    );
-  };
-
-  return (
-    <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Link href={`/patients/${patientId}/visit-history`}>
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-3xl font-bold text-foreground">Visit Details</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {patient.fullName} • {formatDateTime(visit.createdAt)}
-            </p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          {/* Join Call button for virtual visits */}
-          {visit.appointmentType?.toLowerCase() === "virtual" && visit.twilioRoomName && (
-            <Button
-              onClick={() => router.push(`/visit/${visitId}/call`)}
-              variant="default"
-              className="bg-purple-600 hover:bg-purple-700"
+          ) : (
+            <p
+              className="px-5 py-6 text-[13px]"
+              style={{ color: "var(--ink-3)" }}
             >
-              <Video className="h-4 w-4 mr-2" />
-              Join Call
-            </Button>
+              No audit log entries
+            </p>
           )}
-          {canEdit && (
-            <Button onClick={handleEdit} disabled={isMarkingInProgress}>
-              <Edit className="h-4 w-4 mr-2" />
-              {isMarkingInProgress ? "Processing..." : "Edit Note"}
-            </Button>
-          )}
-          {isInProgress && !isSigned && canSignNote && (
-            <Button onClick={handleSign} variant="default">
-              <FileSignature className="h-4 w-4 mr-2" />
-              Sign Note
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* Status Card */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-medium">Visit Status</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {(() => {
-            const badge = getStatusBadge(visit.status);
-            return (
-              <Badge variant={badge.variant} className={badge.className}>
-                {formatVisitStatusLabel(visit.status)}
-              </Badge>
-            );
-          })()}
-          {finalizedByName && visit.notesFinalizedAt && (
-            <div className="mt-3 text-sm text-muted-foreground">
-              <div>Finalized by {finalizedByName}</div>
-              <div>{formatDateTime(visit.notesFinalizedAt)}</div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Main Content Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="notes">
-            <FileText className="h-4 w-4 mr-2" />
-            Notes
-          </TabsTrigger>
-          <TabsTrigger value="transcripts">
-            <AudioWaveform className="h-4 w-4 mr-2" />
-            Transcripts ({transcripts.length})
-          </TabsTrigger>
-          <TabsTrigger value="documents">
-            <File className="h-4 w-4 mr-2" />
-            Documents ({uniqueDocuments.length})
-          </TabsTrigger>
-          <TabsTrigger value="audit">
-            <Clock className="h-4 w-4 mr-2" />
-            Audit Log ({auditLogs.length})
-          </TabsTrigger>
-        </TabsList>
-
-        {/* Notes Tab */}
-        <TabsContent value="notes" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Visit Notes</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {noteData ? (
-                <div className="space-y-6">
-                  {noteData.subjective && (
-                    <div>
-                      <h3 className="font-semibold mb-2">Subjective</h3>
-                      <div className="space-y-2 text-sm">
-                        {noteData.subjective.chiefComplaint && (
-                          <div>
-                            <span className="font-medium">Chief Complaint: </span>
-                            {noteData.subjective.chiefComplaint}
-                          </div>
-                        )}
-                        {noteData.subjective.hpi && (
-                          <div>
-                            <span className="font-medium">HPI: </span>
-                            {noteData.subjective.hpi}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {noteData.objective && (
-                    <div>
-                      <h3 className="font-semibold mb-2">Objective</h3>
-                      {typeof noteData.objective === "string" ? (
-                        <div className="text-sm text-muted-foreground whitespace-pre-wrap">
-                          {noteData.objective}
-                        </div>
-                      ) : isObjectiveRecord(noteData.objective) ? (
-                        <div className="grid gap-2 md:grid-cols-2 text-sm">
-                          {Object.entries(noteData.objective).map(([key, value]) => {
-                            const renderedValue = formatObjectiveValue(key, value);
-                            if (!renderedValue) return null;
-
-                            return (
-                              <div
-                                key={key}
-                                className={key === "examFindings" ? "md:col-span-2" : undefined}
-                              >
-                                {renderedValue}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : null}
-                    </div>
-                  )}
-
-                  {noteData.assessmentPlan && (
-                    <div>
-                      <h3 className="font-semibold mb-2">Assessment & Plan</h3>
-                      <div className="space-y-4 text-sm">
-                        {Array.isArray(noteData.assessmentPlan) ? (
-                          // New format: array of detailed assessment-plan entries
-                          noteData.assessmentPlan.map((item: VisitNote["assessmentPlan"][number], index: number) => (
-                            <div key={index} className="space-y-2 pb-3 border-b last:border-b-0 last:pb-0">
-                              {item.assessment && (
-                                <div>
-                                  <span className="font-medium">Assessment: </span>
-                                  <div className="mt-1 whitespace-pre-wrap">{item.assessment}</div>
-                                </div>
-                              )}
-                              {item.plan && (
-                                <div>
-                                  <span className="font-medium">Plan: </span>
-                                  <div className="mt-1 whitespace-pre-wrap">{item.plan}</div>
-                                </div>
-                              )}
-                              {item.medications && Array.isArray(item.medications) && item.medications.length > 0 && (
-                                <div>
-                                  <span className="font-medium">Medications: </span>
-                                  <div className="mt-1 space-y-1">
-                                    {item.medications.map((med: AssessmentMedication, medIndex: number) => (
-                                      <div key={medIndex} className="pl-2">
-                                        {med.brandName} {med.dosage && med.dosage} {med.frequency && med.frequency}
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                              {item.orders && Array.isArray(item.orders) && item.orders.length > 0 ? (
-                                <div>
-                                  <span className="font-medium">Orders: </span>
-                                  <div className="mt-1 space-y-1">
-                                    {item.orders.map((order: NoteOrder, orderIndex: number) => (
-                                      <div key={orderIndex} className="pl-2">
-                                        {order.details || "None"}
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              ) : (
-                                <div>
-                                  <span className="font-medium">Orders: </span>
-                                  <span className="text-muted-foreground">None</span>
-                                </div>
-                              )}
-                              {item.followUp && (
-                                <div>
-                                  <span className="font-medium">Follow-up: </span>
-                                  <div className="mt-1 whitespace-pre-wrap">{item.followUp}</div>
-                                </div>
-                              )}
-                              {item.education && (
-                                <div>
-                                  <span className="font-medium">Education: </span>
-                                  <div className="mt-1 whitespace-pre-wrap">{item.education}</div>
-                                </div>
-                              )}
-                              {item.coordination && (
-                                <div>
-                                  <span className="font-medium">Coordination: </span>
-                                  <div className="mt-1 whitespace-pre-wrap">{item.coordination}</div>
-                                </div>
-                              )}
-                            </div>
-                          ))
-                        ) : isLegacyAssessmentPlan(noteData.assessmentPlan) ? (
-                          // Backward compatibility: old format
-                          <>
-                            {noteData.assessmentPlan.assessment && (
-                              <div>
-                                <span className="font-medium">Assessment: </span>
-                                <div className="mt-1 whitespace-pre-wrap">{noteData.assessmentPlan.assessment}</div>
-                              </div>
-                            )}
-                            {noteData.assessmentPlan.plan && (
-                              <div>
-                                <span className="font-medium">Plan: </span>
-                                <div className="mt-1 whitespace-pre-wrap">{noteData.assessmentPlan.plan}</div>
-                              </div>
-                            )}
-                          </>
-                        ) : null}
-                      </div>
-                    </div>
-                  )}
-
-                  {noteData && (
-                    <div>
-                      <Separator className="my-4" />
-                      <h3 className="font-semibold mb-4">All Data</h3>
-                      <div className="space-y-4">
-                        {/* Subjective */}
-                        {noteData.subjective && (noteData.subjective.chiefComplaint || noteData.subjective.hpi) && (
-                          <Card>
-                            <CardHeader className="pb-2">
-                              <CardTitle className="text-base">Subjective</CardTitle>
-                            </CardHeader>
-                            <CardContent className="pt-0 space-y-2 text-sm">
-                              {noteData.subjective.chiefComplaint && (
-                                <div>
-                                  <span className="font-medium">Chief Complaint: </span>
-                                  <span>{noteData.subjective.chiefComplaint}</span>
-                                </div>
-                              )}
-                              {noteData.subjective.hpi && (
-                                <div>
-                                  <span className="font-medium">HPI: </span>
-                                  <span>{noteData.subjective.hpi}</span>
-                                </div>
-                              )}
-                            </CardContent>
-                          </Card>
-                        )}
-
-                        {/* Objective */}
-                        {objectiveData && Object.values(objectiveData).some((value) => hasValue(value)) && (
-                          <Card>
-                            <CardHeader className="pb-2">
-                              <CardTitle className="text-base">Objective</CardTitle>
-                            </CardHeader>
-                            <CardContent className="pt-0">
-                              <div className="grid gap-2 md:grid-cols-2 text-sm">
-                                {objectiveData.bp && (
-                                  <div><span className="font-medium">Blood Pressure: </span>{objectiveData.bp}</div>
-                                )}
-                                {objectiveData.hr && (
-                                  <div><span className="font-medium">Heart Rate: </span>{objectiveData.hr}</div>
-                                )}
-                                {objectiveData.temp && (
-                                  <div><span className="font-medium">Temperature: </span>{objectiveData.temp}</div>
-                                )}
-                                {objectiveData.weight && (
-                                  <div><span className="font-medium">Weight: </span>{objectiveData.weight} lbs</div>
-                                )}
-                                {objectiveData.height && (
-                                  <div><span className="font-medium">Height: </span>{objectiveData.height} cm</div>
-                                )}
-                                {objectiveData.examFindings && (
-                                  <div className="md:col-span-2 space-y-3">
-                                    <div className="font-medium text-base border-b pb-1">Physical Examination</div>
-                                    {typeof objectiveData.examFindings === "string" ? (
-                                      // Backward compatibility: if it's a string, display as before
-                                      <div>
-                                        <span className="font-medium">Exam Findings: </span>
-                                        {objectiveData.examFindings}
-                                      </div>
-                                    ) : (
-                                      // New format: display by category
-                                      <div className="grid gap-3 md:grid-cols-2 text-sm">
-                                        {(() => {
-                                          const examFindings = objectiveData.examFindings;
-                                          if (!examFindings || typeof examFindings === "string") {
-                                            return null;
-                                          }
-
-                                          return [
-                                          { key: "general", label: "General" },
-                                          { key: "heent", label: "HEENT" },
-                                          { key: "neck", label: "Neck" },
-                                          { key: "cardiovascular", label: "Cardiovascular" },
-                                          { key: "lungs", label: "Lungs" },
-                                          { key: "abdomen", label: "Abdomen" },
-                                          { key: "musculoskeletal", label: "Musculoskeletal" },
-                                          { key: "neurologic", label: "Neurologic" },
-                                          { key: "skin", label: "Skin" },
-                                          { key: "psychological", label: "Psychological" },
-                                        ].map((category) => {
-                                            const value =
-                                              examFindings[
-                                                category.key as keyof typeof examFindings
-                                              ];
-                                            return value && value !== "" ? (
-                                              <div key={category.key} className="space-y-1">
-                                                <div className="font-medium text-foreground">{category.label}:</div>
-                                                <div className="text-muted-foreground pl-2 whitespace-pre-wrap">{value}</div>
-                                              </div>
-                                            ) : null;
-                                          });
-                                        })()}
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                                {(objectiveData.visionOd || objectiveData.visionOs || objectiveData.visionOu) && (
-                                  <div className="md:col-span-2 space-y-1">
-                                    <div className="font-medium">Vision:</div>
-                                    {objectiveData.visionOd && <div className="pl-4">OD: {objectiveData.visionOd}</div>}
-                                    {objectiveData.visionOs && <div className="pl-4">OS: {objectiveData.visionOs}</div>}
-                                    {objectiveData.visionOu && <div className="pl-4">OU: {objectiveData.visionOu}</div>}
-                                    {objectiveData.visionCorrection && <div className="pl-4">Correction: {objectiveData.visionCorrection}</div>}
-                                    {objectiveData.visionBlurry && <div className="pl-4">Blurry: {objectiveData.visionBlurry}</div>}
-                                    {objectiveData.visionFloaters && <div className="pl-4">Floaters: {objectiveData.visionFloaters}</div>}
-                                    {objectiveData.visionPain && <div className="pl-4">Pain: {objectiveData.visionPain}</div>}
-                                    {objectiveData.visionLastExamDate && <div className="pl-4">Last Exam Date: {objectiveData.visionLastExamDate}</div>}
-                                  </div>
-                                )}
-                              </div>
-                            </CardContent>
-                          </Card>
-                        )}
-
-                        {/* Point of Care */}
-                        {noteData.pointOfCare && (
-                          (noteData.pointOfCare.diabetes && Object.values(noteData.pointOfCare.diabetes).some((value) => hasValue(value))) ||
-                          (noteData.pointOfCare.hiv && noteData.pointOfCare.hiv !== "") ||
-                          (noteData.pointOfCare.syphilis && (noteData.pointOfCare.syphilis.result || noteData.pointOfCare.syphilis.reactivity))
-                        ) && (
-                            <Card>
-                              <CardHeader className="pb-2">
-                                <CardTitle className="text-base">Point of Care</CardTitle>
-                              </CardHeader>
-                              <CardContent className="pt-0 space-y-6">
-                                {/* Diabetes Subsection */}
-                                {noteData.pointOfCare.diabetes && Object.values(noteData.pointOfCare.diabetes).some((value) => hasValue(value)) && (
-                                  <div className="space-y-3">
-                                    <h4 className="text-sm font-semibold text-foreground border-b pb-1">Diabetes</h4>
-                                    <div className="grid gap-2 md:grid-cols-2 text-sm">
-                                      {noteData.pointOfCare.diabetes.fastingGlucose && (
-                                        <div><span className="font-medium">Fasting Glucose: </span>{noteData.pointOfCare.diabetes.fastingGlucose}</div>
-                                      )}
-                                      {noteData.pointOfCare.diabetes.randomGlucose && (
-                                        <div><span className="font-medium">Random Glucose: </span>{noteData.pointOfCare.diabetes.randomGlucose}</div>
-                                      )}
-                                      {noteData.pointOfCare.diabetes.hbA1cValue && (
-                                        <div>
-                                          <span className="font-medium">HbA1c: </span>
-                                          {noteData.pointOfCare.diabetes.hbA1cValue}
-                                          {noteData.pointOfCare.diabetes.hbA1cDate && <span className="text-muted-foreground"> ({noteData.pointOfCare.diabetes.hbA1cDate})</span>}
-                                        </div>
-                                      )}
-                                      {noteData.pointOfCare.diabetes.homeMonitoring && (
-                                        <div><span className="font-medium">Home Monitoring: </span>{noteData.pointOfCare.diabetes.homeMonitoring}</div>
-                                      )}
-                                      {noteData.pointOfCare.diabetes.averageReadings && (
-                                        <div><span className="font-medium">Average Readings: </span>{noteData.pointOfCare.diabetes.averageReadings}</div>
-                                      )}
-                                      {noteData.pointOfCare.diabetes.hypoglycemiaEpisodes && (
-                                        <div><span className="font-medium">Hypoglycemia Episodes: </span>{noteData.pointOfCare.diabetes.hypoglycemiaEpisodes}</div>
-                                      )}
-                                      {noteData.pointOfCare.diabetes.hyperglycemiaSymptoms && (
-                                        <div><span className="font-medium">Hyperglycemia Symptoms: </span>{noteData.pointOfCare.diabetes.hyperglycemiaSymptoms}</div>
-                                      )}
-                                      {noteData.pointOfCare.diabetes.footExam && (
-                                        <div><span className="font-medium">Foot Exam: </span>{noteData.pointOfCare.diabetes.footExam}</div>
-                                      )}
-                                      {noteData.pointOfCare.diabetes.eyeExamDue && (
-                                        <div><span className="font-medium">Eye Exam Due: </span>{noteData.pointOfCare.diabetes.eyeExamDue}</div>
-                                      )}
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* HIV Subsection */}
-                                {noteData.pointOfCare.hiv && noteData.pointOfCare.hiv !== "" && (
-                                  <div className="space-y-3">
-                                    <h4 className="text-sm font-semibold text-foreground border-b pb-1">HIV</h4>
-                                    <div className="grid gap-2 md:grid-cols-2 text-sm">
-                                      <div><span className="font-medium">Result: </span>{noteData.pointOfCare.hiv}</div>
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* Syphilis Subsection */}
-                                {noteData.pointOfCare.syphilis && (noteData.pointOfCare.syphilis.result || noteData.pointOfCare.syphilis.reactivity) && (
-                                  <div className="space-y-3">
-                                    <h4 className="text-sm font-semibold text-foreground border-b pb-1">Syphilis</h4>
-                                    <div className="grid gap-2 md:grid-cols-2 text-sm">
-                                      {noteData.pointOfCare.syphilis.result && (
-                                        <div><span className="font-medium">Result: </span>{noteData.pointOfCare.syphilis.result}</div>
-                                      )}
-                                      {noteData.pointOfCare.syphilis.reactivity && (
-                                        <div><span className="font-medium">Reactivity: </span>{noteData.pointOfCare.syphilis.reactivity}</div>
-                                      )}
-                                    </div>
-                                  </div>
-                                )}
-                              </CardContent>
-                            </Card>
-                          )}
-
-                        {/* Medications */}
-                        {noteData.medications && Array.isArray(noteData.medications) && noteData.medications.length > 0 && (
-                          <Card>
-                            <CardHeader className="pb-2">
-                              <CardTitle className="text-base">Medications ({noteData.medications.length})</CardTitle>
-                            </CardHeader>
-                            <CardContent className="pt-0 space-y-4">
-                              {noteData.medications.map((med: NoteMedication, index: number) => (
-                                <div key={index} className="border-l-2 pl-4 space-y-1 text-sm">
-                                  {med.name && <div className="font-medium">{med.name}</div>}
-                                  {med.dosage && <div className="text-muted-foreground">Dosage: {med.dosage}</div>}
-                                  <div className="flex gap-4 text-muted-foreground">
-                                    <span>Taking as Prescribed: {med.takingAsPrescribed ? "Yes" : "No"}</span>
-                                    <span>Missed Doses: {med.missedDoses ? "Yes" : "No"}</span>
-                                    <span>Side Effects: {med.sideEffects ? "Yes" : "No"}</span>
-                                  </div>
-                                  {med.sideEffectsNotes && (
-                                    <div className="text-muted-foreground">Side Effects Notes: {med.sideEffectsNotes}</div>
-                                  )}
-                                </div>
-                              ))}
-                            </CardContent>
-                          </Card>
-                        )}
-
-                        {/* Assessment & Plan */}
-                        {noteData.assessmentPlan && (
-                          (Array.isArray(noteData.assessmentPlan) && noteData.assessmentPlan.length > 0) ||
-                          (isLegacyAssessmentPlan(noteData.assessmentPlan) &&
-                            (!!noteData.assessmentPlan.assessment || !!noteData.assessmentPlan.plan))
-                        ) && (
-                            <Card>
-                              <CardHeader className="pb-2">
-                                <CardTitle className="text-base">Assessment & Plan</CardTitle>
-                              </CardHeader>
-                              <CardContent className="pt-0 space-y-4 text-sm">
-                                {Array.isArray(noteData.assessmentPlan) ? (
-                                  // New format: array of detailed assessment-plan entries
-                                  noteData.assessmentPlan.map((item: VisitNote["assessmentPlan"][number], index: number) => (
-                                    <div key={index} className="space-y-3 pb-4 border-b last:border-b-0 last:pb-0">
-                                      {item.assessment && (
-                                        <div>
-                                          <span className="font-medium">Assessment: </span>
-                                          <div className="mt-1 whitespace-pre-wrap">{item.assessment}</div>
-                                        </div>
-                                      )}
-                                      {item.plan && (
-                                        <div>
-                                          <span className="font-medium">Plan: </span>
-                                          <div className="mt-1 whitespace-pre-wrap">{item.plan}</div>
-                                        </div>
-                                      )}
-                                      {item.medications && Array.isArray(item.medications) && item.medications.length > 0 && (
-                                        <div>
-                                          <span className="font-medium">Medications: </span>
-                                          <div className="mt-1 space-y-1">
-                                            {item.medications.map((med: AssessmentMedication, medIndex: number) => (
-                                              <div key={medIndex} className="pl-2">
-                                                {med.brandName} {med.dosage && med.dosage} {med.frequency && med.frequency}
-                                              </div>
-                                            ))}
-                                          </div>
-                                        </div>
-                                      )}
-                                      {item.orders && Array.isArray(item.orders) && item.orders.length > 0 ? (
-                                        <div>
-                                          <span className="font-medium">Orders: </span>
-                                          <div className="mt-1 space-y-1">
-                                            {item.orders.map((order: NoteOrder, orderIndex: number) => (
-                                              <div key={orderIndex} className="pl-2">
-                                                {order.details || "None"}
-                                              </div>
-                                            ))}
-                                          </div>
-                                        </div>
-                                      ) : (
-                                        <div>
-                                          <span className="font-medium">Orders: </span>
-                                          <span className="text-muted-foreground">None</span>
-                                        </div>
-                                      )}
-                                      {item.followUp && (
-                                        <div>
-                                          <span className="font-medium">Follow-up: </span>
-                                          <div className="mt-1 whitespace-pre-wrap">{item.followUp}</div>
-                                        </div>
-                                      )}
-                                      {item.education && (
-                                        <div>
-                                          <span className="font-medium">Education: </span>
-                                          <div className="mt-1 whitespace-pre-wrap">{item.education}</div>
-                                        </div>
-                                      )}
-                                      {item.coordination && (
-                                        <div>
-                                          <span className="font-medium">Coordination: </span>
-                                          <div className="mt-1 whitespace-pre-wrap">{item.coordination}</div>
-                                        </div>
-                                      )}
-                                    </div>
-                                  ))
-                                ) : isLegacyAssessmentPlan(noteData.assessmentPlan) ? (
-                                  // Backward compatibility: old format (object with assessment/plan)
-                                  <>
-                                    {noteData.assessmentPlan.assessment && (
-                                      <div>
-                                        <span className="font-medium">Assessment: </span>
-                                        <div className="mt-1 whitespace-pre-wrap">{noteData.assessmentPlan.assessment}</div>
-                                      </div>
-                                    )}
-                                    {noteData.assessmentPlan.plan && (
-                                      <div>
-                                        <span className="font-medium">Plan: </span>
-                                        <div className="mt-1 whitespace-pre-wrap">{noteData.assessmentPlan.plan}</div>
-                                      </div>
-                                    )}
-                                  </>
-                                ) : null}
-                              </CardContent>
-                            </Card>
-                          )}
-
-                        {/* Vaccines */}
-                        {noteData.vaccines && Array.isArray(noteData.vaccines) && noteData.vaccines.length > 0 && (
-                          <Card>
-                            <CardHeader className="pb-2">
-                              <CardTitle className="text-base">Vaccines ({noteData.vaccines.length})</CardTitle>
-                            </CardHeader>
-                            <CardContent className="pt-0 space-y-3">
-                              {noteData.vaccines.map((vaccine: VaccineEntry, index: number) => (
-                                <div key={index} className="border-l-2 pl-4 space-y-1 text-sm">
-                                  {vaccine.name && <div className="font-medium">{vaccine.name}</div>}
-                                  <div className="grid gap-1 md:grid-cols-2 text-muted-foreground">
-                                    {vaccine.date && <div>Date: {vaccine.date}</div>}
-                                    {vaccine.dose && <div>Dose: {vaccine.dose}</div>}
-                                    {vaccine.site && <div>Site: {vaccine.site}</div>}
-                                    {vaccine.route && <div>Route: {vaccine.route}</div>}
-                                    {vaccine.lotNumber && <div>Lot Number: {vaccine.lotNumber}</div>}
-                                    {vaccine.manufacturer && <div>Manufacturer: {vaccine.manufacturer}</div>}
-                                  </div>
-                                </div>
-                              ))}
-                            </CardContent>
-                          </Card>
-                        )}
-
-                        {/* Family History */}
-                        {noteData.familyHistory && Array.isArray(noteData.familyHistory) && noteData.familyHistory.length > 0 && (
-                          <Card>
-                            <CardHeader className="pb-2">
-                              <CardTitle className="text-base">Family History ({noteData.familyHistory.length})</CardTitle>
-                            </CardHeader>
-                            <CardContent className="pt-0 space-y-3">
-                              {noteData.familyHistory.map((fh: FamilyHistoryEntry, index: number) => (
-                                <div key={index} className="border-l-2 pl-4 space-y-1 text-sm">
-                                  {fh.relationship && <div className="font-medium">{fh.relationship}</div>}
-                                  <div className="text-muted-foreground">
-                                    {fh.status && <span>Status: {fh.status}</span>}
-                                    {fh.conditions && <span className="ml-4">Conditions: {fh.conditions}</span>}
-                                  </div>
-                                </div>
-                              ))}
-                            </CardContent>
-                          </Card>
-                        )}
-
-                        {/* Risk Flags */}
-                        {noteData.riskFlags && Object.values(noteData.riskFlags).some((value) => hasValue(value)) && (
-                          <Card>
-                            <CardHeader className="pb-2">
-                              <CardTitle className="text-base">Risk Flags</CardTitle>
-                            </CardHeader>
-                            <CardContent className="pt-0">
-                              <div className="grid gap-2 md:grid-cols-2 text-sm">
-                                {noteData.riskFlags.tobaccoUse && (
-                                  <div><span className="font-medium">Tobacco Use: </span>{noteData.riskFlags.tobaccoUse}</div>
-                                )}
-                                {noteData.riskFlags.tobaccoAmount && (
-                                  <div><span className="font-medium">Tobacco Amount: </span>{noteData.riskFlags.tobaccoAmount}</div>
-                                )}
-                                {noteData.riskFlags.alcoholUse && (
-                                  <div><span className="font-medium">Alcohol Use: </span>{noteData.riskFlags.alcoholUse}</div>
-                                )}
-                                {noteData.riskFlags.alcoholFrequency && (
-                                  <div><span className="font-medium">Alcohol Frequency: </span>{noteData.riskFlags.alcoholFrequency}</div>
-                                )}
-                                {noteData.riskFlags.housingStatus && (
-                                  <div><span className="font-medium">Housing Status: </span>{noteData.riskFlags.housingStatus}</div>
-                                )}
-                                {noteData.riskFlags.occupation && (
-                                  <div><span className="font-medium">Occupation: </span>{noteData.riskFlags.occupation}</div>
-                                )}
-                              </div>
-                            </CardContent>
-                          </Card>
-                        )}
-
-                        {/* Surgical History */}
-                        {noteData.surgicalHistory && Array.isArray(noteData.surgicalHistory) && noteData.surgicalHistory.length > 0 && (
-                          <Card>
-                            <CardHeader className="pb-2">
-                              <CardTitle className="text-base">Surgical History ({noteData.surgicalHistory.length})</CardTitle>
-                            </CardHeader>
-                            <CardContent className="pt-0 space-y-3">
-                              {noteData.surgicalHistory.map((surg: SurgicalHistoryEntry, index: number) => (
-                                <div key={index} className="border-l-2 pl-4 space-y-1 text-sm">
-                                  {surg.procedure && <div className="font-medium">{surg.procedure}</div>}
-                                  <div className="grid gap-1 md:grid-cols-2 text-muted-foreground">
-                                    {surg.date && <div>Date: {surg.date}</div>}
-                                    {surg.site && <div>Site: {surg.site}</div>}
-                                    {surg.surgeon && <div>Surgeon: {surg.surgeon}</div>}
-                                    {surg.outcome && <div>Outcome: {surg.outcome}</div>}
-                                    {surg.source && <div className="md:col-span-2">Source: {surg.source}</div>}
-                                  </div>
-                                </div>
-                              ))}
-                            </CardContent>
-                          </Card>
-                        )}
-
-                        {/* Past Medical History */}
-                        {noteData.pastMedicalHistory && Array.isArray(noteData.pastMedicalHistory) && noteData.pastMedicalHistory.length > 0 && (
-                          <Card>
-                            <CardHeader className="pb-2">
-                              <CardTitle className="text-base">Past Medical History ({noteData.pastMedicalHistory.length})</CardTitle>
-                            </CardHeader>
-                            <CardContent className="pt-0 space-y-3">
-                              {noteData.pastMedicalHistory.map((pmh: PastMedicalHistoryEntry, index: number) => (
-                                <div key={index} className="border-l-2 pl-4 space-y-1 text-sm">
-                                  {pmh.condition && <div className="font-medium">{pmh.condition}</div>}
-                                  <div className="grid gap-1 md:grid-cols-2 text-muted-foreground">
-                                    {pmh.status && <div>Status: {pmh.status}</div>}
-                                    {pmh.diagnosedDate && <div>Diagnosed Date: {pmh.diagnosedDate}</div>}
-                                    {pmh.impact && <div>Impact: {pmh.impact}</div>}
-                                    {pmh.icd10 && <div>ICD-10: {pmh.icd10}</div>}
-                                    {pmh.source && <div className="md:col-span-2">Source: {pmh.source}</div>}
-                                  </div>
-                                </div>
-                              ))}
-                            </CardContent>
-                          </Card>
-                        )}
-
-                        {/* Orders */}
-                        {noteData.orders && Array.isArray(noteData.orders) && noteData.orders.length > 0 && (
-                          <Card>
-                            <CardHeader className="pb-2">
-                              <CardTitle className="text-base">Orders ({noteData.orders.length})</CardTitle>
-                            </CardHeader>
-                            <CardContent className="pt-0 space-y-3">
-                              {noteData.orders.map((order: NoteOrder, index: number) => (
-                                <div key={index} className="border-l-2 pl-4 space-y-1 text-sm">
-                                  {order.type && <div className="font-medium">{order.type}</div>}
-                                  <div className="grid gap-1 md:grid-cols-2 text-muted-foreground">
-                                    {order.priority && <div>Priority: {order.priority}</div>}
-                                    {order.status && <div>Status: {order.status}</div>}
-                                    {order.dateOrdered && <div>Date Ordered: {order.dateOrdered}</div>}
-                                    {order.details && <div className="md:col-span-2">Details: {order.details}</div>}
-                                  </div>
-                                </div>
-                              ))}
-                            </CardContent>
-                          </Card>
-                        )}
-
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <p className="text-muted-foreground">No notes available</p>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Transcripts Tab */}
-        <TabsContent value="transcripts" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Transcripts</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {transcripts.length > 0 ? (
-                <div className="space-y-4">
-                  {transcripts.map((transcript, index) => (
-                    <div key={transcript.id} className="border rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium">
-                          Transcript {index + 1}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {formatDateTime(transcript.createdAt)}
-                        </span>
-                      </div>
-                      <p className="text-sm whitespace-pre-wrap">
-                        {transcript.text || transcript.rawText || "No transcript text"}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-muted-foreground">No transcripts available</p>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Documents Tab */}
-        <TabsContent value="documents" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Documents</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {uniqueDocuments.length > 0 ? (
-                <div className="space-y-2">
-                  {uniqueDocuments.map((doc) => (
-                    <div
-                      key={doc.id}
-                      className={cn(
-                        "flex items-center justify-between border rounded-lg p-4 transition-colors",
-                        canPreview(doc.mimeType) && "hover:bg-accent/50 cursor-pointer"
-                      )}
-                      onClick={() => canPreview(doc.mimeType) && handlePreview(doc)}
-                    >
-                      <div className="flex items-center gap-3 flex-1">
-                        <div className="text-muted-foreground">
-                          {getFileIcon(doc.mimeType)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium truncate">{doc.filename}</div>
-                          <div className="text-sm text-muted-foreground">
-                            {doc.mimeType} • {formatFileSize(doc.size)}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="text-xs text-muted-foreground">
-                          {formatDateTime(doc.uploadedAt)}
-                        </div>
-                        {canPreview(doc.mimeType) && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handlePreview(doc);
-                            }}
-                            disabled={isLoadingPreview && previewDocument?.id === doc.id}
-                            title="Preview"
-                          >
-                            {isLoadingPreview && previewDocument?.id === doc.id ? (
-                              <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                            ) : (
-                              <Eye className="h-4 w-4" />
-                            )}
-                          </Button>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDownload(doc);
-                          }}
-                          disabled={isDownloading === doc.id}
-                          title="Download"
-                        >
-                          {isDownloading === doc.id ? (
-                            <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                          ) : (
-                            <Download className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-muted-foreground">No documents available</p>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Audit Log Tab */}
-        <TabsContent value="audit" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Audit Log</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {auditLogs.length > 0 ? (
-                <div className="space-y-4">
-                  {auditLogs.map((log, index) => (
-                    <div key={index} className="flex gap-4 border-l-2 pl-4 py-2">
-                      <div className="flex-shrink-0 mt-1">
-                        {getActionIcon(log.action)}
-                      </div>
-                      <div className="flex-1 space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">
-                            {formatActionName(log.action)}
-                          </span>
-                          {log.fromStatus && (
-                            <>
-                              <span className="text-muted-foreground">→</span>
-                              <Badge variant="outline" className="text-xs">
-                                {formatStatus(log.fromStatus)}
-                              </Badge>
-                              <span className="text-muted-foreground">→</span>
-                            </>
-                          )}
-                          {(() => {
-                            const badge = getStatusBadge(log.toStatus);
-                            return (
-                              <Badge variant={badge.variant} className={cn("text-xs", badge.className)}>
-                                {formatStatus(log.toStatus)}
-                              </Badge>
-                            );
-                          })()}
-                        </div>
-                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                          <div className="flex items-center gap-1">
-                            <User className="h-3 w-3" />
-                            {log.userName || log.userId || "Unknown"}
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {formatDateTime(log.timestamp)}
-                          </div>
-                        </div>
-                        {log.reason && (
-                          <div className="text-sm text-muted-foreground italic">
-                            Reason: {log.reason}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-muted-foreground">No audit log entries</p>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+        </ClearingCard>
+      )}
 
       {/* Document Preview Dialog */}
       {previewDocument && (
         <Dialog open={!!previewDocument} onOpenChange={handleClosePreview}>
-          <DialogContent className="max-w-4xl max-h-[90vh]">
+          <DialogContent className="max-h-[90vh] sm:max-w-4xl">
             <DialogHeader>
               <DialogTitle>{previewDocument.filename}</DialogTitle>
             </DialogHeader>
             <div className="flex-1 overflow-auto">
               {previewUrl ? (
                 previewDocument.mimeType.startsWith("image/") ? (
-                  <div className="flex items-center justify-center w-full">
+                  <div className="flex w-full items-center justify-center">
                     <NextImage
                       src={previewUrl}
                       alt={previewDocument.filename}
                       width={1600}
                       height={1200}
                       unoptimized
-                      className="max-w-full max-h-[70vh] object-contain rounded-lg"
+                      className="max-h-[70vh] max-w-full rounded-lg object-contain"
                     />
                   </div>
                 ) : previewDocument.mimeType === "application/pdf" ? (
-                  <div className="w-full h-full min-h-[600px]">
+                  <div className="h-full min-h-[600px] w-full">
                     <iframe
                       src={previewUrl}
-                      className="w-full h-full min-h-[600px] border-0 rounded-lg"
+                      className="h-full min-h-[600px] w-full rounded-lg border-0"
                       title={previewDocument.filename}
                     />
                   </div>
                 ) : (
-                  <div className="flex items-center justify-center h-full min-h-[400px]">
+                  <div className="flex h-full min-h-[400px] items-center justify-center">
                     <div className="text-center">
-                      <File className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                      <p className="text-muted-foreground mb-4">
+                      <File
+                        className="mx-auto mb-4 h-12 w-12"
+                        style={{ color: "var(--ink-3)" }}
+                      />
+                      <p
+                        className="mb-4 text-[13px]"
+                        style={{ color: "var(--ink-3)" }}
+                      >
                         Preview not available for this file type
                       </p>
-                      <Button onClick={() => handleDownload(previewDocument)}>
-                        <Download className="h-4 w-4 mr-2" />
-                        Download to View
-                      </Button>
+                      <Btn
+                        kind="accent"
+                        icon={<Download className="h-4 w-4" />}
+                        onClick={() => handleDownload(previewDocument)}
+                      >
+                        Download to view
+                      </Btn>
                     </div>
                   </div>
                 )
               ) : (
-                <div className="flex items-center justify-center h-full min-h-[400px]">
+                <div className="flex h-full min-h-[400px] items-center justify-center">
                   <div className="text-center">
-                    <div className="h-8 w-8 animate-spin rounded-full border-4 border-current border-t-transparent mx-auto mb-4" />
-                    <p className="text-muted-foreground">Loading preview...</p>
+                    <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-4 border-current border-t-transparent" />
+                    <p
+                      className="text-[13px]"
+                      style={{ color: "var(--ink-3)" }}
+                    >
+                      Loading preview…
+                    </p>
                   </div>
                 </div>
               )}
@@ -1418,4 +2107,3 @@ export function VisitDetailsContent({
     </div>
   );
 }
-

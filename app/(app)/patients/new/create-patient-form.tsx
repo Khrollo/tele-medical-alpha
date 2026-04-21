@@ -7,7 +7,7 @@ import * as z from "zod";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Save, Phone, Mail, Calendar, Cross, X, Clock, User, AlertCircle, Search, ChevronDown, Check, Mic, Square, AudioLines } from "lucide-react";
+import { Save, Phone, Mail, Calendar, Cross, X, Clock, AlertCircle, Search, ChevronDown, Check, Mic, Square, AudioLines } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,11 +27,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { createPatientAction, updatePatientAssignmentAction, extractPatientIntakeFromTranscriptAction } from "@/app/_actions/patients";
+import { createPatientAction, updatePatientAssignmentAction, updatePatientAvatarAction, extractPatientIntakeFromTranscriptAction } from "@/app/_actions/patients";
 import { createVisitDraftAction, updateVisitWaitingRoomAction } from "@/app/_actions/visits";
 import { cn } from "@/app/_lib/utils/cn";
 import { ConsentFormDialog } from "@/app/_components/patient-chart/consent-form-dialog";
 import { createLiveSpeechController, isLiveSpeechSupported } from "@/app/_lib/ai/live-speech";
+import { Avatar } from "@/components/ui/clearing";
 
 const cleanPhone = (phone: string) => phone.replace(/\D/g, "");
 
@@ -336,6 +337,8 @@ export function CreatePatientForm() {
   const [showPostCreateModal, setShowPostCreateModal] = React.useState(false);
   const [showConsentDialog, setShowConsentDialog] = React.useState(false);
   const [createdPatientId, setCreatedPatientId] = React.useState<string | null>(null);
+  const [createdPatientName, setCreatedPatientName] = React.useState<string>("");
+  const [createdPatientAvatarUrl, setCreatedPatientAvatarUrl] = React.useState<string | null>(null);
   const [pendingPatientData, setPendingPatientData] = React.useState<CreatePatientFormData | null>(null);
   const [isHandlingAction, setIsHandlingAction] = React.useState(false);
   const [showDuplicateModal, setShowDuplicateModal] = React.useState(false);
@@ -1156,6 +1159,10 @@ export function CreatePatientForm() {
             if (result.success) {
               toast.success("Patient created successfully");
               setCreatedPatientId(result.patientId || null);
+              setCreatedPatientName(
+                `${pendingPatientData.firstName} ${pendingPatientData.lastName}`.trim()
+              );
+              setCreatedPatientAvatarUrl(null);
               setPendingPatientData(null);
 
               // Close consent dialog and show post-create modal
@@ -1189,6 +1196,57 @@ export function CreatePatientForm() {
               What would you like to do next?
             </DialogDescription>
           </DialogHeader>
+          <div className="flex items-center gap-3 pt-2 pb-1">
+            <Avatar
+              name={createdPatientName || "?"}
+              src={createdPatientAvatarUrl}
+              size={48}
+            />
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium truncate">
+                {createdPatientName || "New patient"}
+              </div>
+              <label className="text-xs text-muted-foreground cursor-pointer hover:underline">
+                {createdPatientAvatarUrl ? "Change photo" : "Upload photo (optional)"}
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  disabled={isHandlingAction || !createdPatientId}
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (!file || !createdPatientId) return;
+                    setIsHandlingAction(true);
+                    try {
+                      const body = new FormData();
+                      body.append("avatar", file);
+                      body.append("patientId", createdPatientId);
+                      const res = await fetch("/api/upload/patient-avatar", {
+                        method: "POST",
+                        body,
+                      });
+                      if (!res.ok) {
+                        const err = await res.json().catch(() => ({}));
+                        throw new Error(err?.error || "Upload failed");
+                      }
+                      const { avatarUrl } = (await res.json()) as { avatarUrl: string };
+                      await updatePatientAvatarAction(createdPatientId, avatarUrl);
+                      setCreatedPatientAvatarUrl(avatarUrl);
+                      toast.success("Profile photo added");
+                    } catch (error) {
+                      console.error("Avatar upload error:", error);
+                      toast.error(
+                        error instanceof Error ? error.message : "Failed to upload photo"
+                      );
+                    } finally {
+                      setIsHandlingAction(false);
+                    }
+                  }}
+                />
+              </label>
+            </div>
+          </div>
           <div className="space-y-3 py-4">
             <Button
               variant="outline"
@@ -1209,7 +1267,11 @@ export function CreatePatientForm() {
               }}
               disabled={isHandlingAction}
             >
-              <User className="h-5 w-5" />
+              <Avatar
+                name={createdPatientName || "?"}
+                src={createdPatientAvatarUrl}
+                size={22}
+              />
               <div className="flex flex-col items-start">
                 <span className="font-semibold">Start Visit</span>
                 <span className="text-xs text-muted-foreground">

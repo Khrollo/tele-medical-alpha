@@ -3,8 +3,19 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Trash2, Download, FileText, Image, File, Calendar, Eye, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import {
+  Plus,
+  Trash2,
+  Download,
+  FileText,
+  Image as ImageIcon,
+  File,
+  Eye,
+  X,
+  Folder,
+  Upload,
+  HardDrive,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -15,8 +26,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import {
+  Btn,
+  ClearingCard,
+  Pill,
+  SubTabHeader,
+} from "@/components/ui/clearing";
 import {
   deleteDocumentAction,
   getDocumentSignedUrlAction,
@@ -211,7 +226,7 @@ export function DocumentsContent({
       if (!result.success || !result.signedUrl) {
         throw new Error(result.error || "Failed to get download URL");
       }
-      
+
       // Open in new tab for viewing/downloading
       window.open(result.signedUrl, "_blank");
       toast.success("Opening document...");
@@ -248,7 +263,7 @@ export function DocumentsContent({
   const formatFileSize = (size: string | number) => {
     const bytes = typeof size === "string" ? parseInt(size, 10) : size;
     if (isNaN(bytes)) return "Unknown size";
-    
+
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -256,7 +271,7 @@ export function DocumentsContent({
 
   const getFileIcon = (mimeType: string) => {
     if (mimeType.startsWith("image/")) {
-      return <Image className="h-5 w-5" />;
+      return <ImageIcon className="h-5 w-5" />;
     }
     if (mimeType === "application/pdf") {
       return <FileText className="h-5 w-5" />;
@@ -268,133 +283,253 @@ export function DocumentsContent({
     return mimeType.startsWith("image/") || mimeType === "application/pdf";
   };
 
+  // Summary metrics
+  const totalDocs = documents.length;
+  const imageCount = documents.filter((d) => d.mimeType.startsWith("image/")).length;
+  const pdfCount = documents.filter((d) => d.mimeType === "application/pdf").length;
+  const totalBytes = documents.reduce((acc, d) => acc + (parseInt(d.size, 10) || 0), 0);
+
+  const summaryMetrics: Array<{
+    k: string;
+    v: string | number;
+    icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+    tone: string;
+  }> = [
+    { k: "Total documents", v: totalDocs, icon: Folder, tone: "var(--ink-3)" },
+    { k: "Images", v: imageCount, icon: ImageIcon, tone: "var(--info)" },
+    { k: "PDFs", v: pdfCount, icon: FileText, tone: "var(--critical)" },
+    {
+      k: "Storage used",
+      v: formatFileSize(totalBytes),
+      icon: HardDrive,
+      tone: "var(--ink-3)",
+    },
+  ];
+
   return (
-    <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Documents</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Manage documents for {patientName}
-          </p>
-        </div>
-        <Button onClick={() => setShowUploadModal(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Upload Document
-        </Button>
+    <div className="flex flex-1 flex-col gap-5 px-4 py-6 md:px-8 md:py-8">
+      <SubTabHeader
+        eyebrow="Chart · Documents"
+        title="Documents"
+        subtitle={`Manage documents for ${patientName}.`}
+        actions={
+          <Btn
+            kind="accent"
+            icon={<Plus className="h-4 w-4" />}
+            onClick={() => setShowUploadModal(true)}
+          >
+            Upload
+          </Btn>
+        }
+      />
+
+      {/* Summary strip */}
+      <div
+        className="grid overflow-hidden rounded-2xl"
+        style={{
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          border: "1px solid var(--line)",
+          background: "var(--card)",
+        }}
+      >
+        {summaryMetrics.map((m, i, arr) => {
+          const Icon = m.icon;
+          return (
+            <div
+              key={m.k}
+              className="flex flex-col gap-1.5 px-5 py-4"
+              style={{
+                borderRight:
+                  i < arr.length - 1 ? "1px solid var(--line)" : undefined,
+              }}
+            >
+              <div className="flex items-center justify-between">
+                <div
+                  className="text-[11px] uppercase"
+                  style={{ color: "var(--ink-3)", letterSpacing: "0.1em" }}
+                >
+                  {m.k}
+                </div>
+                <Icon className="h-3.5 w-3.5" style={{ color: m.tone }} />
+              </div>
+              <div
+                className="serif"
+                style={{
+                  fontSize: 28,
+                  lineHeight: 1,
+                  letterSpacing: "-0.02em",
+                  color: "var(--ink)",
+                }}
+              >
+                {m.v}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      {/* Documents List */}
+      {/* Documents list */}
       {documents.length === 0 ? (
-        <Card>
-          <CardContent className="flex items-center justify-center py-12">
-            <div className="text-center">
-              <p className="text-muted-foreground mb-4">No documents uploaded</p>
-              <Button onClick={() => setShowUploadModal(true)} variant="outline">
-                <Plus className="h-4 w-4 mr-2" />
-                Upload First Document
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-4">
-          {documents.map((document) => (
-            <Card 
-              key={document.id} 
-              className={cn(
-                "relative transition-colors",
-                canPreview(document.mimeType) && "cursor-pointer hover:bg-accent/50"
-              )}
-              onClick={() => canPreview(document.mimeType) && handlePreview(document)}
+        <ClearingCard>
+          <div className="flex flex-col items-center justify-center gap-3 py-12">
+            <Folder className="h-8 w-8" style={{ color: "var(--ink-3)" }} />
+            <p className="text-[13px]" style={{ color: "var(--ink-3)" }}>
+              No documents uploaded
+            </p>
+            <Btn
+              kind="soft"
+              icon={<Plus className="h-3.5 w-3.5" />}
+              onClick={() => setShowUploadModal(true)}
             >
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start gap-3 flex-1">
-                    <div className="mt-1 text-muted-foreground">
-                      {getFileIcon(document.mimeType)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <CardTitle className="text-lg font-semibold truncate">
-                        {document.filename}
-                      </CardTitle>
-                      <div className="flex items-center gap-3 mt-2 text-sm text-muted-foreground">
-                        <div className="flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          <span>{formatDate(document.uploadedAt)}</span>
-                        </div>
-                        <span>•</span>
-                        <span>{formatFileSize(document.size)}</span>
-                        {document.visitId && (
-                          <>
-                            <span>•</span>
-                            <Badge variant="outline" className="text-xs">
-                              Visit Document
-                            </Badge>
-                          </>
-                        )}
+              Upload first document
+            </Btn>
+          </div>
+        </ClearingCard>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {documents.map((document) => {
+            const isPreviewable = canPreview(document.mimeType);
+            return (
+              <ClearingCard key={document.id} pad={0}>
+                <div
+                  className={cn(
+                    "flex flex-col gap-3 p-4",
+                    isPreviewable && "cursor-pointer"
+                  )}
+                  onClick={() => isPreviewable && handlePreview(document)}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3 min-w-0 flex-1">
+                      <div
+                        className="shrink-0 flex h-9 w-9 items-center justify-center rounded-lg"
+                        style={{
+                          background: "var(--paper-2)",
+                          color: "var(--ink-2)",
+                        }}
+                      >
+                        {getFileIcon(document.mimeType)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p
+                          className="mono truncate text-[12.5px] font-medium"
+                          style={{ color: "var(--ink)" }}
+                          title={document.filename}
+                        >
+                          {document.filename}
+                        </p>
+                        <p
+                          className="mono mt-1 text-[10.5px]"
+                          style={{ color: "var(--ink-3)" }}
+                        >
+                          {formatDate(document.uploadedAt)}
+                        </p>
                       </div>
                     </div>
-                  </div>
-                  <div className="flex gap-1 ml-4">
-                    {canPreview(document.mimeType) && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
+                    <div
+                      className="flex gap-1"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {isPreviewable && (
+                        <button
+                          type="button"
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md disabled:opacity-50"
+                          style={{ color: "var(--ink-2)" }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handlePreview(document);
+                          }}
+                          onMouseEnter={(e) => {
+                            (e.currentTarget as HTMLButtonElement).style.background =
+                              "var(--paper-3)";
+                          }}
+                          onMouseLeave={(e) => {
+                            (e.currentTarget as HTMLButtonElement).style.background =
+                              "transparent";
+                          }}
+                          disabled={
+                            isLoadingPreview && previewDocument?.id === document.id
+                          }
+                          title="Preview"
+                          aria-label="Preview"
+                        >
+                          {isLoadingPreview && previewDocument?.id === document.id ? (
+                            <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                          ) : (
+                            <Eye className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md disabled:opacity-50"
+                        style={{ color: "var(--ink-2)" }}
                         onClick={(e) => {
                           e.stopPropagation();
-                          handlePreview(document);
+                          handleDownload(document);
                         }}
-                        disabled={isLoadingPreview && previewDocument?.id === document.id}
-                        title="Preview"
+                        onMouseEnter={(e) => {
+                          (e.currentTarget as HTMLButtonElement).style.background =
+                            "var(--paper-3)";
+                        }}
+                        onMouseLeave={(e) => {
+                          (e.currentTarget as HTMLButtonElement).style.background =
+                            "transparent";
+                        }}
+                        disabled={isDownloading === document.id}
+                        title="Download"
+                        aria-label="Download"
                       >
-                        {isLoadingPreview && previewDocument?.id === document.id ? (
-                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                        {isDownloading === document.id ? (
+                          <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
                         ) : (
-                          <Eye className="h-4 w-4" />
+                          <Download className="h-3.5 w-3.5" />
                         )}
-                      </Button>
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md disabled:opacity-50"
+                        style={{ color: "var(--critical)" }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(document.id, document.storageUrl);
+                        }}
+                        onMouseEnter={(e) => {
+                          (e.currentTarget as HTMLButtonElement).style.background =
+                            "var(--critical-soft)";
+                        }}
+                        onMouseLeave={(e) => {
+                          (e.currentTarget as HTMLButtonElement).style.background =
+                            "transparent";
+                        }}
+                        disabled={isDeleting === document.id}
+                        title="Delete"
+                        aria-label="Delete"
+                      >
+                        {isDeleting === document.id ? (
+                          <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                  <div
+                    className="flex flex-wrap items-center gap-2 pt-2"
+                    style={{ borderTop: "1px solid var(--line)" }}
+                  >
+                    <Pill tone="neutral">
+                      <span className="mono">{formatFileSize(document.size)}</span>
+                    </Pill>
+                    {document.visitId && (
+                      <Pill tone="ok" dot>
+                        Visit document
+                      </Pill>
                     )}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDownload(document);
-                      }}
-                      disabled={isDownloading === document.id}
-                      title="Download"
-                    >
-                      {isDownloading === document.id ? (
-                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                      ) : (
-                        <Download className="h-4 w-4" />
-                      )}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-destructive hover:text-destructive"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDelete(document.id, document.storageUrl);
-                      }}
-                      disabled={isDeleting === document.id}
-                      title="Delete"
-                    >
-                      {isDeleting === document.id ? (
-                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                      ) : (
-                        <Trash2 className="h-4 w-4" />
-                      )}
-                    </Button>
                   </div>
                 </div>
-              </CardHeader>
-            </Card>
-          ))}
+              </ClearingCard>
+            );
+          })}
         </div>
       )}
 
@@ -410,14 +545,15 @@ export function DocumentsContent({
       >
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>Upload Document</DialogTitle>
+            <DialogTitle>Upload document</DialogTitle>
             <DialogDescription>
-              Upload a document for this patient. Supported formats: Images (JPEG, PNG, GIF, WebP), PDF, Word documents (DOC, DOCX). Max size: 10MB.
+              Upload a document for this patient. Supported formats: Images (JPEG,
+              PNG, GIF, WebP), PDF, Word documents (DOC, DOCX). Max size: 10MB.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="file-upload">Select File(s)</Label>
+              <Label htmlFor="file-upload">Select file(s)</Label>
               <Input
                 id="file-upload"
                 type="file"
@@ -429,16 +565,19 @@ export function DocumentsContent({
                 className={cn(isUploading && "opacity-50 cursor-not-allowed")}
               />
               {isUploading && (
-                <p className="text-sm text-muted-foreground">
+                <p
+                  className="text-[12.5px]"
+                  style={{ color: "var(--ink-3)" }}
+                >
                   Uploading... Please wait.
                 </p>
               )}
             </div>
           </div>
           <DialogFooter>
-            <Button
+            <Btn
+              kind="ghost"
               type="button"
-              variant="outline"
               onClick={() => {
                 setShowUploadModal(false);
                 if (fileInputRef.current) {
@@ -448,62 +587,92 @@ export function DocumentsContent({
               disabled={isUploading}
             >
               Cancel
-            </Button>
+            </Btn>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Preview Modal */}
-      <Dialog open={!!previewDocument} onOpenChange={(open) => !open && handleClosePreview()}>
+      <Dialog
+        open={!!previewDocument}
+        onOpenChange={(open) => !open && handleClosePreview()}
+      >
         <DialogContent className="sm:max-w-[90vw] max-w-[90vw] h-[90vh] max-h-[90vh] p-0 flex flex-col">
           {previewDocument && (
             <>
-              <DialogHeader className="px-6 pt-6 pb-4 border-b flex-shrink-0">
+              <DialogHeader
+                className="px-6 pt-6 pb-4 flex-shrink-0"
+                style={{ borderBottom: "1px solid var(--line)" }}
+              >
                 <div className="flex items-center justify-between">
                   <div className="flex-1 min-w-0">
-                    <DialogTitle className="text-lg font-semibold truncate">
+                    <DialogTitle className="mono text-[14px] truncate">
                       {previewDocument.filename}
                     </DialogTitle>
                     <DialogDescription className="mt-1">
-                      {formatFileSize(previewDocument.size)} • {formatDate(previewDocument.uploadedAt)}
+                      <span className="mono">
+                        {formatFileSize(previewDocument.size)} •{" "}
+                        {formatDate(previewDocument.uploadedAt)}
+                      </span>
                     </DialogDescription>
                   </div>
                   <div className="flex gap-2 ml-4">
-                    <Button
-                      variant="outline"
+                    <Btn
+                      kind="ghost"
                       size="sm"
+                      icon={
+                        isDownloading === previewDocument.id ? (
+                          <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                        ) : (
+                          <Download className="h-3.5 w-3.5" />
+                        )
+                      }
                       onClick={() => handleDownload(previewDocument)}
                       disabled={isDownloading === previewDocument.id}
                     >
-                      {isDownloading === previewDocument.id ? (
-                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />
-                      ) : (
-                        <Download className="h-4 w-4 mr-2" />
-                      )}
                       Download
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
+                    </Btn>
+                    <button
+                      type="button"
                       onClick={handleClosePreview}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-md"
+                      style={{ color: "var(--ink-2)" }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLButtonElement).style.background =
+                          "var(--paper-3)";
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLButtonElement).style.background =
+                          "transparent";
+                      }}
                       title="Close"
+                      aria-label="Close"
                     >
                       <X className="h-4 w-4" />
-                    </Button>
+                    </button>
                   </div>
                 </div>
               </DialogHeader>
-              <div className="flex-1 overflow-auto p-6 bg-muted/50 min-h-0">
+              <div
+                className="flex-1 overflow-auto p-6 min-h-0"
+                style={{ background: "var(--paper-2)" }}
+              >
                 {isLoadingPreview ? (
                   <div className="flex items-center justify-center h-full min-h-[400px]">
                     <div className="text-center">
                       <div className="h-8 w-8 animate-spin rounded-full border-4 border-current border-t-transparent mx-auto mb-4" />
-                      <p className="text-muted-foreground">Loading preview...</p>
+                      <p
+                        className="text-[13px]"
+                        style={{ color: "var(--ink-3)" }}
+                      >
+                        Loading preview...
+                      </p>
                     </div>
                   </div>
                 ) : previewUrl ? (
                   previewDocument.mimeType.startsWith("image/") ? (
                     <div className="flex items-center justify-center h-full min-h-[400px]">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={previewUrl}
                         alt={previewDocument.filename}
@@ -521,14 +690,23 @@ export function DocumentsContent({
                   ) : (
                     <div className="flex items-center justify-center h-full min-h-[400px]">
                       <div className="text-center">
-                        <File className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                        <p className="text-muted-foreground mb-4">
+                        <File
+                          className="h-12 w-12 mx-auto mb-4"
+                          style={{ color: "var(--ink-3)" }}
+                        />
+                        <p
+                          className="text-[13px] mb-4"
+                          style={{ color: "var(--ink-3)" }}
+                        >
                           Preview not available for this file type
                         </p>
-                        <Button onClick={() => handleDownload(previewDocument)}>
-                          <Download className="h-4 w-4 mr-2" />
-                          Download to View
-                        </Button>
+                        <Btn
+                          kind="accent"
+                          icon={<Upload className="h-3.5 w-3.5" />}
+                          onClick={() => handleDownload(previewDocument)}
+                        >
+                          Download to view
+                        </Btn>
                       </div>
                     </div>
                   )
@@ -536,7 +714,12 @@ export function DocumentsContent({
                   <div className="flex items-center justify-center h-full min-h-[400px]">
                     <div className="text-center">
                       <div className="h-8 w-8 animate-spin rounded-full border-4 border-current border-t-transparent mx-auto mb-4" />
-                      <p className="text-muted-foreground">Loading preview...</p>
+                      <p
+                        className="text-[13px]"
+                        style={{ color: "var(--ink-3)" }}
+                      >
+                        Loading preview...
+                      </p>
                     </div>
                   </div>
                 )}

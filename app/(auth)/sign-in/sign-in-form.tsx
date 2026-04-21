@@ -3,12 +3,9 @@
 import { useState, FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { ArrowRight, WifiOff } from "lucide-react";
 import { authClient } from "@/app/_lib/auth/auth-client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+import { Btn } from "@/components/ui/clearing";
 
 export function SignInForm() {
   const searchParams = useSearchParams();
@@ -54,7 +51,6 @@ export function SignInForm() {
     setError(null);
     setActiveMethod("email");
 
-    // Basic validation
     if (!email.trim()) {
       setError("Email is required");
       setActiveMethod(null);
@@ -79,7 +75,10 @@ export function SignInForm() {
         return;
       }
 
-      // Full navigation so the server reads the real session after Better Auth sets cookies.
+      const requestedRedirect = searchParams.get("redirect");
+      const safeRedirect =
+        requestedRedirect && requestedRedirect.startsWith("/") ? requestedRedirect : "/";
+
       window.location.assign(safeRedirect);
     } catch (err) {
       setError(err instanceof Error ? err.message : "An unexpected error occurred");
@@ -87,109 +86,154 @@ export function SignInForm() {
     }
   };
 
+  const inputStyle: React.CSSProperties = {
+    height: 42,
+    padding: "0 14px",
+    border: "1px solid var(--line)",
+    borderRadius: 10,
+    background: "var(--paper)",
+    outline: "none",
+    fontSize: 14,
+    color: "var(--ink)",
+  };
+
   return (
-    <Card className="w-full max-w-md">
-      <CardHeader className="space-y-1">
-        <CardTitle className="text-2xl font-bold text-center">Sign In</CardTitle>
-        <CardDescription className="text-center">
-          Continue with Google to access your account. Email and password are
-          available as a fallback.
-        </CardDescription>
-      </CardHeader>
-      <form onSubmit={handleSubmit}>
-        <CardContent className="space-y-4">
-          {error && (
-            <div
-              className="rounded-md bg-destructive/15 p-3 text-sm text-destructive"
-              role="alert"
+    <form
+      onSubmit={handleSubmit}
+      className="flex w-full max-w-[380px] flex-col gap-6"
+    >
+      <div>
+        <div
+          className="text-[11px] uppercase"
+          style={{ color: "var(--ink-3)", letterSpacing: "0.12em" }}
+        >
+          Welcome back
+        </div>
+        <h1
+          className="serif mt-1.5"
+          style={{ fontSize: 40, lineHeight: 1.05, letterSpacing: "-0.02em", color: "var(--ink)", margin: 0 }}
+        >
+          Sign in to your shift.
+        </h1>
+      </div>
+
+      {error && (
+        <div
+          role="alert"
+          className="rounded-[10px] px-3 py-2.5 text-[13px]"
+          style={{
+            background: "var(--critical-soft)",
+            color: "var(--critical)",
+            border: "1px solid transparent",
+          }}
+        >
+          {error}
+        </div>
+      )}
+
+      <div className="flex flex-col gap-3.5">
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[11.5px]" style={{ color: "var(--ink-3)" }}>
+            Work email
+          </span>
+          <input
+            id="email"
+            type="email"
+            placeholder="name@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={isLoading}
+            required
+            aria-required="true"
+            aria-invalid={error ? "true" : "false"}
+            style={inputStyle}
+          />
+        </label>
+
+        <label className="flex flex-col gap-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[11.5px]" style={{ color: "var(--ink-3)" }}>
+              Password
+            </span>
+            <Link
+              href="/reset-password"
+              className="text-[11.5px] hover:underline"
+              style={{ color: "var(--brand-ink)", textDecoration: "none" }}
             >
-              {error}
-            </div>
-          )}
-
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full"
-            onClick={handleGoogleSignIn}
+              Forgot?
+            </Link>
+          </div>
+          <input
+            id="password"
+            type="password"
+            placeholder="Enter your password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
             disabled={isLoading}
-            aria-busy={activeMethod === "google"}
-          >
-            {activeMethod === "google" ? "Redirecting to Google..." : "Continue with Google"}
-          </Button>
+            required
+            aria-required="true"
+            aria-invalid={error ? "true" : "false"}
+            style={{ ...inputStyle, letterSpacing: "0.2em" }}
+          />
+        </label>
+      </div>
 
-          <div className="space-y-2">
-            <Separator />
-            <p className="text-center text-sm text-muted-foreground">
-              Use email and password only if needed
-            </p>
-          </div>
+      <Btn
+        kind="accent"
+        size="lg"
+        full
+        type="submit"
+        disabled={isLoading}
+        aria-busy={activeMethod === "email"}
+        iconRight={<ArrowRight className="h-4 w-4" />}
+      >
+        {activeMethod === "email" ? "Signing in…" : "Sign in"}
+      </Btn>
 
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="name@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              disabled={isLoading}
-              required
-              aria-required="true"
-              aria-invalid={error ? "true" : "false"}
-              className="w-full"
-            />
-          </div>
+      <div className="flex items-center gap-3" style={{ color: "var(--ink-3)" }}>
+        <div className="h-px flex-1" style={{ background: "var(--line)" }} />
+        <span className="text-[10.5px] uppercase" style={{ letterSpacing: "0.12em" }}>or</span>
+        <div className="h-px flex-1" style={{ background: "var(--line)" }} />
+      </div>
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="password">Password</Label>
-              <Link
-                href="/reset-password"
-                className="text-sm text-muted-foreground hover:text-foreground underline underline-offset-4"
-              >
-                Forgot password?
-              </Link>
-            </div>
-            <Input
-              id="password"
-              type="password"
-              placeholder="Enter your password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={isLoading}
-              required
-              aria-required="true"
-              aria-invalid={error ? "true" : "false"}
-              className="w-full"
-            />
-          </div>
-        </CardContent>
+      <Btn
+        kind="ghost"
+        size="lg"
+        full
+        type="button"
+        disabled={isLoading}
+        aria-busy={activeMethod === "google"}
+        onClick={handleGoogleSignIn}
+        icon={
+          <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden>
+            <path fill="#4285F4" d="M21.6 12.227c0-.709-.064-1.39-.182-2.045H12v3.868h5.382a4.6 4.6 0 0 1-1.997 3.018v2.51h3.232c1.891-1.74 2.983-4.305 2.983-7.351Z" />
+            <path fill="#34A853" d="M12 22c2.7 0 4.964-.895 6.618-2.422l-3.232-2.51c-.895.6-2.04.954-3.386.954-2.605 0-4.81-1.76-5.595-4.122H3.064v2.59A9.997 9.997 0 0 0 12 22Z" />
+            <path fill="#FBBC04" d="M6.405 13.9a6.005 6.005 0 0 1 0-3.8V7.51H3.064a9.997 9.997 0 0 0 0 8.98l3.341-2.59Z" />
+            <path fill="#EA4335" d="M12 5.978c1.468 0 2.785.504 3.823 1.494l2.866-2.866C16.96 2.99 14.696 2 12 2 8.105 2 4.74 4.236 3.064 7.51l3.341 2.59C7.19 7.738 9.395 5.978 12 5.978Z" />
+          </svg>
+        }
+      >
+        {activeMethod === "google" ? "Redirecting…" : "Continue with Google"}
+      </Btn>
 
-        <CardFooter className="flex flex-col space-y-4">
-          <Button
-            type="submit"
-            className="w-full"
-            disabled={isLoading}
-            aria-busy={activeMethod === "email"}
-          >
-            {activeMethod === "email" ? "Signing in..." : "Sign in with email"}
-          </Button>
+      <div
+        className="flex items-center gap-2 pt-3.5 text-[12px]"
+        style={{ color: "var(--ink-3)", borderTop: "1px solid var(--line)" }}
+      >
+        <WifiOff className="h-4 w-4" style={{ color: "var(--ok)" }} />
+        <span>Offline? You can still open recent patients — anything you save syncs later.</span>
+      </div>
 
-          <div className="w-full">
-            <Separator className="my-4" />
-            <p className="text-center text-sm text-muted-foreground">
-              Don&apos;t have an account?{" "}
-              <Link
-                href="/sign-up"
-                className="font-medium text-foreground hover:underline underline-offset-4"
-              >
-                Create account
-              </Link>
-            </p>
-          </div>
-        </CardFooter>
-      </form>
-    </Card>
+      <p className="text-center text-[13px]" style={{ color: "var(--ink-3)" }}>
+        Don&apos;t have an account?{" "}
+        <Link
+          href="/sign-up"
+          className="font-medium hover:underline"
+          style={{ color: "var(--ink)" }}
+        >
+          Create account
+        </Link>
+      </p>
+    </form>
   );
 }

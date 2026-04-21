@@ -2,8 +2,7 @@
 
 import * as React from "react";
 import { SideNav } from "@/components/side-nav";
-import { Button } from "@/components/ui/button";
-import { Menu } from "lucide-react";
+import { TopBar } from "@/components/top-bar";
 import { WorkflowCommandSearch } from "@/components/workflow-command-search";
 
 interface OpenNotesShellProps {
@@ -13,45 +12,28 @@ interface OpenNotesShellProps {
 }
 
 export function OpenNotesShell({ children, userRole, userName }: OpenNotesShellProps) {
-    const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
     const openSidebarRef = React.useRef<(() => void) | null>(null);
 
     return (
-        <div className="flex h-screen w-full overflow-hidden bg-background">
-            {/* SideNav */}
+        <div className="flex h-screen w-full overflow-hidden" style={{ background: "var(--paper)" }}>
             <SideNav
                 userRole={userRole}
                 userName={userName}
-                onMobileStateChange={setIsSidebarOpen}
                 openMenuRef={openSidebarRef}
             />
 
-            {/* Main Content Area */}
             <div className="flex flex-1 flex-col overflow-hidden transition-all duration-300 ease-in-out">
-                {/* Top Bar */}
-                <div className="flex h-16 items-center gap-4 border-b border-border bg-background px-6">
-                    {/* Mobile hamburger button - inline with search */}
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="md:hidden shrink-0"
-                        onClick={() => {
-                            openSidebarRef.current?.();
-                        }}
-                    >
-                        <Menu className="h-5 w-5" />
-                        <span className="sr-only">Open menu</span>
-                    </Button>
-                    <div className="flex-1 min-w-0">
-                        <WorkflowCommandSearch
-                            placeholder="Search inbox, patients, or workflows..."
-                            className="max-w-md"
-                        />
-                    </div>
-                </div>
+                <TopBar
+                    breadcrumb={["Clinic", "Open notes"]}
+                    onOpenMobileMenu={() => openSidebarRef.current?.()}
+                >
+                    <WorkflowCommandSearch
+                        placeholder="Search inbox, patients, or workflows..."
+                        className="max-w-md"
+                    />
+                </TopBar>
 
-                {/* Page Content */}
-                <div className="flex-1 overflow-y-auto bg-background">
+                <div className="scroll flex-1 overflow-y-auto" style={{ background: "var(--paper)" }}>
                     {children}
                 </div>
             </div>

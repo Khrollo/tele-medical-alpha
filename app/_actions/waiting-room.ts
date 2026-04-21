@@ -13,6 +13,10 @@ export async function fetchWaitingRoomPatientsAction() {
     .select({
       id: patients.id,
       fullName: patients.fullName,
+      avatarUrl: patients.avatarUrl,
+      dob: patients.dob,
+      allergies: patients.allergies,
+      currentMedications: patients.currentMedications,
       createdAt: patients.createdAt,
     })
     .from(patients)
@@ -93,6 +97,12 @@ export async function fetchWaitingRoomPatientsAction() {
     return {
       id: patient.id,
       fullName: patient.fullName,
+      avatarUrl: patient.avatarUrl,
+      dob: patient.dob,
+      allergiesCount: Array.isArray(patient.allergies) ? patient.allergies.length : 0,
+      medicationsCount: Array.isArray(patient.currentMedications)
+        ? patient.currentMedications.length
+        : 0,
       createdAt: patient.createdAt.toISOString(),
       visit: visit
         ? {

@@ -6,8 +6,19 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { toast } from "sonner";
-import { Plus, Trash2, Pencil, Activity, Heart, Thermometer, Scale, Ruler, Wind } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import {
+  Plus,
+  Trash2,
+  Pencil,
+  Activity,
+  Heart,
+  Thermometer,
+  Scale,
+  Ruler,
+  Wind,
+  Droplet,
+  TrendingUp,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -20,7 +31,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Btn,
+  ClearingCard,
+  Sparkline,
+  SubTabHeader,
+} from "@/components/ui/clearing";
 import {
   addVitalAction,
   updateVitalAction,
@@ -42,12 +58,19 @@ import {
 const vitalSchema = z.object({
   date: z.string().min(1, "Date is required"),
   bp: z.string().optional(),
+  bpNote: z.string().optional(),
   hr: z.string().optional(),
+  hrNote: z.string().optional(),
   temp: z.string().optional(),
+  tempNote: z.string().optional(),
   weight: z.string().optional(),
+  weightNote: z.string().optional(),
   height: z.string().optional(),
+  heightNote: z.string().optional(),
   spo2: z.string().optional(),
+  spo2Note: z.string().optional(),
   rr: z.string().optional(),
+  rrNote: z.string().optional(),
   notes: z.string().optional(),
 });
 
@@ -67,7 +90,7 @@ type ChartSeriesKey =
   | "weight"
   | "spo2";
 
-interface ChartDataPoint {
+type ChartDataPoint = {
   id: string;
   date: string;
   displayDate: string;
@@ -83,75 +106,45 @@ interface ChartDataPoint {
   tempCAbnormal: boolean;
   weightAbnormal: boolean;
   spo2Abnormal: boolean;
-}
+};
 
 const SERIES_CONFIG: Array<{
   key: ChartSeriesKey;
   label: string;
-  colorClass: string;
   stroke: string;
   abnormalKey: keyof ChartDataPoint;
 }> = [
-  {
-    key: "bpSystolic",
-    label: "BP Systolic",
-    colorClass: "text-blue-600 dark:text-blue-400",
-    stroke: "hsl(var(--chart-1, 221.2 83.2% 53.3%))",
-    abnormalKey: "bpSystolicAbnormal",
-  },
-  {
-    key: "bpDiastolic",
-    label: "BP Diastolic",
-    colorClass: "text-cyan-600 dark:text-cyan-400",
-    stroke: "hsl(var(--chart-2, 188 94% 43%))",
-    abnormalKey: "bpDiastolicAbnormal",
-  },
-  {
-    key: "hr",
-    label: "HR",
-    colorClass: "text-rose-600 dark:text-rose-400",
-    stroke: "hsl(var(--chart-3, 346.8 77.2% 49.8%))",
-    abnormalKey: "hrAbnormal",
-  },
-  {
-    key: "tempC",
-    label: "Temp (C)",
-    colorClass: "text-orange-600 dark:text-orange-400",
-    stroke: "hsl(var(--chart-4, 24.6 95% 53.1%))",
-    abnormalKey: "tempCAbnormal",
-  },
-  {
-    key: "weight",
-    label: "Weight",
-    colorClass: "text-violet-600 dark:text-violet-400",
-    stroke: "hsl(var(--chart-5, 262.1 83.3% 57.8%))",
-    abnormalKey: "weightAbnormal",
-  },
-  {
-    key: "spo2",
-    label: "SpO2",
-    colorClass: "text-emerald-600 dark:text-emerald-400",
-    stroke: "hsl(142 72% 40%)",
-    abnormalKey: "spo2Abnormal",
-  },
+  { key: "bpSystolic", label: "BP Systolic", stroke: "var(--critical)", abnormalKey: "bpSystolicAbnormal" },
+  { key: "bpDiastolic", label: "BP Diastolic", stroke: "var(--brand-ink)", abnormalKey: "bpDiastolicAbnormal" },
+  { key: "hr", label: "Heart rate", stroke: "var(--critical)", abnormalKey: "hrAbnormal" },
+  { key: "tempC", label: "Temp (C)", stroke: "var(--warn)", abnormalKey: "tempCAbnormal" },
+  { key: "weight", label: "Weight", stroke: "var(--ink-2)", abnormalKey: "weightAbnormal" },
+  { key: "spo2", label: "SpO₂", stroke: "var(--info)", abnormalKey: "spo2Abnormal" },
 ];
 
-function parseNumericValue(value?: string) {
-  if (!value) return null;
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : null;
+// Parse numeric value from vitals string; returns NaN if not parseable.
+function toNumber(v: string | undefined): number {
+  if (!v) return NaN;
+  const n = parseFloat(v);
+  return isNaN(n) ? NaN : n;
 }
 
-function parseBloodPressure(bp?: string) {
-  if (!bp) return { systolic: null, diastolic: null };
-  const [systolicRaw, diastolicRaw] = bp.split("/");
-  const systolic = parseNumericValue(systolicRaw);
-  const diastolic = parseNumericValue(diastolicRaw);
-  return { systolic, diastolic };
+// For BP, parse systolic ("120/80" → 120)
+function toSystolic(v: string | undefined): number {
+  if (!v) return NaN;
+  const parts = v.split("/");
+  const n = parseFloat(parts[0] || "");
+  return isNaN(n) ? NaN : n;
 }
 
-function fahrenheitToCelsius(value: number | null) {
-  if (value === null) return null;
+function toDiastolic(v: string | undefined): number {
+  if (!v) return NaN;
+  const parts = v.split("/");
+  const n = parseFloat(parts[1] || "");
+  return isNaN(n) ? NaN : n;
+}
+
+function fahrenheitToCelsius(value: number) {
   return Number.parseFloat((((value - 32) * 5) / 9).toFixed(1));
 }
 
@@ -171,24 +164,21 @@ function CustomAbnormalDot(props: {
   cy?: number;
   payload?: ChartDataPoint;
   abnormalKey: keyof ChartDataPoint;
+  stroke: string;
 }) {
-  const { cx, cy, payload, abnormalKey } = props;
+  const { cx, cy, payload, abnormalKey, stroke } = props;
   if (cx === undefined || cy === undefined || !payload) {
     return null;
   }
 
   const isAbnormal = Boolean(payload[abnormalKey]);
-  const fill = isAbnormal
-    ? "hsl(var(--destructive))"
-    : "hsl(var(--primary))";
-
   return (
     <circle
       cx={cx}
       cy={cy}
       r={isAbnormal ? 5 : 3}
-      fill={fill}
-      stroke="hsl(var(--background))"
+      fill={isAbnormal ? "var(--critical)" : stroke}
+      stroke="var(--card)"
       strokeWidth={2}
     />
   );
@@ -202,6 +192,7 @@ export function VitalsContent({
   const router = useRouter();
   const [vitals, setVitals] = React.useState<VitalEntry[]>(initialVitals);
   const [showAddModal, setShowAddModal] = React.useState(false);
+  const [showTrendsModal, setShowTrendsModal] = React.useState(false);
   const [editingVital, setEditingVital] = React.useState<VitalEntry | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
@@ -219,7 +210,6 @@ export function VitalsContent({
     return formatInputDate(date);
   });
   const [endDate, setEndDate] = React.useState(() => formatInputDate(new Date()));
-
   React.useEffect(() => {
     setVitals(initialVitals);
   }, [initialVitals]);
@@ -227,14 +217,21 @@ export function VitalsContent({
   const form = useForm<VitalFormData>({
     resolver: zodResolver(vitalSchema),
     defaultValues: {
-      date: new Date().toISOString().split('T')[0],
+      date: new Date().toISOString().split("T")[0],
       bp: "",
+      bpNote: "",
       hr: "",
+      hrNote: "",
       temp: "",
+      tempNote: "",
       weight: "",
+      weightNote: "",
       height: "",
+      heightNote: "",
       spo2: "",
+      spo2Note: "",
       rr: "",
+      rrNote: "",
       notes: "",
     },
   });
@@ -243,26 +240,40 @@ export function VitalsContent({
   React.useEffect(() => {
     if (showAddModal && !editingVital) {
       form.reset({
-        date: new Date().toISOString().split('T')[0],
+        date: new Date().toISOString().split("T")[0],
         bp: "",
+        bpNote: "",
         hr: "",
+        hrNote: "",
         temp: "",
+        tempNote: "",
         weight: "",
+        weightNote: "",
         height: "",
+        heightNote: "",
         spo2: "",
+        spo2Note: "",
         rr: "",
+        rrNote: "",
         notes: "",
       });
     } else if (editingVital) {
       form.reset({
-        date: editingVital.date.split('T')[0],
+        date: editingVital.date.split("T")[0],
         bp: editingVital.bp || "",
+        bpNote: editingVital.bpNote || "",
         hr: editingVital.hr || "",
+        hrNote: editingVital.hrNote || "",
         temp: editingVital.temp || "",
+        tempNote: editingVital.tempNote || "",
         weight: editingVital.weight || "",
+        weightNote: editingVital.weightNote || "",
         height: editingVital.height || "",
+        heightNote: editingVital.heightNote || "",
         spo2: editingVital.spo2 || "",
+        spo2Note: editingVital.spo2Note || "",
         rr: editingVital.rr || "",
+        rrNote: editingVital.rrNote || "",
         notes: editingVital.notes || "",
       });
     }
@@ -278,14 +289,12 @@ export function VitalsContent({
         await addVitalAction(patientId, data);
         toast.success("Vital entry added successfully");
       }
-      
+
       router.refresh();
     } catch (error) {
       console.error("Error saving vital:", error);
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to save vital entry"
+        error instanceof Error ? error.message : "Failed to save vital entry"
       );
     } finally {
       setIsSubmitting(false);
@@ -308,9 +317,7 @@ export function VitalsContent({
     } catch (error) {
       console.error("Error deleting vital:", error);
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to delete vital entry"
+        error instanceof Error ? error.message : "Failed to delete vital entry"
       );
     } finally {
       setDeletingId(null);
@@ -325,45 +332,121 @@ export function VitalsContent({
   const formatDate = (dateString: string) => {
     try {
       const date = new Date(dateString);
-      return date.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
+      return date.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
       });
     } catch {
       return dateString;
     }
   };
 
+  // Trend data (sorted oldest → newest for sparklines)
+  const sortedAsc = React.useMemo(
+    () =>
+      [...vitals].sort(
+        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+      ),
+    [vitals]
+  );
+
+  // Latest entry (most recent) for summary values
+  const latest = React.useMemo(
+    () =>
+      [...vitals].sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      )[0],
+    [vitals]
+  );
+
+  type VitalMetric = {
+    k: string;
+    icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+    latest: string;
+    unit: string;
+    tone: string;
+    data: number[];
+  };
+
+  const metrics: VitalMetric[] = [
+    {
+      k: "Blood pressure",
+      icon: Activity,
+      latest: latest?.bp || "—",
+      unit: "mmHg",
+      tone: "var(--critical)",
+      data: sortedAsc
+        .map((v) => toSystolic(v.bp))
+        .filter((n) => !isNaN(n)),
+    },
+    {
+      k: "Heart rate",
+      icon: Heart,
+      latest: latest?.hr || "—",
+      unit: "bpm",
+      tone: "var(--critical)",
+      data: sortedAsc.map((v) => toNumber(v.hr)).filter((n) => !isNaN(n)),
+    },
+    {
+      k: "Temperature",
+      icon: Thermometer,
+      latest: latest?.temp || "—",
+      unit: "°F",
+      tone: "var(--warn)",
+      data: sortedAsc.map((v) => toNumber(v.temp)).filter((n) => !isNaN(n)),
+    },
+    {
+      k: "SpO₂",
+      icon: Droplet,
+      latest: latest?.spo2 || "—",
+      unit: "%",
+      tone: "var(--info)",
+      data: sortedAsc.map((v) => toNumber(v.spo2)).filter((n) => !isNaN(n)),
+    },
+    {
+      k: "Weight",
+      icon: Scale,
+      latest: latest?.weight || "—",
+      unit: "lbs",
+      tone: "var(--ink-3)",
+      data: sortedAsc.map((v) => toNumber(v.weight)).filter((n) => !isNaN(n)),
+    },
+    {
+      k: "Respiratory rate",
+      icon: Wind,
+      latest: latest?.rr || "—",
+      unit: "/min",
+      tone: "var(--info)",
+      data: sortedAsc.map((v) => toNumber(v.rr)).filter((n) => !isNaN(n)),
+    },
+  ];
+
   const chartData = React.useMemo<ChartDataPoint[]>(() => {
     return [...vitals]
       .map((vital) => {
-        const { systolic, diastolic } = parseBloodPressure(vital.bp);
-        const hr = parseNumericValue(vital.hr);
-        const tempF = parseNumericValue(vital.temp);
-        const tempC = fahrenheitToCelsius(tempF);
-        const weight = parseNumericValue(vital.weight);
-        const spo2 = parseNumericValue(vital.spo2);
-
-        const bpAbnormal = Boolean(
-          systolic !== null && (systolic > 140 || systolic < 90)
-        );
-        const hrAbnormal = Boolean(hr !== null && (hr > 100 || hr < 60));
-        const tempAbnormal = Boolean(
-          tempC !== null && (tempC > 38.3 || tempC < 36)
-        );
-        const spo2Abnormal = Boolean(spo2 !== null && spo2 < 95);
+        const bpSystolic = toSystolic(vital.bp);
+        const bpDiastolic = toDiastolic(vital.bp);
+        const hr = toNumber(vital.hr);
+        const tempF = toNumber(vital.temp);
+        const tempC = isNaN(tempF) ? NaN : fahrenheitToCelsius(tempF);
+        const weight = toNumber(vital.weight);
+        const spo2 = toNumber(vital.spo2);
+        const bpAbnormal = !isNaN(bpSystolic) && (bpSystolic > 140 || bpSystolic < 90);
+        const hrAbnormal = !isNaN(hr) && (hr > 100 || hr < 60);
+        const tempAbnormal = !isNaN(tempC) && (tempC > 38.3 || tempC < 36);
+        const spo2Abnormal = !isNaN(spo2) && spo2 < 95;
 
         return {
           id: vital.id,
           date: vital.date,
           displayDate: formatShortDate(vital.date),
-          bpSystolic: systolic,
-          bpDiastolic: diastolic,
-          hr,
-          tempC,
-          weight,
-          spo2,
+          bpSystolic: isNaN(bpSystolic) ? null : bpSystolic,
+          bpDiastolic: isNaN(bpDiastolic) ? null : bpDiastolic,
+          hr: isNaN(hr) ? null : hr,
+          tempC: isNaN(tempC) ? null : tempC,
+          weight: isNaN(weight) ? null : weight,
+          spo2: isNaN(spo2) ? null : spo2,
           bpSystolicAbnormal: bpAbnormal,
           bpDiastolicAbnormal: bpAbnormal,
           hrAbnormal,
@@ -372,258 +455,631 @@ export function VitalsContent({
           spo2Abnormal,
         };
       })
-      .filter((entry) => {
-        const entryDate = new Date(entry.date).getTime();
-        const start = new Date(startDate).getTime();
-        const end = new Date(endDate).getTime();
-        return entryDate >= start && entryDate <= end;
-      })
+      .filter((point) =>
+        SERIES_CONFIG.some((series) => point[series.key] !== null)
+      )
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  }, [endDate, startDate, vitals]);
+  }, [vitals]);
 
-  const toggleSeries = (series: ChartSeriesKey, checked: boolean) => {
-    setSelectedSeries((current) => ({
-      ...current,
-      [series]: checked,
-    }));
-  };
+  const filteredChartData = React.useMemo(
+    () =>
+      chartData.filter((point) => {
+        if (startDate && point.date < startDate) {
+          return false;
+        }
+        if (endDate && point.date > endDate) {
+          return false;
+        }
+        return true;
+      }),
+    [chartData, endDate, startDate]
+  );
+
+  const activeSeries = React.useMemo(
+    () => SERIES_CONFIG.filter((series) => selectedSeries[series.key]),
+    [selectedSeries]
+  );
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Vital Signs</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Manage vital signs for {patientName}
-          </p>
-        </div>
-        <Button onClick={() => setShowAddModal(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Vital Entry
-        </Button>
+    <div className="flex flex-1 flex-col gap-5 px-4 py-6 md:px-8 md:py-8">
+      <SubTabHeader
+        eyebrow="Chart · Vitals"
+        title="Vital signs"
+        subtitle={`Manage vital signs for ${patientName}.`}
+        actions={
+          <div className="flex items-center gap-2">
+            <Btn
+              kind="ghost"
+              icon={<TrendingUp className="h-4 w-4" />}
+              onClick={() => setShowTrendsModal(true)}
+              disabled={vitals.length < 2}
+              title={
+                vitals.length < 2
+                  ? "Need at least 2 entries to show a trend"
+                  : undefined
+              }
+            >
+              View trends
+            </Btn>
+            <Btn
+              kind="accent"
+              icon={<Plus className="h-4 w-4" />}
+              onClick={() => setShowAddModal(true)}
+            >
+              Add entry
+            </Btn>
+          </div>
+        }
+      />
+
+      {/* Summary strip with sparklines */}
+      <div
+        className="grid overflow-hidden rounded-2xl"
+        style={{
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          border: "1px solid var(--line)",
+          background: "var(--card)",
+        }}
+      >
+        {metrics.map((m, i, arr) => {
+          const Icon = m.icon;
+          return (
+            <div
+              key={m.k}
+              className="flex flex-col gap-2 px-5 py-4"
+              style={{
+                borderRight:
+                  i < arr.length - 1 ? "1px solid var(--line)" : undefined,
+              }}
+            >
+              <div className="flex items-center justify-between">
+                <div
+                  className="text-[11px] uppercase"
+                  style={{ color: "var(--ink-3)", letterSpacing: "0.1em" }}
+                >
+                  {m.k}
+                </div>
+                <Icon className="h-3.5 w-3.5" style={{ color: m.tone }} />
+              </div>
+              <div className="flex items-end justify-between gap-2">
+                <div>
+                  <div
+                    className="serif"
+                    style={{
+                      fontSize: 24,
+                      lineHeight: 1,
+                      letterSpacing: "-0.02em",
+                      color: "var(--ink)",
+                    }}
+                  >
+                    {m.latest}
+                  </div>
+                  <div
+                    className="mono mt-1 text-[10.5px]"
+                    style={{ color: "var(--ink-3)" }}
+                  >
+                    {m.unit}
+                  </div>
+                </div>
+                {m.data.length >= 2 && (
+                  <Sparkline
+                    data={m.data}
+                    w={80}
+                    h={26}
+                    stroke={m.tone}
+                    fill={m.tone}
+                  />
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Vital Progression</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
+      <ClearingCard pad={0}>
+        <div
+          className="flex flex-col gap-4 px-5 py-4"
+          style={{ borderBottom: "1px solid var(--line)" }}
+        >
+          <div className="flex flex-col gap-1">
+            <div
+              className="text-[10.5px] uppercase"
+              style={{ color: "var(--ink-3)", letterSpacing: "0.12em" }}
+            >
+              Trend view
+            </div>
+            <div
+              className="serif"
+              style={{ fontSize: 18, color: "var(--ink)", letterSpacing: "-0.01em" }}
+            >
+              Vital progression across visits
+            </div>
+            <p className="text-[13px]" style={{ color: "var(--ink-2)" }}>
+              Track BP, heart rate, temperature, weight, and oxygen saturation without
+              leaving the chart tab.
+            </p>
+          </div>
+
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {SERIES_CONFIG.map((series) => (
                 <label
                   key={series.key}
-                  className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"
+                  className="inline-flex items-center gap-2 rounded-full px-3 py-1.5"
+                  style={{
+                    border: "1px solid var(--line)",
+                    background: selectedSeries[series.key] ? "var(--paper-2)" : "transparent",
+                  }}
                 >
                   <Checkbox
                     checked={selectedSeries[series.key]}
                     onCheckedChange={(checked) =>
-                      toggleSeries(series.key, checked === true)
+                      setSelectedSeries((current) => ({
+                        ...current,
+                        [series.key]: checked,
+                      }))
                     }
+                    aria-label={series.label}
                   />
-                  <span className={cn("font-medium", series.colorClass)}>
+                  <span
+                    className="text-[12px] font-medium"
+                    style={{ color: "var(--ink)" }}
+                  >
                     {series.label}
                   </span>
                 </label>
               ))}
             </div>
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <div className="space-y-1">
-                <Label htmlFor="vitals-range-start">Start</Label>
-                <Input
-                  id="vitals-range-start"
-                  type="date"
-                  value={startDate}
-                  onChange={(event) => setStartDate(event.target.value)}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="vitals-range-end">End</Label>
-                <Input
-                  id="vitals-range-end"
-                  type="date"
-                  value={endDate}
-                  onChange={(event) => setEndDate(event.target.value)}
-                />
-              </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="flex flex-col gap-1.5">
+                <span
+                  className="text-[10.5px] uppercase"
+                  style={{ color: "var(--ink-3)", letterSpacing: "0.1em" }}
+                >
+                  From
+                </span>
+                <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span
+                  className="text-[10.5px] uppercase"
+                  style={{ color: "var(--ink-3)", letterSpacing: "0.1em" }}
+                >
+                  To
+                </span>
+                <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+              </label>
             </div>
           </div>
+        </div>
 
-          {chartData.length === 0 ? (
-            <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-              No vital data available in the selected date range.
+        <div className="px-3 py-4 md:px-5">
+          {filteredChartData.length >= 2 && activeSeries.length > 0 ? (
+            <div style={{ height: 340 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={filteredChartData} margin={{ top: 8, right: 20, bottom: 8, left: 0 }}>
+                  <CartesianGrid
+                    stroke="var(--line)"
+                    strokeDasharray="3 3"
+                    vertical={false}
+                  />
+                  <XAxis
+                    dataKey="displayDate"
+                    stroke="var(--ink-3)"
+                    tick={{ fontSize: 11, fill: "var(--ink-3)" }}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis
+                    stroke="var(--ink-3)"
+                    tick={{ fontSize: 11, fill: "var(--ink-3)" }}
+                    tickLine={false}
+                    axisLine={false}
+                    domain={["auto", "auto"]}
+                    width={44}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      background: "var(--card)",
+                      border: "1px solid var(--line)",
+                      borderRadius: 10,
+                      fontSize: 12,
+                    }}
+                    labelStyle={{ color: "var(--ink-2)" }}
+                    itemStyle={{ color: "var(--ink)" }}
+                  />
+                  <Legend
+                    wrapperStyle={{
+                      fontSize: 11,
+                      color: "var(--ink-3)",
+                    }}
+                  />
+                  {activeSeries.map((series) => (
+                    <Line
+                      key={series.key}
+                      type="monotone"
+                      dataKey={series.key}
+                      name={series.label}
+                      stroke={series.stroke}
+                      strokeWidth={2.25}
+                      connectNulls
+                      dot={<CustomAbnormalDot abnormalKey={series.abnormalKey} stroke={series.stroke} />}
+                      activeDot={{ r: 6 }}
+                    />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
             </div>
           ) : (
-            <div className="space-y-3">
-              <div className="h-[360px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                    <XAxis dataKey="displayDate" />
-                    <YAxis />
-                    <Tooltip />
-                    <Legend />
-                    {SERIES_CONFIG.map((series) =>
-                      selectedSeries[series.key] ? (
-                        <Line
-                          key={series.key}
-                          type="monotone"
-                          dataKey={series.key}
-                          name={series.label}
-                          connectNulls
-                          stroke={series.stroke}
-                          strokeWidth={2}
-                          dot={(props) => (
-                            <CustomAbnormalDot
-                              {...props}
-                              abnormalKey={series.abnormalKey}
-                            />
-                          )}
-                          activeDot={{ r: 6 }}
-                        />
-                      ) : null
-                    )}
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Red dots indicate abnormal values based on configured thresholds.
-                Temperature is plotted in Celsius for thresholding.
+            <div className="flex min-h-[220px] flex-col items-center justify-center gap-2 text-center">
+              <TrendingUp className="h-7 w-7" style={{ color: "var(--ink-3)" }} />
+              <p className="text-[13px]" style={{ color: "var(--ink-2)" }}>
+                {activeSeries.length === 0
+                  ? "Select at least one vital series to render the progression chart."
+                  : "Need at least 2 visits in the selected range to render a progression chart."}
               </p>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </ClearingCard>
 
-      {/* Vitals List */}
+      {/* Entries */}
       {vitals.length === 0 ? (
-        <Card>
-          <CardContent className="flex items-center justify-center py-12">
-            <div className="text-center">
-              <p className="text-muted-foreground mb-4">No vital signs recorded</p>
-              <Button onClick={() => setShowAddModal(true)} variant="outline">
-                <Plus className="h-4 w-4 mr-2" />
-                Add First Vital Entry
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <ClearingCard>
+          <div className="flex flex-col items-center justify-center gap-3 py-12">
+            <Activity className="h-8 w-8" style={{ color: "var(--ink-3)" }} />
+            <p className="text-[13px]" style={{ color: "var(--ink-3)" }}>
+              No vital signs recorded
+            </p>
+            <Btn
+              kind="soft"
+              icon={<Plus className="h-3.5 w-3.5" />}
+              onClick={() => setShowAddModal(true)}
+            >
+              Add first vital entry
+            </Btn>
+          </div>
+        </ClearingCard>
       ) : (
-        <div className="space-y-4">
-          {vitals.map((vital) => (
-            <Card key={vital.id} className="relative">
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <CardTitle className="text-lg font-semibold">
+        <ClearingCard pad={0}>
+          <div
+            className="flex flex-wrap items-center gap-3 px-5 py-3.5"
+            style={{ borderBottom: "1px solid var(--line)" }}
+          >
+            <div
+              className="serif"
+              style={{ fontSize: 18, color: "var(--ink)", letterSpacing: "-0.01em" }}
+            >
+              Entries
+            </div>
+            <div className="flex-1" />
+            <div
+              className="mono text-[11.5px]"
+              style={{ color: "var(--ink-3)" }}
+            >
+              {vitals.length} total
+            </div>
+          </div>
+          <div className="flex flex-col">
+            {vitals.map((vital, i, arr) => (
+              <div
+                key={vital.id}
+                className="flex flex-col gap-3 px-5 py-4"
+                style={{
+                  borderBottom:
+                    i < arr.length - 1 ? "1px solid var(--line)" : undefined,
+                }}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-baseline gap-3">
+                    <div
+                      className="serif"
+                      style={{
+                        fontSize: 22,
+                        color: "var(--ink)",
+                        letterSpacing: "-0.015em",
+                        lineHeight: 1.15,
+                      }}
+                    >
                       {formatDate(vital.date)}
-                    </CardTitle>
+                    </div>
+                    <div
+                      className="mono text-[11px] uppercase"
+                      style={{ color: "var(--ink-3)", letterSpacing: "0.05em" }}
+                    >
+                      Entry · {i + 1} of {arr.length}
+                    </div>
                   </div>
                   <div className="flex gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
+                    <button
+                      type="button"
                       onClick={() => handleEdit(vital)}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md"
+                      style={{ color: "var(--ink-2)" }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLButtonElement).style.background =
+                          "var(--paper-3)";
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLButtonElement).style.background =
+                          "transparent";
+                      }}
+                      aria-label="Edit"
                     >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-destructive hover:text-destructive"
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => handleDelete(vital.id)}
                       disabled={deletingId === vital.id}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md disabled:opacity-50"
+                      style={{ color: "var(--critical)" }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLButtonElement).style.background =
+                          "var(--critical-soft)";
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLButtonElement).style.background =
+                          "transparent";
+                      }}
+                      aria-label="Delete"
                     >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
                   </div>
                 </div>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-3 md:grid-cols-4">
                   {vital.bp && (
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Activity className="h-3 w-3" />
-                        Blood Pressure
-                      </div>
-                      <p className="text-sm font-semibold">{vital.bp}</p>
-                    </div>
+                    <VitalCell
+                      icon={Activity}
+                      label="Blood pressure"
+                      value={vital.bp}
+                      unit="mmHg"
+                      note={vital.bpNote}
+                    />
                   )}
                   {vital.hr && (
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Heart className="h-3 w-3" />
-                        Heart Rate
-                      </div>
-                      <p className="text-sm font-semibold">{vital.hr} bpm</p>
-                    </div>
+                    <VitalCell
+                      icon={Heart}
+                      label="Heart rate"
+                      value={vital.hr}
+                      unit="bpm"
+                      note={vital.hrNote}
+                    />
                   )}
                   {vital.temp && (
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Thermometer className="h-3 w-3" />
-                        Temperature
-                      </div>
-                      <p className="text-sm font-semibold">{vital.temp} °F</p>
-                    </div>
+                    <VitalCell
+                      icon={Thermometer}
+                      label="Temperature"
+                      value={vital.temp}
+                      unit="°F"
+                      note={vital.tempNote}
+                    />
                   )}
                   {vital.weight && (
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Scale className="h-3 w-3" />
-                        Weight
-                      </div>
-                      <p className="text-sm font-semibold">{vital.weight} lbs</p>
-                    </div>
+                    <VitalCell
+                      icon={Scale}
+                      label="Weight"
+                      value={vital.weight}
+                      unit="lbs"
+                      note={vital.weightNote}
+                    />
                   )}
                   {vital.height && (
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Ruler className="h-3 w-3" />
-                        Height
-                      </div>
-                      <p className="text-sm font-semibold">{vital.height} cm</p>
-                    </div>
+                    <VitalCell
+                      icon={Ruler}
+                      label="Height"
+                      value={vital.height}
+                      unit="cm"
+                      note={vital.heightNote}
+                    />
                   )}
                   {vital.spo2 && (
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Wind className="h-3 w-3" />
-                        SpO2
-                      </div>
-                      <p className="text-sm font-semibold">{vital.spo2}%</p>
-                    </div>
+                    <VitalCell
+                      icon={Droplet}
+                      label="SpO₂"
+                      value={vital.spo2}
+                      unit="%"
+                      note={vital.spo2Note}
+                    />
                   )}
                   {vital.rr && (
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Wind className="h-3 w-3" />
-                        Respiratory Rate
-                      </div>
-                      <p className="text-sm font-semibold">{vital.rr} /min</p>
-                    </div>
+                    <VitalCell
+                      icon={Wind}
+                      label="Resp rate"
+                      value={vital.rr}
+                      unit="/min"
+                      note={vital.rrNote}
+                    />
                   )}
                   {vital.bmi && (
-                    <div className="space-y-1">
-                      <div className="text-xs text-muted-foreground">BMI</div>
-                      <p className="text-sm font-semibold">{vital.bmi}</p>
-                    </div>
+                    <VitalCell
+                      icon={Scale}
+                      label="BMI"
+                      value={vital.bmi}
+                      unit=""
+                      note={vital.bmiNote}
+                    />
                   )}
                 </div>
                 {vital.notes && (
-                  <div className="mt-4 pt-4 border-t">
-                    <p className="text-xs text-muted-foreground mb-1">Notes</p>
-                    <p className="text-sm">{vital.notes}</p>
+                  <div
+                    className="mt-1 pt-3"
+                    style={{ borderTop: "1px solid var(--line)" }}
+                  >
+                    <div
+                      className="text-[10.5px] uppercase"
+                      style={{
+                        color: "var(--ink-3)",
+                        letterSpacing: "0.1em",
+                      }}
+                    >
+                      Notes
+                    </div>
+                    <p
+                      className="mt-1 text-[13px] leading-5"
+                      style={{ color: "var(--ink-2)" }}
+                    >
+                      {vital.notes}
+                    </p>
                   </div>
                 )}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+              </div>
+            ))}
+          </div>
+        </ClearingCard>
       )}
+
+      {/* Trends Modal */}
+      <Dialog open={showTrendsModal} onOpenChange={setShowTrendsModal}>
+        <DialogContent className="sm:max-w-[780px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Vital trends</DialogTitle>
+            <DialogDescription>
+              {patientName} — {sortedAsc.length} entr
+              {sortedAsc.length === 1 ? "y" : "ies"} over time.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-5">
+            {metrics
+              .filter((m) => m.data.length >= 2)
+              .map((m) => {
+                const chartData = sortedAsc
+                  .map((v) => {
+                    const raw =
+                      m.k === "Blood pressure"
+                        ? toSystolic(v.bp)
+                        : m.k === "Heart rate"
+                        ? toNumber(v.hr)
+                        : m.k === "Temperature"
+                        ? toNumber(v.temp)
+                        : m.k === "SpO₂"
+                        ? toNumber(v.spo2)
+                        : m.k === "Weight"
+                        ? toNumber(v.weight)
+                        : m.k === "Respiratory rate"
+                        ? toNumber(v.rr)
+                        : NaN;
+                    return {
+                      date: formatDate(v.date),
+                      value: isNaN(raw) ? null : raw,
+                    };
+                  })
+                  .filter((d) => d.value !== null);
+                const Icon = m.icon;
+                return (
+                  <div
+                    key={m.k}
+                    className="rounded-[12px]"
+                    style={{
+                      border: "1px solid var(--line)",
+                      background: "var(--card)",
+                    }}
+                  >
+                    <div
+                      className="flex items-center gap-2 px-4 py-3"
+                      style={{ borderBottom: "1px solid var(--line)" }}
+                    >
+                      <Icon
+                        className="h-4 w-4"
+                        style={{ color: m.tone }}
+                      />
+                      <div
+                        className="serif"
+                        style={{
+                          fontSize: 15,
+                          color: "var(--ink)",
+                          letterSpacing: "-0.01em",
+                        }}
+                      >
+                        {m.k}
+                      </div>
+                      <div className="flex-1" />
+                      <div
+                        className="mono text-[11px]"
+                        style={{ color: "var(--ink-3)" }}
+                      >
+                        latest {m.latest} {m.unit}
+                      </div>
+                    </div>
+                    <div style={{ height: 180, padding: "10px 8px 12px" }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart
+                          data={chartData}
+                          margin={{ top: 8, right: 16, bottom: 8, left: 0 }}
+                        >
+                          <CartesianGrid
+                            stroke="var(--line)"
+                            strokeDasharray="3 3"
+                            vertical={false}
+                          />
+                          <XAxis
+                            dataKey="date"
+                            stroke="var(--ink-3)"
+                            tick={{ fontSize: 10, fill: "var(--ink-3)" }}
+                            tickLine={false}
+                            axisLine={false}
+                          />
+                          <YAxis
+                            stroke="var(--ink-3)"
+                            tick={{ fontSize: 10, fill: "var(--ink-3)" }}
+                            tickLine={false}
+                            axisLine={false}
+                            domain={["auto", "auto"]}
+                            width={40}
+                          />
+                          <Tooltip
+                            contentStyle={{
+                              background: "var(--card)",
+                              border: "1px solid var(--line)",
+                              borderRadius: 8,
+                              fontSize: 12,
+                            }}
+                            labelStyle={{ color: "var(--ink-2)" }}
+                            itemStyle={{ color: "var(--ink)" }}
+                          />
+                          <Legend
+                            wrapperStyle={{
+                              fontSize: 11,
+                              color: "var(--ink-3)",
+                            }}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="value"
+                            name={`${m.k} (${m.unit})`}
+                            stroke={m.tone}
+                            strokeWidth={2}
+                            dot={{ r: 3, fill: m.tone }}
+                            activeDot={{ r: 5 }}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                );
+              })}
+            {metrics.every((m) => m.data.length < 2) && (
+              <p
+                className="text-[13px]"
+                style={{ color: "var(--ink-3)" }}
+              >
+                Need at least 2 recorded values per metric to show a trend.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Btn
+              kind="ghost"
+              type="button"
+              onClick={() => setShowTrendsModal(false)}
+            >
+              Close
+            </Btn>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Add/Edit Vital Modal */}
       <Dialog
@@ -639,7 +1095,7 @@ export function VitalsContent({
         <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {editingVital ? "Edit Vital Entry" : "Add Vital Entry"}
+              {editingVital ? "Edit vital entry" : "Add vital entry"}
             </DialogTitle>
             <DialogDescription>
               {editingVital
@@ -650,7 +1106,7 @@ export function VitalsContent({
           <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="date">
-                Date <span className="text-destructive">*</span>
+                Date <span style={{ color: "var(--critical)" }}>*</span>
               </Label>
               <Input
                 id="date"
@@ -661,91 +1117,77 @@ export function VitalsContent({
                 )}
               />
               {form.formState.errors.date && (
-                <p className="text-sm text-destructive">
+                <p className="text-sm" style={{ color: "var(--critical)" }}>
                   {form.formState.errors.date.message}
                 </p>
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="bp">Blood Pressure</Label>
-                <Input
-                  id="bp"
-                  placeholder="e.g., 120/80"
-                  {...form.register("bp")}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="hr">Heart Rate (bpm)</Label>
-                <Input
-                  id="hr"
-                  placeholder="e.g., 72"
-                  {...form.register("hr")}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="temp">Temperature (°F)</Label>
-                <Input
-                  id="temp"
-                  placeholder="e.g., 98.6"
-                  {...form.register("temp")}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="spo2">SpO2 (%)</Label>
-                <Input
-                  id="spo2"
-                  placeholder="e.g., 98"
-                  {...form.register("spo2")}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="weight">Weight (lbs)</Label>
-                <Input
-                  id="weight"
-                  placeholder="e.g., 170"
-                  {...form.register("weight")}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="height">Height (cm)</Label>
-                <Input
-                  id="height"
-                  placeholder="e.g., 177.8"
-                  {...form.register("height")}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="rr">Respiratory Rate (/min)</Label>
-                <Input
-                  id="rr"
-                  placeholder="e.g., 16"
-                  {...form.register("rr")}
-                />
-              </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <VitalWithNote
+                label="Blood pressure"
+                placeholder="e.g., 120/80"
+                fieldId="bp"
+                register={form.register}
+              />
+              <VitalWithNote
+                label="Heart rate"
+                unit="bpm"
+                placeholder="e.g., 72"
+                fieldId="hr"
+                register={form.register}
+              />
+              <VitalWithNote
+                label="Temperature"
+                unit="°F"
+                placeholder="e.g., 98.6"
+                fieldId="temp"
+                register={form.register}
+              />
+              <VitalWithNote
+                label="SpO₂"
+                unit="%"
+                placeholder="e.g., 98"
+                fieldId="spo2"
+                register={form.register}
+              />
+              <VitalWithNote
+                label="Weight"
+                unit="lbs"
+                placeholder="e.g., 170"
+                fieldId="weight"
+                register={form.register}
+              />
+              <VitalWithNote
+                label="Height"
+                unit="cm"
+                placeholder="e.g., 177.8"
+                fieldId="height"
+                register={form.register}
+              />
+              <VitalWithNote
+                label="Respiratory rate"
+                unit="/min"
+                placeholder="e.g., 16"
+                fieldId="rr"
+                register={form.register}
+              />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="notes">Notes</Label>
+              <Label htmlFor="notes">General notes (optional)</Label>
               <Textarea
                 id="notes"
-                placeholder="Additional notes..."
+                placeholder="Overall notes for this entry — e.g. clinical context, what the patient was doing…"
                 rows={3}
                 {...form.register("notes")}
               />
             </div>
 
             <DialogFooter>
-              <Button
+              <Btn
+                kind="ghost"
                 type="button"
-                variant="outline"
                 onClick={() => {
                   setShowAddModal(false);
                   setEditingVital(null);
@@ -754,18 +1196,125 @@ export function VitalsContent({
                 disabled={isSubmitting}
               >
                 Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
+              </Btn>
+              <Btn kind="accent" type="submit" disabled={isSubmitting}>
                 {isSubmitting
-                  ? "Saving..."
+                  ? "Saving…"
                   : editingVital
-                  ? "Update Vital Entry"
-                  : "Save Vital Entry"}
-              </Button>
+                  ? "Update entry"
+                  : "Save entry"}
+              </Btn>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function VitalCell({
+  icon: Icon,
+  label,
+  value,
+  unit,
+  note,
+}: {
+  icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+  label: string;
+  value: string;
+  unit: string;
+  note?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <div
+        className="flex items-center gap-1.5 text-[10.5px] uppercase"
+        style={{ color: "var(--ink-3)", letterSpacing: "0.1em" }}
+      >
+        <Icon className="h-3 w-3" />
+        {label}
+      </div>
+      <div className="flex items-baseline gap-1">
+        <span
+          className="serif"
+          style={{ fontSize: 18, color: "var(--ink)", letterSpacing: "-0.01em" }}
+        >
+          {value}
+        </span>
+        {unit && (
+          <span
+            className="mono text-[10.5px]"
+            style={{ color: "var(--ink-3)" }}
+          >
+            {unit}
+          </span>
+        )}
+      </div>
+      {note ? (
+        <div
+          className="mt-0.5 text-[11.5px] italic leading-snug"
+          style={{ color: "var(--ink-3)" }}
+        >
+          {note}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// Helper used inside the add/edit modal — renders a vital's value input and
+// a small optional note field below it, sharing the same ID prefix.
+function VitalWithNote({
+  label,
+  unit,
+  placeholder,
+  fieldId,
+  register,
+}: {
+  label: string;
+  unit?: string;
+  placeholder: string;
+  fieldId:
+    | "bp"
+    | "hr"
+    | "temp"
+    | "spo2"
+    | "weight"
+    | "height"
+    | "rr";
+  register: ReturnType<typeof useForm<VitalFormData>>["register"];
+}) {
+  const noteId = `${fieldId}Note` as const;
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={fieldId}>
+        {label}
+        {unit ? (
+          <span
+            className="mono ml-1 text-[10.5px]"
+            style={{ color: "var(--ink-3)" }}
+          >
+            ({unit})
+          </span>
+        ) : null}
+      </Label>
+      <Input id={fieldId} placeholder={placeholder} {...register(fieldId)} />
+      <Input
+        id={noteId}
+        placeholder="Optional note for this value"
+        className="text-[12.5px]"
+        style={{ color: "var(--ink-2)" }}
+        {...register(
+          noteId as
+            | "bpNote"
+            | "hrNote"
+            | "tempNote"
+            | "spo2Note"
+            | "weightNote"
+            | "heightNote"
+            | "rrNote"
+        )}
+      />
     </div>
   );
 }

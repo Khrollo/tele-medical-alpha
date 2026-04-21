@@ -295,6 +295,39 @@ export async function parseTranscriptDraftAction(params: {
   };
 }
 
+export async function parseTranscriptIncrementalAction(params: {
+  newSegments: string[];
+  runningNote?: Partial<VisitNote>;
+  fallbackFullTranscript?: string;
+  patientContext?: {
+    allergies?: unknown[];
+    meds?: unknown[];
+    pmh?: unknown[];
+  };
+}) {
+  await requireUser(["doctor", "nurse"]);
+
+  const { parseVisitNoteIncremental } = await import(
+    "@/app/_lib/ai/parse-visit-incremental"
+  );
+  const result = await parseVisitNoteIncremental({
+    newSegments: params.newSegments,
+    runningNote: params.runningNote,
+    fallbackFullTranscript: params.fallbackFullTranscript,
+    patientContext: params.patientContext,
+  });
+
+  return {
+    success: true as const,
+    delta: result.delta,
+    parsed: result.parsed,
+    cacheHit: result.cacheHit,
+    latencyMs: result.latencyMs,
+    provider: result.provider,
+    tokens: result.tokens,
+  };
+}
+
 /**
  * Update visit with triage level and appointment type (server action)
  */

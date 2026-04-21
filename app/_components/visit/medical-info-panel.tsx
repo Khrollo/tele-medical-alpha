@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Avatar } from "@/components/ui/clearing";
 import { cn } from "@/app/_lib/utils/cn";
 import type { PatientBasics } from "@/app/_lib/db/drizzle/queries/patient";
 import Link from "next/link";
@@ -687,7 +688,11 @@ function OverviewView({ patientBasics }: { patientBasics: PatientBasics }) {
         <CardContent className="p-4">
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <User className="h-4 w-4 text-muted-foreground" />
+              <Avatar
+                name={patientBasics.fullName}
+                src={patientBasics.avatarUrl}
+                size={24}
+              />
               <h3 className="font-semibold text-sm">Patient Information</h3>
             </div>
             <div className="grid grid-cols-2 gap-2 text-sm">

@@ -34,7 +34,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SectionStepper, visitSections, getSectionsForRole } from "./section-stepper";
-import { AICapturePanel } from "./ai-capture-panel";
+import { AICapturePanel, type AICaptureLiveState } from "./ai-capture-panel";
+import { TranscriptPanel, type TranscriptEntry } from "./transcript-panel";
 import { OfflineSyncBadge } from "./offline-sync-badge";
 import { MedicalInfoPanel } from "./medical-info-panel";
 import { visitNoteSchema, type VisitNote, createEmptyVisitNote, parseVisitNote } from "@/app/_lib/visit-note/schema";
@@ -46,6 +47,13 @@ import { createVisitDraftAction, updateVisitDraftAction, updatePatientAssignedAc
 import { createDocumentAction } from "@/app/_actions/documents";
 import { cn } from "@/app/_lib/utils/cn";
 import type { PatientBasics } from "@/app/_lib/db/drizzle/queries/patient";
+import {
+  Avatar,
+  Btn as ClearingBtn,
+  ClearingCard as ClearingCardWrap,
+  Pill as ClearingPill,
+} from "@/components/ui/clearing";
+import { FieldGroup, VisitField, VisitSubCard, SectionDivider } from "./visit-field";
 
 interface NewVisitFormProps {
   patientId: string;
@@ -203,6 +211,8 @@ export function NewVisitForm({
   const [draftLoaded, setDraftLoaded] = React.useState(false);
   const [hasAiDraftSuggestions, setHasAiDraftSuggestions] = React.useState(false);
   const [showPreviousVisitsDialog, setShowPreviousVisitsDialog] = React.useState(false);
+  const [transcriptHistory, setTranscriptHistory] = React.useState<TranscriptEntry[]>([]);
+  const [liveCaptureState, setLiveCaptureState] = React.useState<AICaptureLiveState | null>(null);
 
   // Listen for medical panel open events from PatientChartShell
   React.useEffect(() => {
@@ -391,7 +401,6 @@ export function NewVisitForm({
   const intakeBp = useWatch({ control: form.control, name: "objective.bp" });
   const intakeHr = useWatch({ control: form.control, name: "objective.hr" });
   const intakeTemp = useWatch({ control: form.control, name: "objective.temp" });
-  const intakeSpo2 = useWatch({ control: form.control, name: "objective.spo2" });
   const intakeWeight = useWatch({
     control: form.control,
     name: "objective.weight",
@@ -404,6 +413,9 @@ export function NewVisitForm({
   const [blurredVitals, setBlurredVitals] = React.useState<
     Partial<Record<"bp" | "hr" | "temp" | "spo2", boolean>>
   >({});
+  const objectiveBpField = form.register("objective.bp");
+  const objectiveHrField = form.register("objective.hr");
+  const objectiveTempField = form.register("objective.temp");
 
   // Calculate BMI when weight or height changes
   React.useEffect(() => {
@@ -656,46 +668,76 @@ export function NewVisitForm({
     };
   }, []);
 
-  const handleTranscriptReady = async (transcript: string) => {
-    // Store transcript in draft (non-critical — IndexedDB may be unavailable)
-    try {
-      await saveDraft(patientId, userId, { transcript, role: userRole });
-    } catch (draftError) {
-      console.warn("Failed to save transcript to draft:", draftError);
-    }
+  // Use a ref to read the latest recording time inside the stable callback
+  // without making the callback itself depend on it.
+  const liveCaptureStateRef = React.useRef<AICaptureLiveState | null>(null);
+  React.useEffect(() => {
+    liveCaptureStateRef.current = liveCaptureState;
+  }, [liveCaptureState]);
 
-    // Save transcript to database immediately if visit exists
-    if (visitIdRemote) {
-      try {
-        await saveTranscriptAction({
-          visitId: visitIdRemote,
-          text: transcript,
-          rawText: transcript,
-        });
-      } catch (error) {
-        console.error("Error saving transcript:", error);
-        // Don't block the UI if transcript save fails
+  const handleTranscriptReady = React.useCallback(
+    async (transcript: string, appendedOnly?: string) => {
+      // Panel shows one row per utterance. Live-speech gives us `appendedOnly`
+      // (just the newest phrase); fallback path only has the full transcript —
+      // push that as a single row.
+      const rowText = (appendedOnly ?? transcript).trim();
+      if (rowText) {
+        const timestamp = liveCaptureStateRef.current?.recordingTime ?? 0;
+        setTranscriptHistory((prev) => [
+          ...prev,
+          {
+            id: `tx-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            text: rowText,
+            speaker: "Clinician",
+            timestamp,
+            createdAt: new Date(),
+          },
+        ]);
       }
-    }
-  };
 
-  const handleParseReady = async (parsed: unknown) => {
-    try {
-      const currentData = form.getValues() as VisitNote;
+      // Draft + DB persistence gets the full cumulative transcript so reloads
+      // and downstream AI parsing still see the whole note.
+      try {
+        await saveDraft(patientId, userId, { transcript, role: userRole });
+      } catch (draftError) {
+        console.warn("Failed to save transcript to draft:", draftError);
+      }
 
-      // Merge with most recent (AI) values taking precedence
-      const merged = mergeVisitNote(currentData, parsed as Partial<VisitNote>, {
-        lockedPaths: getLockedPaths(),
-      });
+      if (visitIdRemote) {
+        try {
+          await saveTranscriptAction({
+            visitId: visitIdRemote,
+            text: transcript,
+            rawText: transcript,
+          });
+        } catch (error) {
+          console.error("Error saving transcript:", error);
+        }
+      }
+    },
+    [patientId, userId, userRole, visitIdRemote]
+  );
 
-      form.reset(merged);
-      setHasAiDraftSuggestions(true);
-      toast.success("AI data applied to form");
-    } catch (error) {
-      console.error("Error merging parsed data:", error);
-      toast.error("Failed to apply AI data");
-    }
-  };
+  const handleParseReady = React.useCallback(
+    async (parsed: unknown) => {
+      try {
+        const currentData = form.getValues() as VisitNote;
+
+        // Merge with most recent (AI) values taking precedence
+        const merged = mergeVisitNote(currentData, parsed as Partial<VisitNote>, {
+          lockedPaths: getLockedPaths(),
+        });
+
+        form.reset(merged);
+        setHasAiDraftSuggestions(true);
+        toast.success("AI data applied to form");
+      } catch (error) {
+        console.error("Error merging parsed data:", error);
+        toast.error("Failed to apply AI data");
+      }
+    },
+    [form, getLockedPaths]
+  );
 
   // Auto-save reviewed sections when they change
   React.useEffect(() => {
@@ -903,157 +945,162 @@ export function NewVisitForm({
     switch (section.id) {
       case "subjective":
         return (
-          <div className="space-y-8">
-            <div className="space-y-6">
-              <Label className="text-base">Chief Complaint</Label>
+          <div className="flex flex-col gap-7">
+            <FieldGroup
+              eyebrow="Patient-reported"
+              title="Chief complaint"
+              description="The primary reason for today's visit, in the patient's own words when possible."
+              icon={<Stethoscope className="h-4 w-4" />}
+            >
               <Textarea
                 {...form.register("subjective.chiefComplaint")}
-                className="min-h-[100px]"
+                placeholder="e.g., Chest pain radiating to the left arm for the past hour."
+                className="min-h-[96px]"
               />
-            </div>
-            <div className="space-y-6">
-              <Label className="text-base">History of Present Illness (HPI)</Label>
+              <div className="text-[11.5px]" style={{ color: "var(--ink-3)" }}>
+                Tip: tap the microphone to dictate — the AI scribe will fill this in for your review.
+              </div>
+            </FieldGroup>
+
+            <SectionDivider />
+
+            <FieldGroup
+              eyebrow="Narrative"
+              title="History of present illness"
+              description="Onset, character, location, duration, aggravating / relieving factors, associated symptoms."
+              icon={<FileSignature className="h-4 w-4" />}
+            >
               <Textarea
                 {...form.register("subjective.hpi")}
-                rows={8}
-                className="min-h-[200px]"
+                placeholder="34-year-old presenting with 1 hour of substernal chest pain, onset during exertion…"
+                rows={10}
+                className="min-h-[220px]"
               />
-            </div>
+            </FieldGroup>
           </div>
         );
       case "objective":
         return (
-          <div className="grid gap-6 md:grid-cols-2">
-            <div className="space-y-6">
-              <div className="flex items-center gap-2">
-                <Label className="text-base">Blood Pressure</Label>
-                {blurredVitals.bp && getVitalAlert("bp", intakeBp) && (
-                  <VitalAlertBadge alert={getVitalAlert("bp", intakeBp)!} />
-                )}
-              </div>
-              <Input
-                {...form.register("objective.bp")}
-                placeholder="e.g., 120/80"
-                onBlur={() =>
-                  setBlurredVitals((current) => ({ ...current, bp: true }))
-                }
-              />
-            </div>
-            <div className="space-y-6">
-              <div className="flex items-center gap-2">
-                <Label className="text-base">Heart Rate</Label>
-                {blurredVitals.hr && getVitalAlert("hr", intakeHr) && (
-                  <VitalAlertBadge alert={getVitalAlert("hr", intakeHr)!} />
-                )}
-              </div>
-              <Input
-                {...form.register("objective.hr")}
-                onBlur={() =>
-                  setBlurredVitals((current) => ({ ...current, hr: true }))
-                }
-              />
-            </div>
-            <div className="space-y-6">
-              <div className="flex items-center gap-2">
-                <Label className="text-base">Temperature</Label>
-                {blurredVitals.temp && getVitalAlert("temp", intakeTemp) && (
-                  <VitalAlertBadge alert={getVitalAlert("temp", intakeTemp)!} />
-                )}
-              </div>
-              <Input
-                {...form.register("objective.temp")}
-                placeholder="e.g., 98.6"
-                onBlur={() =>
-                  setBlurredVitals((current) => ({ ...current, temp: true }))
-                }
-              />
-              {form.watch("objective.temp") && (
-                <p className="text-xs text-muted-foreground">
-                  {(() => {
-                    const temp = form.watch("objective.temp") || "";
-                    const num = parseFloat(temp);
-                    if (!isNaN(num) && temp) {
-                      const celsius = ((num - 32) * 5) / 9;
-                      return `${temp}°F = ${celsius.toFixed(1)}°C`;
-                    }
-                    return "";
-                  })()}
-                </p>
-              )}
-            </div>
-            <div className="space-y-6">
-              <div className="flex items-center gap-2">
-                <Label className="text-base">SpO2 (%)</Label>
-                {blurredVitals.spo2 && getVitalAlert("spo2", intakeSpo2) && (
-                  <VitalAlertBadge alert={getVitalAlert("spo2", intakeSpo2)!} />
-                )}
-              </div>
-              <Input
-                {...form.register("objective.spo2")}
-                placeholder="e.g., 98"
-                onBlur={() =>
-                  setBlurredVitals((current) => ({ ...current, spo2: true }))
-                }
-              />
-            </div>
-            <div className="space-y-6">
-              <Label className="text-base">Weight (lbs)</Label>
-              <Input
-                {...form.register("objective.weight")}
-                placeholder="e.g., 170"
-              />
-              {form.watch("objective.weight") && (
-                <p className="text-xs text-muted-foreground">
-                  {(() => {
-                    const weight = form.watch("objective.weight") || "";
-                    const num = parseFloat(weight);
-                    if (!isNaN(num) && weight) {
-                      const kg = num * 0.453592;
-                      return `${weight} lbs = ${kg.toFixed(1)} kg`;
-                    }
-                    return "";
-                  })()}
-                </p>
-              )}
-            </div>
-            <div className="space-y-6">
-              <Label className="text-base">Height (cm)</Label>
-              <Input
-                {...form.register("objective.height")}
-                placeholder="e.g., 177.8"
-              />
-              {form.watch("objective.height") && (
-                <p className="text-xs text-muted-foreground">
-                  {(() => {
-                    const heightValue = form.watch("objective.height");
-                    if (!heightValue) return "";
-                    const num = parseFloat(heightValue);
-                    if (!isNaN(num)) {
-                      const inches = num / 2.54;
-                      const feet = Math.floor(inches / 12);
-                      const remainingInches = Math.round(inches % 12);
-                      if (feet > 0) {
-                        return `${heightValue} cm = ${feet}'${remainingInches}"`;
+          <div className="flex flex-col gap-7">
+            <FieldGroup
+              eyebrow="Measurements"
+              title="Vitals"
+              description="Record the patient's vital signs for this encounter."
+              icon={<User className="h-4 w-4" />}
+            >
+              <VisitSubCard>
+                <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
+                  <VisitField label="Blood pressure" trailing={<span className="mono text-[10.5px]" style={{ color: "var(--ink-3)" }}>mmHg</span>}>
+                    <Input
+                      {...objectiveBpField}
+                      placeholder="120/80"
+                      onBlur={(event) => {
+                        objectiveBpField.onBlur(event);
+                        setBlurredVitals((current) => ({ ...current, bp: true }));
+                      }}
+                    />
+                    {blurredVitals.bp && getVitalAlert("bp", intakeBp || undefined) ? (
+                      <VitalAlertBadge alert={getVitalAlert("bp", intakeBp || undefined)!} />
+                    ) : null}
+                  </VisitField>
+                  <VisitField label="Heart rate" trailing={<span className="mono text-[10.5px]" style={{ color: "var(--ink-3)" }}>bpm</span>}>
+                    <Input
+                      {...objectiveHrField}
+                      placeholder="72"
+                      onBlur={(event) => {
+                        objectiveHrField.onBlur(event);
+                        setBlurredVitals((current) => ({ ...current, hr: true }));
+                      }}
+                    />
+                    {blurredVitals.hr && getVitalAlert("hr", intakeHr || undefined) ? (
+                      <VitalAlertBadge alert={getVitalAlert("hr", intakeHr || undefined)!} />
+                    ) : null}
+                  </VisitField>
+                  <VisitField
+                    label="Temperature"
+                    trailing={<span className="mono text-[10.5px]" style={{ color: "var(--ink-3)" }}>°F</span>}
+                    hint={(() => {
+                      const temp = form.watch("objective.temp") || "";
+                      const num = parseFloat(temp);
+                      if (!isNaN(num) && temp) {
+                        const celsius = ((num - 32) * 5) / 9;
+                        return `${celsius.toFixed(1)}°C`;
                       }
-                      return `${heightValue} cm = ${inches.toFixed(1)} in`;
-                    }
-                    return "";
-                  })()}
-                </p>
-              )}
-            </div>
-            <div className="space-y-6">
-              <Label className="text-base">BMI</Label>
-              <Input
-                {...form.register("objective.bmi")}
-                placeholder="Auto-calculated"
-                readOnly
-                className="bg-muted cursor-not-allowed"
-              />
-            </div>
-            <div className="md:col-span-2 space-y-4">
-              <Label className="text-base font-semibold">Physical Examination</Label>
-              <div className="grid gap-4 md:grid-cols-2">
+                      return undefined;
+                    })()}
+                  >
+                    <Input
+                      {...objectiveTempField}
+                      placeholder="98.6"
+                      onBlur={(event) => {
+                        objectiveTempField.onBlur(event);
+                        setBlurredVitals((current) => ({ ...current, temp: true }));
+                      }}
+                    />
+                    {blurredVitals.temp && getVitalAlert("temp", intakeTemp || undefined) ? (
+                      <VitalAlertBadge alert={getVitalAlert("temp", intakeTemp || undefined)!} />
+                    ) : null}
+                  </VisitField>
+                  <VisitField
+                    label="Weight"
+                    trailing={<span className="mono text-[10.5px]" style={{ color: "var(--ink-3)" }}>lb</span>}
+                    hint={(() => {
+                      const weight = form.watch("objective.weight") || "";
+                      const num = parseFloat(weight);
+                      if (!isNaN(num) && weight) {
+                        const kg = num * 0.453592;
+                        return `${kg.toFixed(1)} kg`;
+                      }
+                      return undefined;
+                    })()}
+                  >
+                    <Input {...form.register("objective.weight")} placeholder="170" />
+                  </VisitField>
+                  <VisitField
+                    label="Height"
+                    trailing={<span className="mono text-[10.5px]" style={{ color: "var(--ink-3)" }}>cm</span>}
+                    hint={(() => {
+                      const heightValue = form.watch("objective.height");
+                      if (!heightValue) return undefined;
+                      const num = parseFloat(heightValue);
+                      if (!isNaN(num)) {
+                        const inches = num / 2.54;
+                        const feet = Math.floor(inches / 12);
+                        const remainingInches = Math.round(inches % 12);
+                        if (feet > 0) return `${feet}′${remainingInches}″`;
+                        return `${inches.toFixed(1)} in`;
+                      }
+                      return undefined;
+                    })()}
+                  >
+                    <Input {...form.register("objective.height")} placeholder="177.8" />
+                  </VisitField>
+                  <VisitField
+                    label="BMI"
+                    trailing={<span className="mono text-[10.5px]" style={{ color: "var(--ink-3)" }}>kg/m²</span>}
+                    hint="Calculated from weight and height."
+                  >
+                    <Input
+                      {...form.register("objective.bmi")}
+                      placeholder="Auto"
+                      readOnly
+                      className="cursor-not-allowed"
+                      style={{ background: "var(--paper-3)" }}
+                    />
+                  </VisitField>
+                </div>
+              </VisitSubCard>
+            </FieldGroup>
+
+            <SectionDivider />
+
+            <FieldGroup
+              eyebrow="Exam"
+              title="Physical examination"
+              description="Document findings by system. Leave blank for any system not assessed today."
+              icon={<Stethoscope className="h-4 w-4" />}
+            >
+              <div className="grid gap-3 md:grid-cols-2">
                 {[
                   { key: "general", label: "General" },
                   { key: "heent", label: "HEENT" },
@@ -1066,28 +1113,45 @@ export function NewVisitForm({
                   { key: "skin", label: "Skin" },
                   { key: "psychological", label: "Psychological" },
                 ].map((category) => (
-                  <div key={category.key} className="space-y-2">
-                    <Label className="text-sm font-medium">{category.label}</Label>
+                  <VisitField key={category.key} label={category.label}>
                     <Textarea
                       {...form.register(`objective.examFindings.${category.key}` as any)}
                       rows={3}
                       className="min-h-[80px] resize-none"
-                      placeholder={`${category.label} examination findings...`}
+                      placeholder={`${category.label} findings…`}
                     />
-                  </div>
+                  </VisitField>
                 ))}
               </div>
-            </div>
-            {/* Vision fields */}
-            {["visionOd", "visionOs", "visionOu", "visionCorrection", "visionBlurry", "visionFloaters", "visionPain", "visionLastExamDate"].map((field) => (
-              <div key={field} className="space-y-2">
-                <Label>{field === "visionOd" ? "Vision OD" : field === "visionOs" ? "Vision OS" : field === "visionOu" ? "Vision OU" : field === "visionCorrection" ? "Vision Correction" : field === "visionBlurry" ? "Vision Blurry" : field === "visionFloaters" ? "Vision Floaters" : field === "visionPain" ? "Vision Pain" : "Last Exam Date"}</Label>
-                <Input
-                  type={field === "visionLastExamDate" ? "date" : "text"}
-                  {...form.register(`objective.${field}` as any)}
-                />
+            </FieldGroup>
+
+            <SectionDivider />
+
+            <FieldGroup
+              eyebrow="Ophthalmic"
+              title="Vision"
+              description="Visual acuity and related symptoms. Fill in what's relevant."
+            >
+              <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
+                {[
+                  { key: "visionOd", label: "OD (right)" },
+                  { key: "visionOs", label: "OS (left)" },
+                  { key: "visionOu", label: "OU (both)" },
+                  { key: "visionCorrection", label: "Correction" },
+                  { key: "visionBlurry", label: "Blurry vision" },
+                  { key: "visionFloaters", label: "Floaters" },
+                  { key: "visionPain", label: "Eye pain" },
+                  { key: "visionLastExamDate", label: "Last exam date" },
+                ].map((f) => (
+                  <VisitField key={f.key} label={f.label}>
+                    <Input
+                      type={f.key === "visionLastExamDate" ? "date" : "text"}
+                      {...form.register(`objective.${f.key}` as any)}
+                    />
+                  </VisitField>
+                ))}
               </div>
-            ))}
+            </FieldGroup>
           </div>
         );
       case "reviewOfSystems":
@@ -1402,52 +1466,83 @@ export function NewVisitForm({
   };
 
   return (
-    <div className="flex flex-col min-h-full pb-0">
+    <div
+      className="flex flex-col min-h-full pb-0"
+      style={{ background: "var(--paper)" }}
+    >
       {hasAiDraftSuggestions && (
-        <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/30 dark:bg-amber-950/40 dark:text-amber-200">
+        <div
+          className="px-4 py-2.5 text-[13px]"
+          style={{
+            background: "var(--warn-soft)",
+            borderBottom: "1px solid var(--line)",
+            color: "oklch(0.35 0.1 70)",
+          }}
+        >
           AI draft suggestions were applied. Manually edited fields stay locked until you change them yourself.
         </div>
       )}
-      {/* Compact top bar: back + patient info + status */}
-      <div className="flex items-center justify-between px-4 md:px-6 py-3 border-b border-slate-200/60 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur-sm">
-        <div className="flex items-center gap-3">
+
+      {/* Visit top bar: back + patient ribbon-lite + status */}
+      <div
+        className="flex items-center justify-between gap-3 px-4 md:px-6 py-3"
+        style={{
+          background: "var(--paper)",
+          borderBottom: "1px solid var(--line)",
+        }}
+      >
+        <div className="flex items-center gap-3 min-w-0">
           <Link href={`/patients/${patientId}`}>
-            <Button variant="ghost" size="sm" className="rounded-full h-8 w-8 p-0">
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-          </Link>
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-foreground">{patientBasics.fullName}</span>
-            <span className="text-xs text-muted-foreground">DOB: {patientBasics.dob || "N/A"}</span>
-          </div>
-          {isRecording && (
-            <Badge variant="destructive" className="gap-1.5 animate-pulse text-xs">
-              <div className="w-1.5 h-1.5 bg-white rounded-full" />
-              Recording
-            </Badge>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {previousVisits.length > 0 && (
-            <Button
+            <button
               type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setShowPreviousVisitsDialog(true)}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full"
+              style={{ color: "var(--ink-2)", border: "1px solid var(--line)", background: "var(--card)" }}
+              aria-label="Back to patient"
             >
-              <Clock className="h-3.5 w-3.5 mr-1.5" />
-              Previous Visits
-            </Button>
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+          </Link>
+          <Avatar name={patientBasics.fullName} src={patientBasics.avatarUrl} size={34} />
+          <div className="min-w-0 leading-tight">
+            <div className="flex flex-wrap items-baseline gap-2">
+              <span
+                className="serif nowrap"
+                style={{ fontSize: 17, letterSpacing: "-0.015em", color: "var(--ink)" }}
+              >
+                {patientBasics.fullName}
+              </span>
+              {isRecording && (
+                <ClearingPill tone="critical" dot>
+                  Recording
+                </ClearingPill>
+              )}
+            </div>
+            <div className="mono text-[11px]" style={{ color: "var(--ink-3)" }}>
+              DOB {patientBasics.dob || "N/A"}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {previousVisits.length > 0 && (
+            <ClearingBtn
+              kind="ghost"
+              size="sm"
+              icon={<Clock className="h-3.5 w-3.5" />}
+              onClick={() => setShowPreviousVisitsDialog(true)}
+              type="button"
+            >
+              Previous visits
+            </ClearingBtn>
           )}
           {visitAppointmentType?.toLowerCase() === "virtual" && visitTwilioRoomName && existingVisitId && (
-            <Button
-              onClick={() => router.push(`/visit/${existingVisitId}/call`)}
+            <ClearingBtn
+              kind="accent"
               size="sm"
-              className="bg-purple-600 hover:bg-purple-700 text-xs"
+              icon={<Video className="h-3.5 w-3.5" />}
+              onClick={() => router.push(`/visit/${existingVisitId}/call`)}
             >
-              <Video className="h-3.5 w-3.5 mr-1.5" />
-              Join Call
-            </Button>
+              Join call
+            </ClearingBtn>
           )}
           <OfflineSyncBadge
             isOnline={isOnline}
@@ -1457,29 +1552,16 @@ export function NewVisitForm({
         </div>
       </div>
 
-      {/* Body: left sidebar + main content */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        {userRole === "doctor" && visitCreatedByRole === "nurse" && (
-          <div className="border-b border-slate-200/70 bg-background px-4 py-4 dark:border-slate-800 md:px-6">
-            <NurseIntakeSummaryCard
-              isExpanded={nurseIntakeExpanded}
-              onToggle={() => setNurseIntakeExpanded((current) => !current)}
-              chiefComplaint={intakeChiefComplaint}
-              bp={intakeBp}
-              hr={intakeHr}
-              temp={intakeTemp}
-              weight={intakeWeight}
-              triageNotes={intakeTriageNotes}
-              allergies={patientBasics.allergies}
-              currentMedications={patientBasics.currentMedications}
-            />
-          </div>
-        )}
-
-        <div className="flex flex-1 overflow-hidden">
-
-        {/* Left sidebar — stepper + AI capture (hidden on mobile) */}
-        <div className="hidden lg:flex flex-col w-64 shrink-0 border-r border-slate-200/60 dark:border-slate-800 overflow-y-auto bg-background">
+      {/* Body: left section stepper + main canvas */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left stepper rail */}
+        <aside
+          className="hidden lg:flex flex-col w-[220px] shrink-0 overflow-y-auto scroll"
+          style={{
+            background: "var(--paper-2)",
+            borderRight: "1px solid var(--line)",
+          }}
+        >
           {medicalPanelOpen && medicalPanelSection && (
             <MedicalInfoPanel
               patientBasics={patientBasics}
@@ -1491,49 +1573,17 @@ export function NewVisitForm({
             />
           )}
           {!hideAICapture && (
-            <div className="p-3 border-b border-slate-200/60 dark:border-slate-800">
-              <div className="mb-3 rounded-xl border border-slate-200/70 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-900/70">
-                <div className="text-sm font-semibold text-foreground">
-                  AI transcript consent
-                </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  AI capture stays disabled until consent is confirmed for this
-                  visit.
-                </p>
-                <div className="mt-3 flex items-start gap-2">
-                  <Checkbox
-                    id="ai-transcript-consent"
-                    checked={aiTranscriptConsent}
-                    onCheckedChange={(checked) =>
-                      form.setValue("consents.aiTranscript", checked === true)
-                    }
-                  />
-                  <Label
-                    htmlFor="ai-transcript-consent"
-                    className="text-xs leading-5 text-foreground"
-                  >
-                    Patient consent for AI-assisted transcription has been
-                    confirmed.
-                  </Label>
-                </div>
-                <p className="mt-2 text-[11px] text-muted-foreground">
-                  {hasConsentOnFile
-                    ? "Signed treatment consent is already on file."
-                    : "No signature is on file yet. Capture is allowed only after you confirm verbal consent for this visit."}
-                </p>
-              </div>
-              {aiTranscriptConsent ? (
-                <AICapturePanel
-                  patientId={patientId}
-                  onTranscriptReady={handleTranscriptReady}
-                  onParseReady={handleParseReady}
-                />
-              ) : (
-                <div className="rounded-xl border border-dashed border-slate-300 bg-white/70 p-4 text-xs text-muted-foreground dark:border-slate-700 dark:bg-slate-950/70">
-                  Confirm consent to enable live transcript capture and AI
-                  parsing.
-                </div>
-              )}
+            <div
+              className="px-3 py-3"
+              style={{ borderBottom: "1px solid var(--line)" }}
+            >
+              <AICapturePanel
+                patientId={patientId}
+                onTranscriptReady={handleTranscriptReady}
+                onParseReady={handleParseReady}
+                onLiveState={setLiveCaptureState}
+                hideLiveDraftBubble
+              />
             </div>
           )}
           <div className="p-3 flex-1">
@@ -1544,98 +1594,126 @@ export function NewVisitForm({
               userRole={userRole}
             />
           </div>
-        </div>
+        </aside>
 
-        {/* Main content area */}
+        {/* Main canvas */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto">
-            <div className="max-w-3xl mx-auto w-full px-4 md:px-6 py-6 space-y-6">
-              <div className="grid gap-4 md:grid-cols-2">
-                <EncounterSummaryCard
-                  patientBasics={patientBasics}
-                  visitAppointmentType={visitAppointmentType}
-                  visitCreatedByRole={visitCreatedByRole}
-                  consentConfirmed={Boolean(aiTranscriptConsent)}
+          <div
+            className="flex-1 overflow-y-auto scroll"
+            style={{ background: "var(--paper)" }}
+          >
+            <div className="mx-auto w-full max-w-3xl px-4 md:px-8 py-8 flex flex-col gap-6">
+              {shouldBypassDoctorPostSaveModal && (
+                <NurseIntakeSummaryCard
+                  isExpanded={nurseIntakeExpanded}
+                  onToggle={() => setNurseIntakeExpanded((current) => !current)}
+                  chiefComplaint={form.watch("subjective.chiefComplaint")}
+                  bp={intakeBp || undefined}
+                  hr={intakeHr || undefined}
+                  temp={intakeTemp || undefined}
+                  weight={intakeWeight || undefined}
+                  triageNotes={intakeTriageNotes || undefined}
+                  allergies={patientBasics.allergies}
+                  currentMedications={patientBasics.currentMedications}
                 />
-                <MiniScheduleWidget
-                  patientId={patientId}
-                  userRole={userRole}
-                  visitAppointmentType={visitAppointmentType}
-                  visitTwilioRoomName={visitTwilioRoomName}
-                  existingVisitId={existingVisitId}
-                />
-              </div>
+              )}
 
               {/* Section header */}
-              <div className="text-center space-y-1">
-                <h1 className="text-2xl font-bold text-foreground">
-                  {roleSections.find(s => s.id === currentSection)?.label}
-                </h1>
-                <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                  {sectionDescriptions[currentSection] || ""}
-                </p>
-                <p className="text-xs text-muted-foreground/60">
+              <div>
+                <div
+                  className="text-[11px] uppercase"
+                  style={{ color: "var(--ink-3)", letterSpacing: "0.12em" }}
+                >
                   Step {currentSectionIndex + 1} of {roleSections.length}
-                </p>
+                </div>
+                <h1
+                  className="serif mt-1.5"
+                  style={{
+                    margin: 0,
+                    fontSize: "clamp(28px, 3vw, 32px)",
+                    lineHeight: 1,
+                    letterSpacing: "-0.02em",
+                    color: "var(--ink)",
+                  }}
+                >
+                  {roleSections.find((s) => s.id === currentSection)?.label}
+                </h1>
+                {sectionDescriptions[currentSection] && (
+                  <p
+                    className="mt-2 max-w-xl text-[13.5px]"
+                    style={{ color: "var(--ink-2)" }}
+                  >
+                    {sectionDescriptions[currentSection]}
+                  </p>
+                )}
               </div>
 
-              {/* Form card */}
-              <Card className="shadow-sm">
-                <CardContent className="p-6 md:p-8">{renderSection()}</CardContent>
-              </Card>
+              {/* Form canvas */}
+              <ClearingCardWrap pad={24}>{renderSection()}</ClearingCardWrap>
 
-              {/* Inline prev / next navigation */}
-              <div className="flex items-center justify-between pb-6">
-                <Button
-                  variant="outline"
-                  className="h-11 px-5 text-sm font-medium gap-2"
+              {/* Prev / next navigation */}
+              <div className="flex items-center justify-between gap-2">
+                <ClearingBtn
+                  kind="ghost"
+                  icon={<ChevronLeft className="h-4 w-4" />}
                   onClick={goToPrev}
                   disabled={!canGoPrev}
                 >
-                  <ChevronLeft className="h-4 w-4" />
                   {canGoPrev ? roleSections[currentSectionIndex - 1]?.label : "Previous"}
-                </Button>
-
+                </ClearingBtn>
                 {canGoNext ? (
-                  <Button
-                    className="h-11 px-5 text-sm font-medium gap-2"
+                  <ClearingBtn
+                    kind="accent"
+                    iconRight={<ChevronRight className="h-4 w-4" />}
                     onClick={goToNext}
                   >
                     {roleSections[currentSectionIndex + 1]?.label}
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
+                  </ClearingBtn>
                 ) : (
-                  <Button
+                  <ClearingBtn
+                    kind="accent"
                     onClick={handleFinalize}
                     disabled={isSaving || !allSectionsReviewed || !isOnline}
-                    className="h-11 px-6 text-sm font-semibold"
                   >
                     {isSaving ? (
                       <>
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                        Saving...
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Saving…
                       </>
                     ) : (
-                      "Complete Visit"
+                      "Complete visit"
                     )}
-                  </Button>
+                  </ClearingBtn>
                 )}
               </div>
             </div>
           </div>
 
-          {/* Mobile: show stepper as bottom sheet strip */}
-          <div className="lg:hidden border-t border-slate-200/60 dark:border-slate-800 overflow-x-auto">
+          {/* Mobile stepper strip */}
+          <div
+            className="lg:hidden overflow-x-auto scroll"
+            style={{
+              borderTop: "1px solid var(--line)",
+              background: "var(--paper-2)",
+            }}
+          >
             <SectionStepper
               currentSection={currentSection}
               reviewedSections={reviewedSections}
               onSectionClick={handleSectionChange}
               userRole={userRole}
-              className="flex-row py-2 px-3"
+              orientation="horizontal"
+              className="px-3 py-2"
             />
           </div>
         </div>
-        </div>
+
+        {/* Right: live transcript (desktop only) */}
+        {!hideAICapture && (
+          <div className="hidden lg:flex">
+            <TranscriptPanel history={transcriptHistory} live={liveCaptureState} />
+          </div>
+        )}
       </div>
 
       {/* Mobile: floating toggle for sidebar tools (AI capture + medical info) */}
@@ -1674,6 +1752,7 @@ export function NewVisitForm({
                 patientId={patientId}
                 onTranscriptReady={handleTranscriptReady}
                 onParseReady={handleParseReady}
+                onLiveState={setLiveCaptureState}
               />
             )}
           </div>
@@ -1696,7 +1775,7 @@ export function NewVisitForm({
               onClick={() => handlePostSaveAction("view")}
               disabled={isProcessingAction}
             >
-              <User className="h-5 w-5 mr-3" />
+              <Avatar name={patientBasics.fullName} src={patientBasics.avatarUrl} size={22} className="mr-3" />
               <div className="text-left">
                 <div className="font-medium">View Patient</div>
                 <div className="text-sm text-muted-foreground">

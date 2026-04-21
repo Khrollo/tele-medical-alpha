@@ -6,8 +6,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { toast } from "sonner";
-import { Plus, Trash2, Pencil } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Plus, Trash2, Pencil, Pill as PillIcon, Activity, Ban } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -26,8 +25,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import {
+  Btn,
+  ClearingCard,
+  Pill,
+  SubTabHeader,
+  type PillTone,
+} from "@/components/ui/clearing";
 import {
   addMedicationAction,
   updateMedicationAction,
@@ -54,6 +58,21 @@ interface MedicationsContentProps {
   medications: Medication[];
 }
 
+type FilterType = "all" | "active" | "inactive" | "discontinued";
+
+function statusTone(status: string): { tone: PillTone; label: string } {
+  switch (status) {
+    case "Active":
+      return { tone: "ok", label: status };
+    case "Inactive":
+      return { tone: "neutral", label: status };
+    case "Discontinued":
+      return { tone: "critical", label: status };
+    default:
+      return { tone: "neutral", label: status };
+  }
+}
+
 export function MedicationsContent({
   patientId,
   patientName,
@@ -65,6 +84,7 @@ export function MedicationsContent({
   const [editingMedication, setEditingMedication] = React.useState<Medication | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
+  const [filter, setFilter] = React.useState<FilterType>("all");
 
   React.useEffect(() => {
     setMedications(initialMedications);
@@ -121,7 +141,7 @@ export function MedicationsContent({
         await addMedicationAction(patientId, data);
         toast.success("Medication added successfully");
       }
-      
+
       router.refresh();
     } catch (error) {
       console.error("Error saving medication:", error);
@@ -165,125 +185,277 @@ export function MedicationsContent({
     setShowAddModal(true);
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "Active":
-        return { variant: "default" as const, label: status, className: "bg-green-500/10 text-green-700 dark:text-green-400 border-green-500" };
-      case "Inactive":
-        return { variant: "secondary" as const, label: status };
-      case "Discontinued":
-        return { variant: "destructive" as const, label: status };
-      default:
-        return { variant: "secondary" as const, label: status };
-    }
-  };
-
   const getMedicationDisplayName = (medication: Medication) => {
     if (medication.brandName && medication.genericName) {
       return `${medication.brandName} (${medication.genericName})`;
     }
-    return medication.brandName || medication.genericName || "Unnamed Medication";
+    return medication.brandName || medication.genericName || "Unnamed medication";
   };
 
+  const totalMedications = medications.length;
+  const activeCount = medications.filter((m) => m.status === "Active").length;
+  const inactiveCount = medications.filter((m) => m.status === "Inactive").length;
+  const discontinuedCount = medications.filter((m) => m.status === "Discontinued").length;
+
+  const filteredMedications = React.useMemo(() => {
+    if (filter === "active") return medications.filter((m) => m.status === "Active");
+    if (filter === "inactive") return medications.filter((m) => m.status === "Inactive");
+    if (filter === "discontinued")
+      return medications.filter((m) => m.status === "Discontinued");
+    return medications;
+  }, [medications, filter]);
+
+  const summaryMetrics = [
+    { k: "Total medications", v: totalMedications, icon: PillIcon, tone: "var(--ink-3)" as const },
+    { k: "Active", v: activeCount, icon: Activity, tone: "var(--ok)" as const },
+    { k: "Inactive", v: inactiveCount, icon: PillIcon, tone: "var(--ink-3)" as const },
+    { k: "Discontinued", v: discontinuedCount, icon: Ban, tone: "var(--critical)" as const },
+  ];
+
+  const filterTabs: Array<[FilterType, string, number]> = [
+    ["all", "All", totalMedications],
+    ["active", "Active", activeCount],
+    ["inactive", "Inactive", inactiveCount],
+    ["discontinued", "Discontinued", discontinuedCount],
+  ];
+
   return (
-    <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Medications</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Manage medications for {patientName}
-          </p>
-        </div>
-        <Button onClick={() => setShowAddModal(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Medication
-        </Button>
+    <div className="flex flex-1 flex-col gap-5 px-4 py-6 md:px-8 md:py-8">
+      <SubTabHeader
+        eyebrow="Chart · Medications"
+        title="Medications"
+        subtitle={`Manage medications for ${patientName}.`}
+        actions={
+          <Btn
+            kind="accent"
+            icon={<Plus className="h-4 w-4" />}
+            onClick={() => setShowAddModal(true)}
+          >
+            Add medication
+          </Btn>
+        }
+      />
+
+      {/* Summary strip */}
+      <div
+        className="grid overflow-hidden rounded-2xl"
+        style={{
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          border: "1px solid var(--line)",
+          background: "var(--card)",
+        }}
+      >
+        {summaryMetrics.map((m, i, arr) => {
+          const Icon = m.icon;
+          return (
+            <div
+              key={m.k}
+              className="flex flex-col gap-1.5 px-5 py-4"
+              style={{ borderRight: i < arr.length - 1 ? "1px solid var(--line)" : undefined }}
+            >
+              <div className="flex items-center justify-between">
+                <div
+                  className="text-[11px] uppercase"
+                  style={{ color: "var(--ink-3)", letterSpacing: "0.1em" }}
+                >
+                  {m.k}
+                </div>
+                <Icon className="h-3.5 w-3.5" style={{ color: m.tone }} />
+              </div>
+              <div
+                className="serif"
+                style={{
+                  fontSize: 32,
+                  lineHeight: 0.95,
+                  letterSpacing: "-0.02em",
+                  color: "var(--ink)",
+                }}
+              >
+                {m.v}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      {/* Medications List */}
-      {medications.length === 0 ? (
-        <Card>
-          <CardContent className="flex items-center justify-center py-12">
-            <div className="text-center">
-              <p className="text-muted-foreground mb-4">No medications recorded</p>
-              <Button onClick={() => setShowAddModal(true)} variant="outline">
-                <Plus className="h-4 w-4 mr-2" />
-                Add First Medication
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-          {medications.map((medication) => {
-            const statusBadge = getStatusBadge(medication.status);
-
-            return (
-              <Card key={medication.id} className="relative">
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <CardTitle className="text-lg font-semibold">
-                      {getMedicationDisplayName(medication)}
-                    </CardTitle>
-                    <div className="flex gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => handleEdit(medication)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-destructive hover:text-destructive"
-                        onClick={() => handleDelete(medication.id)}
-                        disabled={deletingId === medication.id}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex flex-wrap gap-2">
-                    <Badge
-                      variant={statusBadge.variant}
-                      className={statusBadge.className || ""}
-                    >
-                      {statusBadge.label}
-                    </Badge>
-                  </div>
-                  {(medication.strength || medication.form) && (
-                    <div>
-                      <p className="text-xs text-muted-foreground">Strength & Form</p>
-                      <p className="text-sm font-medium">
-                        {[medication.strength, medication.form].filter(Boolean).join(" • ")}
-                      </p>
-                    </div>
-                  )}
-                  {(medication.dosage || medication.frequency) && (
-                    <div>
-                      <p className="text-xs text-muted-foreground">Dosage & Frequency</p>
-                      <p className="text-sm font-medium">
-                        {[medication.dosage, medication.frequency].filter(Boolean).join(" • ")}
-                      </p>
-                    </div>
-                  )}
-                  {medication.notes && (
-                    <div>
-                      <p className="text-xs text-muted-foreground">Notes</p>
-                      <p className="text-sm">{medication.notes}</p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })}
+      {/* Medications panel */}
+      <ClearingCard pad={0}>
+        <div
+          className="flex flex-wrap items-center gap-3 px-5 py-3.5"
+          style={{ borderBottom: "1px solid var(--line)" }}
+        >
+          <div
+            className="serif"
+            style={{ fontSize: 18, color: "var(--ink)", letterSpacing: "-0.01em" }}
+          >
+            Medication list
+          </div>
+          <div className="flex-1" />
+          <div
+            className="flex gap-1 rounded-full p-1"
+            style={{ border: "1px solid var(--line)", background: "var(--paper-2)" }}
+          >
+            {filterTabs.map(([k, label, n]) => {
+              const active = filter === k;
+              return (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setFilter(k)}
+                  className="h-7 rounded-full px-3.5 text-[12.5px] font-medium tracking-tight transition-colors"
+                  style={{
+                    background: active ? "var(--ink)" : "transparent",
+                    color: active ? "var(--paper)" : "var(--ink-2)",
+                  }}
+                >
+                  {label} <span className="mono ml-1 opacity-70">{n}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
-      )}
+
+        {filteredMedications.length === 0 ? (
+          <div
+            className="mx-5 my-6 flex flex-col items-center justify-center gap-3 rounded-[14px] py-10"
+            style={{ border: "1px dashed var(--line-strong)" }}
+          >
+            <p className="text-[13px]" style={{ color: "var(--ink-3)" }}>
+              {filter === "all"
+                ? "No medications recorded"
+                : `No ${filter} medications found`}
+            </p>
+            {filter === "all" && (
+              <Btn
+                kind="soft"
+                icon={<Plus className="h-3.5 w-3.5" />}
+                onClick={() => setShowAddModal(true)}
+              >
+                Add first medication
+              </Btn>
+            )}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr style={{ borderBottom: "1px solid var(--line)" }}>
+                  {["Medication", "Strength / form", "Dosage / frequency", "Status", "Notes", "Actions"].map(
+                    (h) => (
+                      <th
+                        key={h}
+                        className="px-5 py-2.5 text-left text-[10.5px] font-medium uppercase"
+                        style={{ color: "var(--ink-3)", letterSpacing: "0.1em" }}
+                      >
+                        {h}
+                      </th>
+                    )
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredMedications.map((medication, i, arr) => {
+                  const st = statusTone(medication.status);
+                  const strengthForm = [medication.strength, medication.form]
+                    .filter(Boolean)
+                    .join(" • ");
+                  const dosageFreq = [medication.dosage, medication.frequency]
+                    .filter(Boolean)
+                    .join(" • ");
+                  return (
+                    <tr
+                      key={medication.id}
+                      style={{
+                        borderBottom:
+                          i < arr.length - 1 ? "1px solid var(--line)" : undefined,
+                      }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLTableRowElement).style.background =
+                          "var(--paper-2)";
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLTableRowElement).style.background =
+                          "transparent";
+                      }}
+                    >
+                      <td className="px-5 py-3">
+                        <div
+                          className="text-[13.5px] font-medium"
+                          style={{ color: "var(--ink)" }}
+                        >
+                          {getMedicationDisplayName(medication)}
+                        </div>
+                      </td>
+                      <td
+                        className="px-5 py-3 text-[12.5px]"
+                        style={{ color: "var(--ink-2)" }}
+                      >
+                        {strengthForm || "—"}
+                      </td>
+                      <td
+                        className="px-5 py-3 text-[12.5px]"
+                        style={{ color: "var(--ink-2)" }}
+                      >
+                        {dosageFreq || "—"}
+                      </td>
+                      <td className="px-5 py-3">
+                        <Pill tone={st.tone} dot>
+                          {st.label}
+                        </Pill>
+                      </td>
+                      <td
+                        className="px-5 py-3 text-[12.5px]"
+                        style={{ color: "var(--ink-3)" }}
+                      >
+                        {medication.notes || "—"}
+                      </td>
+                      <td className="px-5 py-3">
+                        <div className="flex gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleEdit(medication)}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md"
+                            style={{ color: "var(--ink-2)" }}
+                            onMouseEnter={(e) => {
+                              (e.currentTarget as HTMLButtonElement).style.background =
+                                "var(--paper-3)";
+                            }}
+                            onMouseLeave={(e) => {
+                              (e.currentTarget as HTMLButtonElement).style.background =
+                                "transparent";
+                            }}
+                            aria-label="Edit"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(medication.id)}
+                            disabled={deletingId === medication.id}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md disabled:opacity-50"
+                            style={{ color: "var(--critical)" }}
+                            onMouseEnter={(e) => {
+                              (e.currentTarget as HTMLButtonElement).style.background =
+                                "var(--critical-soft)";
+                            }}
+                            onMouseLeave={(e) => {
+                              (e.currentTarget as HTMLButtonElement).style.background =
+                                "transparent";
+                            }}
+                            aria-label="Delete"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </ClearingCard>
 
       {/* Add/Edit Medication Modal */}
       <Dialog
@@ -296,10 +468,10 @@ export function MedicationsContent({
           }
         }}
       >
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {editingMedication ? "Edit Medication" : "Add Medication"}
+              {editingMedication ? "Edit medication" : "Add medication"}
             </DialogTitle>
             <DialogDescription>
               {editingMedication
@@ -309,7 +481,7 @@ export function MedicationsContent({
           </DialogHeader>
           <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="brandName">Brand Name</Label>
+              <Label htmlFor="brandName">Brand name</Label>
               <Input
                 id="brandName"
                 placeholder="e.g., Tylenol"
@@ -318,7 +490,7 @@ export function MedicationsContent({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="genericName">Generic Name</Label>
+              <Label htmlFor="genericName">Generic name</Label>
               <Input
                 id="genericName"
                 placeholder="e.g., Acetaminophen"
@@ -396,9 +568,9 @@ export function MedicationsContent({
             </div>
 
             <DialogFooter>
-              <Button
+              <Btn
+                kind="ghost"
                 type="button"
-                variant="outline"
                 onClick={() => {
                   setShowAddModal(false);
                   setEditingMedication(null);
@@ -407,14 +579,14 @@ export function MedicationsContent({
                 disabled={isSubmitting}
               >
                 Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
+              </Btn>
+              <Btn kind="accent" type="submit" disabled={isSubmitting}>
                 {isSubmitting
-                  ? "Saving..."
+                  ? "Saving…"
                   : editingMedication
-                  ? "Update Medication"
-                  : "Save Medication"}
-              </Button>
+                  ? "Update medication"
+                  : "Save medication"}
+              </Btn>
             </DialogFooter>
           </form>
         </DialogContent>

@@ -6,8 +6,15 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { toast } from "sonner";
-import { Plus, Trash2, Pencil } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import {
+  Plus,
+  Trash2,
+  Pencil,
+  AlertTriangle,
+  ShieldAlert,
+  Activity,
+  CheckCircle2,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -26,8 +33,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import {
+  Btn,
+  ClearingCard,
+  Pill,
+  SubTabHeader,
+  type PillTone,
+} from "@/components/ui/clearing";
 import {
   addAllergyAction,
   updateAllergyAction,
@@ -52,6 +64,34 @@ interface AllergiesContentProps {
   allergies: Allergy[];
 }
 
+type FilterType = "all" | "active" | "resolved";
+
+function severityTone(severity: string): { tone: PillTone; label: string } {
+  switch (severity) {
+    case "Severe":
+      return { tone: "critical", label: severity };
+    case "Moderate":
+      return { tone: "warn", label: severity };
+    case "Mild":
+      return { tone: "ok", label: severity };
+    default:
+      return { tone: "neutral", label: severity };
+  }
+}
+
+function statusTone(status: string): { tone: PillTone; label: string } {
+  switch (status) {
+    case "Active":
+      return { tone: "critical", label: status };
+    case "Resolved":
+      return { tone: "ok", label: status };
+    case "Inactive":
+      return { tone: "neutral", label: status };
+    default:
+      return { tone: "neutral", label: status };
+  }
+}
+
 export function AllergiesContent({
   patientId,
   patientName,
@@ -63,6 +103,7 @@ export function AllergiesContent({
   const [editingAllergy, setEditingAllergy] = React.useState<Allergy | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
+  const [filter, setFilter] = React.useState<FilterType>("all");
 
   React.useEffect(() => {
     setAllergies(initialAllergies);
@@ -110,7 +151,7 @@ export function AllergiesContent({
         await addAllergyAction(patientId, data);
         toast.success("Allergy added successfully");
       }
-      
+
       router.refresh();
     } catch (error) {
       console.error("Error saving allergy:", error);
@@ -154,128 +195,263 @@ export function AllergiesContent({
     setShowAddModal(true);
   };
 
-  const getSeverityBadge = (severity: string) => {
-    switch (severity) {
-      case "Severe":
-        return { variant: "destructive" as const, label: severity };
-      case "Moderate":
-        return { variant: "default" as const, label: severity, className: "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-yellow-500" };
-      case "Mild":
-        return { variant: "default" as const, label: severity, className: "bg-green-500/10 text-green-700 dark:text-green-400 border-green-500" };
-      default:
-        return { variant: "secondary" as const, label: severity };
-    }
-  };
+  const totalAllergies = allergies.length;
+  const activeCount = allergies.filter((a) => a.status === "Active").length;
+  const severeCount = allergies.filter((a) => a.severity === "Severe").length;
+  const resolvedCount = allergies.filter((a) => a.status === "Resolved").length;
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "Active":
-        return { variant: "destructive" as const, label: status };
-      case "Inactive":
-        return { variant: "secondary" as const, label: status };
-      case "Resolved":
-        return { variant: "default" as const, label: status, className: "bg-green-500/10 text-green-700 dark:text-green-400 border-green-500" };
-      default:
-        return { variant: "secondary" as const, label: status };
+  const filteredAllergies = React.useMemo(() => {
+    if (filter === "active") {
+      return allergies.filter((a) => a.status === "Active");
     }
-  };
+    if (filter === "resolved") {
+      return allergies.filter((a) => a.status === "Resolved");
+    }
+    return allergies;
+  }, [allergies, filter]);
+
+  const summaryMetrics = [
+    { k: "Total allergies", v: totalAllergies, icon: ShieldAlert, tone: "var(--ink-3)" as const },
+    { k: "Active", v: activeCount, icon: Activity, tone: "var(--ink-3)" as const },
+    { k: "Severe", v: severeCount, icon: AlertTriangle, tone: "var(--critical)" as const },
+    { k: "Resolved", v: resolvedCount, icon: CheckCircle2, tone: "var(--ink-3)" as const },
+  ];
+
+  const filterTabs: Array<[FilterType, string, number]> = [
+    ["all", "All", totalAllergies],
+    ["active", "Active", activeCount],
+    ["resolved", "Resolved", resolvedCount],
+  ];
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Allergies</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Manage allergies for {patientName}
-          </p>
-        </div>
-        <Button onClick={() => setShowAddModal(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Allergy
-        </Button>
+    <div className="flex flex-1 flex-col gap-5 px-4 py-6 md:px-8 md:py-8">
+      <SubTabHeader
+        eyebrow="Chart · Allergies"
+        title="Allergies"
+        subtitle={`Manage allergies for ${patientName}.`}
+        actions={
+          <Btn
+            kind="accent"
+            icon={<Plus className="h-4 w-4" />}
+            onClick={() => setShowAddModal(true)}
+          >
+            Add allergy
+          </Btn>
+        }
+      />
+
+      {/* Summary strip */}
+      <div
+        className="grid overflow-hidden rounded-2xl"
+        style={{
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          border: "1px solid var(--line)",
+          background: "var(--card)",
+        }}
+      >
+        {summaryMetrics.map((m, i, arr) => {
+          const Icon = m.icon;
+          return (
+            <div
+              key={m.k}
+              className="flex flex-col gap-1.5 px-5 py-4"
+              style={{ borderRight: i < arr.length - 1 ? "1px solid var(--line)" : undefined }}
+            >
+              <div className="flex items-center justify-between">
+                <div
+                  className="text-[11px] uppercase"
+                  style={{ color: "var(--ink-3)", letterSpacing: "0.1em" }}
+                >
+                  {m.k}
+                </div>
+                <Icon className="h-3.5 w-3.5" style={{ color: m.tone }} />
+              </div>
+              <div
+                className="serif"
+                style={{
+                  fontSize: 32,
+                  lineHeight: 0.95,
+                  letterSpacing: "-0.02em",
+                  color: "var(--ink)",
+                }}
+              >
+                {m.v}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      {/* Allergies List */}
-      {allergies.length === 0 ? (
-        <Card>
-          <CardContent className="flex items-center justify-center py-12">
-            <div className="text-center">
-              <p className="text-muted-foreground mb-4">No allergies recorded</p>
-              <Button onClick={() => setShowAddModal(true)} variant="outline">
-                <Plus className="h-4 w-4 mr-2" />
-                Add First Allergy
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-          {allergies.map((allergy) => {
-            const severityBadge = getSeverityBadge(allergy.severity);
-            const statusBadge = getStatusBadge(allergy.status);
-
-            return (
-              <Card key={allergy.id} className="relative">
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <CardTitle className="text-lg font-semibold">
-                      {allergy.name}
-                    </CardTitle>
-                    <div className="flex gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => handleEdit(allergy)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-destructive hover:text-destructive"
-                        onClick={() => handleDelete(allergy.id)}
-                        disabled={deletingId === allergy.id}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex flex-wrap gap-2">
-                    <Badge
-                      variant={severityBadge.variant}
-                      className={severityBadge.className || ""}
-                    >
-                      {severityBadge.label}
-                    </Badge>
-                    <Badge
-                      variant={statusBadge.variant}
-                      className={statusBadge.className || ""}
-                    >
-                      {statusBadge.label}
-                    </Badge>
-                  </div>
-                  {allergy.type && (
-                    <div>
-                      <p className="text-xs text-muted-foreground">Type</p>
-                      <p className="text-sm font-medium">{allergy.type}</p>
-                    </div>
-                  )}
-                  {allergy.reactions && (
-                    <div>
-                      <p className="text-xs text-muted-foreground">Reactions</p>
-                      <p className="text-sm">{allergy.reactions}</p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })}
+      {/* Allergies panel */}
+      <ClearingCard pad={0}>
+        <div
+          className="flex flex-wrap items-center gap-3 px-5 py-3.5"
+          style={{ borderBottom: "1px solid var(--line)" }}
+        >
+          <div
+            className="serif"
+            style={{ fontSize: 18, color: "var(--ink)", letterSpacing: "-0.01em" }}
+          >
+            Allergy list
+          </div>
+          <div className="flex-1" />
+          <div
+            className="flex gap-1 rounded-full p-1"
+            style={{ border: "1px solid var(--line)", background: "var(--paper-2)" }}
+          >
+            {filterTabs.map(([k, label, n]) => {
+              const active = filter === k;
+              return (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setFilter(k)}
+                  className="h-7 rounded-full px-3.5 text-[12.5px] font-medium tracking-tight transition-colors"
+                  style={{
+                    background: active ? "var(--ink)" : "transparent",
+                    color: active ? "var(--paper)" : "var(--ink-2)",
+                  }}
+                >
+                  {label} <span className="mono ml-1 opacity-70">{n}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
-      )}
+
+        {filteredAllergies.length === 0 ? (
+          <div
+            className="mx-5 my-6 flex flex-col items-center justify-center gap-3 rounded-[14px] py-10"
+            style={{ border: "1px dashed var(--line-strong)" }}
+          >
+            <p className="text-[13px]" style={{ color: "var(--ink-3)" }}>
+              {filter === "all"
+                ? "No allergies recorded"
+                : `No ${filter} allergies found`}
+            </p>
+            {filter === "all" && (
+              <Btn
+                kind="soft"
+                icon={<Plus className="h-3.5 w-3.5" />}
+                onClick={() => setShowAddModal(true)}
+              >
+                Add first allergy
+              </Btn>
+            )}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr style={{ borderBottom: "1px solid var(--line)" }}>
+                  {["Allergen", "Severity", "Status", "Type", "Reactions", "Actions"].map(
+                    (h) => (
+                      <th
+                        key={h}
+                        className="px-5 py-2.5 text-left text-[10.5px] font-medium uppercase"
+                        style={{ color: "var(--ink-3)", letterSpacing: "0.1em" }}
+                      >
+                        {h}
+                      </th>
+                    )
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredAllergies.map((allergy, i, arr) => {
+                  const sev = severityTone(allergy.severity);
+                  const st = statusTone(allergy.status);
+                  return (
+                    <tr
+                      key={allergy.id}
+                      style={{
+                        borderBottom:
+                          i < arr.length - 1 ? "1px solid var(--line)" : undefined,
+                      }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLTableRowElement).style.background =
+                          "var(--paper-2)";
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLTableRowElement).style.background =
+                          "transparent";
+                      }}
+                    >
+                      <td className="px-5 py-3">
+                        <div
+                          className="text-[13.5px] font-medium"
+                          style={{ color: "var(--ink)" }}
+                        >
+                          {allergy.name}
+                        </div>
+                      </td>
+                      <td className="px-5 py-3">
+                        <Pill tone={sev.tone} dot>
+                          {sev.label}
+                        </Pill>
+                      </td>
+                      <td className="px-5 py-3">
+                        <Pill tone={st.tone}>{st.label}</Pill>
+                      </td>
+                      <td
+                        className="px-5 py-3 text-[12.5px]"
+                        style={{ color: "var(--ink-2)" }}
+                      >
+                        {allergy.type || "—"}
+                      </td>
+                      <td
+                        className="px-5 py-3 text-[12.5px]"
+                        style={{ color: "var(--ink-3)" }}
+                      >
+                        {allergy.reactions || "—"}
+                      </td>
+                      <td className="px-5 py-3">
+                        <div className="flex gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleEdit(allergy)}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md"
+                            style={{ color: "var(--ink-2)" }}
+                            onMouseEnter={(e) => {
+                              (e.currentTarget as HTMLButtonElement).style.background =
+                                "var(--paper-3)";
+                            }}
+                            onMouseLeave={(e) => {
+                              (e.currentTarget as HTMLButtonElement).style.background =
+                                "transparent";
+                            }}
+                            aria-label="Edit"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(allergy.id)}
+                            disabled={deletingId === allergy.id}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md disabled:opacity-50"
+                            style={{ color: "var(--critical)" }}
+                            onMouseEnter={(e) => {
+                              (e.currentTarget as HTMLButtonElement).style.background =
+                                "var(--critical-soft)";
+                            }}
+                            onMouseLeave={(e) => {
+                              (e.currentTarget as HTMLButtonElement).style.background =
+                                "transparent";
+                            }}
+                            aria-label="Delete"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </ClearingCard>
 
       {/* Add/Edit Allergy Modal */}
       <Dialog
@@ -291,7 +467,7 @@ export function AllergiesContent({
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>
-              {editingAllergy ? "Edit Allergy" : "Add Allergy"}
+              {editingAllergy ? "Edit allergy" : "Add allergy"}
             </DialogTitle>
             <DialogDescription>
               {editingAllergy
@@ -302,7 +478,7 @@ export function AllergiesContent({
           <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="name">
-                Allergy Name <span className="text-destructive">*</span>
+                Allergy name <span style={{ color: "var(--critical)" }}>*</span>
               </Label>
               <Input
                 id="name"
@@ -313,7 +489,7 @@ export function AllergiesContent({
                 )}
               />
               {form.formState.errors.name && (
-                <p className="text-sm text-destructive">
+                <p className="text-sm" style={{ color: "var(--critical)" }}>
                   {form.formState.errors.name.message}
                 </p>
               )}
@@ -377,9 +553,9 @@ export function AllergiesContent({
             </div>
 
             <DialogFooter>
-              <Button
+              <Btn
+                kind="ghost"
                 type="button"
-                variant="outline"
                 onClick={() => {
                   setShowAddModal(false);
                   setEditingAllergy(null);
@@ -388,14 +564,14 @@ export function AllergiesContent({
                 disabled={isSubmitting}
               >
                 Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
+              </Btn>
+              <Btn kind="accent" type="submit" disabled={isSubmitting}>
                 {isSubmitting
-                  ? "Saving..."
+                  ? "Saving…"
                   : editingAllergy
-                  ? "Update Allergy"
-                  : "Save Allergy"}
-              </Button>
+                  ? "Update allergy"
+                  : "Save allergy"}
+              </Btn>
             </DialogFooter>
           </form>
         </DialogContent>
