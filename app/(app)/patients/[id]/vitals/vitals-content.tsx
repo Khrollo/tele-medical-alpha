@@ -457,7 +457,7 @@ export function VitalsContent({
             {vitals.map((vital, i, arr) => (
               <div
                 key={vital.id}
-                className="flex flex-col gap-3 px-5 py-4"
+                className="flex flex-col gap-4 px-5 py-7"
                 style={{
                   borderBottom:
                     i < arr.length - 1 ? "1px solid var(--line)" : undefined,
