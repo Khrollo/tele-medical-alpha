@@ -13,6 +13,7 @@ import {
   Folder,
   History,
   Home,
+  Mic,
   Phone,
   Pill,
   Send,
@@ -78,9 +79,13 @@ export function PatientChartShell({
     const openSidebarRef = React.useRef<(() => void) | null>(null);
     const pathname = usePathname() ?? "";
 
-    const isNewVisit = pathname.split("/").pop() === "new-visit";
-    const isSendToWaitingRoom = pathname.split("/").pop() === "send-to-waiting-room";
-    const isCreateFlow = isNewVisit || isSendToWaitingRoom;
+    const lastSegment = pathname.split("/").pop();
+    const isNewVisit = lastSegment === "new-visit";
+    const isSendToWaitingRoom = lastSegment === "send-to-waiting-room";
+    const isLiveVisit = lastSegment === "live-visit";
+    // Fullscreen capture flows render their own chrome — skip the chart
+    // ribbon + section nav so the canvas has the whole viewport.
+    const isCreateFlow = isNewVisit || isSendToWaitingRoom || isLiveVisit;
 
     const breadcrumb = React.useMemo<string[]>(() => {
         const segments = pathname.split("/").filter(Boolean);
@@ -88,6 +93,7 @@ export function PatientChartShell({
             if (segment === "patients") return "Patients";
             if (segment === patientId) return patientName;
             if (segment === "new-visit") return "New visit";
+            if (segment === "live-visit") return "Live visit";
             if (segment === "send-to-waiting-room") return "Send to waiting room";
             if (segment === "log-history") return "Visit log";
             return segment.charAt(0).toUpperCase() + segment.slice(1).replace(/-/g, " ");
@@ -144,11 +150,18 @@ export function PatientChartShell({
                     onOpenMobileMenu={() => openSidebarRef.current?.()}
                     right={
                         !isCreateFlow ? (
-                            <Link href={`/patients/${patientId}/new-visit`}>
-                                <Btn kind="accent" size="md" icon={<AudioWaveform className="h-4 w-4" />}>
-                                    New visit
-                                </Btn>
-                            </Link>
+                            <>
+                                <Link href={`/patients/${patientId}/live-visit`}>
+                                    <Btn kind="ghost" size="md" icon={<Mic className="h-4 w-4" />}>
+                                        Live visit
+                                    </Btn>
+                                </Link>
+                                <Link href={`/patients/${patientId}/new-visit`}>
+                                    <Btn kind="accent" size="md" icon={<AudioWaveform className="h-4 w-4" />}>
+                                        New visit
+                                    </Btn>
+                                </Link>
+                            </>
                         ) : null
                     }
                 />
@@ -201,22 +214,24 @@ function PatientRibbon({
         >
             <Avatar name={name} size={52} />
             <div className="min-w-0 leading-tight">
-                <div className="flex flex-wrap items-baseline gap-2">
-                    <h1
-                        className="serif nowrap"
-                        style={{ margin: 0, fontSize: 28, letterSpacing: "-0.015em", color: "var(--ink)" }}
-                    >
-                        {name}
-                    </h1>
-                    {dob && <StatusPill tone="neutral">DOB {dob}</StatusPill>}
-                    {allergiesText && (
-                        <StatusPill tone="critical" dot>
-                            Allergies
-                        </StatusPill>
-                    )}
-                </div>
+                <h1
+                    className="serif nowrap"
+                    style={{ margin: 0, fontSize: 28, letterSpacing: "-0.015em", color: "var(--ink)" }}
+                >
+                    {name}
+                </h1>
+                {(dob || allergiesText) && (
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        {dob && <StatusPill tone="neutral">DOB {dob}</StatusPill>}
+                        {allergiesText && (
+                            <StatusPill tone="critical" dot>
+                                Allergies
+                            </StatusPill>
+                        )}
+                    </div>
+                )}
                 <div
-                    className="mono mt-1 max-w-[520px] truncate text-[11.5px]"
+                    className="mono mt-1.5 max-w-[520px] truncate text-[11.5px]"
                     style={{ color: "var(--ink-3)" }}
                 >
                     MRN {mrn}

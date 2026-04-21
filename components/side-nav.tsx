@@ -11,11 +11,8 @@ import {
   FileText,
   ChevronLeft,
   ChevronRight,
-  Sidebar as SidebarIcon,
-  Settings,
   UserPlus,
 } from "lucide-react";
-import { ThemeSwatcher } from "./theme-swatcher";
 import { Logo } from "./ui/clearing/logo";
 import { Avatar } from "./ui/clearing/avatar";
 import { Divider } from "./ui/clearing/divider";
@@ -93,7 +90,7 @@ export function SideNav({
       items.push(
         { href: "/patients", label: "Patients", icon: <Users className="h-4 w-4" /> },
         { href: "/waiting-room", label: "Schedule", icon: <Clock className="h-4 w-4" /> },
-        { href: "/open-notes", label: "Inbox", icon: <FileText className="h-4 w-4" /> }
+        { href: "/open-notes", label: "Open notes", icon: <FileText className="h-4 w-4" /> }
       );
     }
     if (userRole === "nurse") {
@@ -299,22 +296,7 @@ export function SideNav({
                 </div>
               )}
             </div>
-            <Settings className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--ink-3)" }} />
           </div>
-        )}
-
-        {showLabels ? (
-          <ThemeSwatcher />
-        ) : (
-          <button
-            type="button"
-            className="h-8 w-8 rounded-md inline-flex items-center justify-center transition-colors hover:bg-[var(--paper-3)] mx-auto"
-            style={{ color: "var(--ink-3)" }}
-            title="Theme"
-            onClick={() => setIsCollapsed(false)}
-          >
-            <SidebarIcon className="h-4 w-4" />
-          </button>
         )}
 
         <button

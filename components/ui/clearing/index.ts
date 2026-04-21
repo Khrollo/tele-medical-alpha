@@ -9,3 +9,4 @@ export { Sparkline } from "./sparkline";
 export { ProgressRing } from "./progress-ring";
 export { Divider } from "./divider";
 export { SubTabHeader } from "./sub-tab-header";
+export { SectionHeader } from "./section-header";

@@ -17,11 +17,11 @@ import {
   Ruler,
   Wind,
   Droplet,
+  TrendingUp,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -57,12 +57,19 @@ import {
 const vitalSchema = z.object({
   date: z.string().min(1, "Date is required"),
   bp: z.string().optional(),
+  bpNote: z.string().optional(),
   hr: z.string().optional(),
+  hrNote: z.string().optional(),
   temp: z.string().optional(),
+  tempNote: z.string().optional(),
   weight: z.string().optional(),
+  weightNote: z.string().optional(),
   height: z.string().optional(),
+  heightNote: z.string().optional(),
   spo2: z.string().optional(),
+  spo2Note: z.string().optional(),
   rr: z.string().optional(),
+  rrNote: z.string().optional(),
   notes: z.string().optional(),
 });
 
@@ -97,6 +104,7 @@ export function VitalsContent({
   const router = useRouter();
   const [vitals, setVitals] = React.useState<VitalEntry[]>(initialVitals);
   const [showAddModal, setShowAddModal] = React.useState(false);
+  const [showTrendsModal, setShowTrendsModal] = React.useState(false);
   const [editingVital, setEditingVital] = React.useState<VitalEntry | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
@@ -109,12 +117,19 @@ export function VitalsContent({
     defaultValues: {
       date: new Date().toISOString().split("T")[0],
       bp: "",
+      bpNote: "",
       hr: "",
+      hrNote: "",
       temp: "",
+      tempNote: "",
       weight: "",
+      weightNote: "",
       height: "",
+      heightNote: "",
       spo2: "",
+      spo2Note: "",
       rr: "",
+      rrNote: "",
       notes: "",
     },
   });
@@ -125,24 +140,38 @@ export function VitalsContent({
       form.reset({
         date: new Date().toISOString().split("T")[0],
         bp: "",
+        bpNote: "",
         hr: "",
+        hrNote: "",
         temp: "",
+        tempNote: "",
         weight: "",
+        weightNote: "",
         height: "",
+        heightNote: "",
         spo2: "",
+        spo2Note: "",
         rr: "",
+        rrNote: "",
         notes: "",
       });
     } else if (editingVital) {
       form.reset({
         date: editingVital.date.split("T")[0],
         bp: editingVital.bp || "",
+        bpNote: editingVital.bpNote || "",
         hr: editingVital.hr || "",
+        hrNote: editingVital.hrNote || "",
         temp: editingVital.temp || "",
+        tempNote: editingVital.tempNote || "",
         weight: editingVital.weight || "",
+        weightNote: editingVital.weightNote || "",
         height: editingVital.height || "",
+        heightNote: editingVital.heightNote || "",
         spo2: editingVital.spo2 || "",
+        spo2Note: editingVital.spo2Note || "",
         rr: editingVital.rr || "",
+        rrNote: editingVital.rrNote || "",
         notes: editingVital.notes || "",
       });
     }
@@ -298,13 +327,28 @@ export function VitalsContent({
         title="Vital signs"
         subtitle={`Manage vital signs for ${patientName}.`}
         actions={
-          <Btn
-            kind="accent"
-            icon={<Plus className="h-4 w-4" />}
-            onClick={() => setShowAddModal(true)}
-          >
-            Add entry
-          </Btn>
+          <div className="flex items-center gap-2">
+            <Btn
+              kind="ghost"
+              icon={<TrendingUp className="h-4 w-4" />}
+              onClick={() => setShowTrendsModal(true)}
+              disabled={vitals.length < 2}
+              title={
+                vitals.length < 2
+                  ? "Need at least 2 entries to show a trend"
+                  : undefined
+              }
+            >
+              View trends
+            </Btn>
+            <Btn
+              kind="accent"
+              icon={<Plus className="h-4 w-4" />}
+              onClick={() => setShowAddModal(true)}
+            >
+              Add entry
+            </Btn>
+          </div>
         }
       />
 
@@ -424,9 +468,10 @@ export function VitalsContent({
                     <div
                       className="serif"
                       style={{
-                        fontSize: 16,
+                        fontSize: 22,
                         color: "var(--ink)",
-                        letterSpacing: "-0.01em",
+                        letterSpacing: "-0.015em",
+                        lineHeight: 1.15,
                       }}
                     >
                       {formatDate(vital.date)}
@@ -483,6 +528,7 @@ export function VitalsContent({
                       label="Blood pressure"
                       value={vital.bp}
                       unit="mmHg"
+                      note={vital.bpNote}
                     />
                   )}
                   {vital.hr && (
@@ -491,6 +537,7 @@ export function VitalsContent({
                       label="Heart rate"
                       value={vital.hr}
                       unit="bpm"
+                      note={vital.hrNote}
                     />
                   )}
                   {vital.temp && (
@@ -499,6 +546,7 @@ export function VitalsContent({
                       label="Temperature"
                       value={vital.temp}
                       unit="°F"
+                      note={vital.tempNote}
                     />
                   )}
                   {vital.weight && (
@@ -507,6 +555,7 @@ export function VitalsContent({
                       label="Weight"
                       value={vital.weight}
                       unit="lbs"
+                      note={vital.weightNote}
                     />
                   )}
                   {vital.height && (
@@ -515,6 +564,7 @@ export function VitalsContent({
                       label="Height"
                       value={vital.height}
                       unit="cm"
+                      note={vital.heightNote}
                     />
                   )}
                   {vital.spo2 && (
@@ -523,6 +573,7 @@ export function VitalsContent({
                       label="SpO₂"
                       value={vital.spo2}
                       unit="%"
+                      note={vital.spo2Note}
                     />
                   )}
                   {vital.rr && (
@@ -531,6 +582,7 @@ export function VitalsContent({
                       label="Resp rate"
                       value={vital.rr}
                       unit="/min"
+                      note={vital.rrNote}
                     />
                   )}
                   {vital.bmi && (
@@ -539,6 +591,7 @@ export function VitalsContent({
                       label="BMI"
                       value={vital.bmi}
                       unit=""
+                      note={vital.bmiNote}
                     />
                   )}
                 </div>
@@ -569,6 +622,156 @@ export function VitalsContent({
           </div>
         </ClearingCard>
       )}
+
+      {/* Trends Modal */}
+      <Dialog open={showTrendsModal} onOpenChange={setShowTrendsModal}>
+        <DialogContent className="sm:max-w-[780px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Vital trends</DialogTitle>
+            <DialogDescription>
+              {patientName} — {sortedAsc.length} entr
+              {sortedAsc.length === 1 ? "y" : "ies"} over time.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-5">
+            {metrics
+              .filter((m) => m.data.length >= 2)
+              .map((m) => {
+                const chartData = sortedAsc
+                  .map((v) => {
+                    const raw =
+                      m.k === "Blood pressure"
+                        ? toSystolic(v.bp)
+                        : m.k === "Heart rate"
+                        ? toNumber(v.hr)
+                        : m.k === "Temperature"
+                        ? toNumber(v.temp)
+                        : m.k === "SpO₂"
+                        ? toNumber(v.spo2)
+                        : m.k === "Weight"
+                        ? toNumber(v.weight)
+                        : m.k === "Respiratory rate"
+                        ? toNumber(v.rr)
+                        : NaN;
+                    return {
+                      date: formatDate(v.date),
+                      value: isNaN(raw) ? null : raw,
+                    };
+                  })
+                  .filter((d) => d.value !== null);
+                const Icon = m.icon;
+                return (
+                  <div
+                    key={m.k}
+                    className="rounded-[12px]"
+                    style={{
+                      border: "1px solid var(--line)",
+                      background: "var(--card)",
+                    }}
+                  >
+                    <div
+                      className="flex items-center gap-2 px-4 py-3"
+                      style={{ borderBottom: "1px solid var(--line)" }}
+                    >
+                      <Icon
+                        className="h-4 w-4"
+                        style={{ color: m.tone }}
+                      />
+                      <div
+                        className="serif"
+                        style={{
+                          fontSize: 15,
+                          color: "var(--ink)",
+                          letterSpacing: "-0.01em",
+                        }}
+                      >
+                        {m.k}
+                      </div>
+                      <div className="flex-1" />
+                      <div
+                        className="mono text-[11px]"
+                        style={{ color: "var(--ink-3)" }}
+                      >
+                        latest {m.latest} {m.unit}
+                      </div>
+                    </div>
+                    <div style={{ height: 180, padding: "10px 8px 12px" }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart
+                          data={chartData}
+                          margin={{ top: 8, right: 16, bottom: 8, left: 0 }}
+                        >
+                          <CartesianGrid
+                            stroke="var(--line)"
+                            strokeDasharray="3 3"
+                            vertical={false}
+                          />
+                          <XAxis
+                            dataKey="date"
+                            stroke="var(--ink-3)"
+                            tick={{ fontSize: 10, fill: "var(--ink-3)" }}
+                            tickLine={false}
+                            axisLine={false}
+                          />
+                          <YAxis
+                            stroke="var(--ink-3)"
+                            tick={{ fontSize: 10, fill: "var(--ink-3)" }}
+                            tickLine={false}
+                            axisLine={false}
+                            domain={["auto", "auto"]}
+                            width={40}
+                          />
+                          <Tooltip
+                            contentStyle={{
+                              background: "var(--card)",
+                              border: "1px solid var(--line)",
+                              borderRadius: 8,
+                              fontSize: 12,
+                            }}
+                            labelStyle={{ color: "var(--ink-2)" }}
+                            itemStyle={{ color: "var(--ink)" }}
+                          />
+                          <Legend
+                            wrapperStyle={{
+                              fontSize: 11,
+                              color: "var(--ink-3)",
+                            }}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="value"
+                            name={`${m.k} (${m.unit})`}
+                            stroke={m.tone}
+                            strokeWidth={2}
+                            dot={{ r: 3, fill: m.tone }}
+                            activeDot={{ r: 5 }}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                );
+              })}
+            {metrics.every((m) => m.data.length < 2) && (
+              <p
+                className="text-[13px]"
+                style={{ color: "var(--ink-3)" }}
+              >
+                Need at least 2 recorded values per metric to show a trend.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Btn
+              kind="ghost"
+              type="button"
+              onClick={() => setShowTrendsModal(false)}
+            >
+              Close
+            </Btn>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Add/Edit Vital Modal */}
       <Dialog
@@ -612,68 +815,62 @@ export function VitalsContent({
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="bp">Blood pressure</Label>
-                <Input
-                  id="bp"
-                  placeholder="e.g., 120/80"
-                  {...form.register("bp")}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="hr">Heart rate (bpm)</Label>
-                <Input id="hr" placeholder="e.g., 72" {...form.register("hr")} />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="temp">Temperature (°F)</Label>
-                <Input
-                  id="temp"
-                  placeholder="e.g., 98.6"
-                  {...form.register("temp")}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="spo2">SpO₂ (%)</Label>
-                <Input
-                  id="spo2"
-                  placeholder="e.g., 98"
-                  {...form.register("spo2")}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="weight">Weight (lbs)</Label>
-                <Input
-                  id="weight"
-                  placeholder="e.g., 170"
-                  {...form.register("weight")}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="height">Height (cm)</Label>
-                <Input
-                  id="height"
-                  placeholder="e.g., 177.8"
-                  {...form.register("height")}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="rr">Respiratory rate (/min)</Label>
-                <Input id="rr" placeholder="e.g., 16" {...form.register("rr")} />
-              </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <VitalWithNote
+                label="Blood pressure"
+                placeholder="e.g., 120/80"
+                fieldId="bp"
+                register={form.register}
+              />
+              <VitalWithNote
+                label="Heart rate"
+                unit="bpm"
+                placeholder="e.g., 72"
+                fieldId="hr"
+                register={form.register}
+              />
+              <VitalWithNote
+                label="Temperature"
+                unit="°F"
+                placeholder="e.g., 98.6"
+                fieldId="temp"
+                register={form.register}
+              />
+              <VitalWithNote
+                label="SpO₂"
+                unit="%"
+                placeholder="e.g., 98"
+                fieldId="spo2"
+                register={form.register}
+              />
+              <VitalWithNote
+                label="Weight"
+                unit="lbs"
+                placeholder="e.g., 170"
+                fieldId="weight"
+                register={form.register}
+              />
+              <VitalWithNote
+                label="Height"
+                unit="cm"
+                placeholder="e.g., 177.8"
+                fieldId="height"
+                register={form.register}
+              />
+              <VitalWithNote
+                label="Respiratory rate"
+                unit="/min"
+                placeholder="e.g., 16"
+                fieldId="rr"
+                register={form.register}
+              />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="notes">Notes</Label>
+              <Label htmlFor="notes">General notes (optional)</Label>
               <Textarea
                 id="notes"
-                placeholder="Additional notes..."
+                placeholder="Overall notes for this entry — e.g. clinical context, what the patient was doing…"
                 rows={3}
                 {...form.register("notes")}
               />
@@ -712,11 +909,13 @@ function VitalCell({
   label,
   value,
   unit,
+  note,
 }: {
   icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
   label: string;
   value: string;
   unit: string;
+  note?: string;
 }) {
   return (
     <div className="flex flex-col gap-1">
@@ -743,6 +942,71 @@ function VitalCell({
           </span>
         )}
       </div>
+      {note ? (
+        <div
+          className="mt-0.5 text-[11.5px] italic leading-snug"
+          style={{ color: "var(--ink-3)" }}
+        >
+          {note}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// Helper used inside the add/edit modal — renders a vital's value input and
+// a small optional note field below it, sharing the same ID prefix.
+function VitalWithNote({
+  label,
+  unit,
+  placeholder,
+  fieldId,
+  register,
+}: {
+  label: string;
+  unit?: string;
+  placeholder: string;
+  fieldId:
+    | "bp"
+    | "hr"
+    | "temp"
+    | "spo2"
+    | "weight"
+    | "height"
+    | "rr";
+  register: ReturnType<typeof useForm<VitalFormData>>["register"];
+}) {
+  const noteId = `${fieldId}Note` as const;
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={fieldId}>
+        {label}
+        {unit ? (
+          <span
+            className="mono ml-1 text-[10.5px]"
+            style={{ color: "var(--ink-3)" }}
+          >
+            ({unit})
+          </span>
+        ) : null}
+      </Label>
+      <Input id={fieldId} placeholder={placeholder} {...register(fieldId)} />
+      <Input
+        id={noteId}
+        placeholder="Optional note for this value"
+        className="text-[12.5px]"
+        style={{ color: "var(--ink-2)" }}
+        {...register(
+          noteId as
+            | "bpNote"
+            | "hrNote"
+            | "tempNote"
+            | "spo2Note"
+            | "weightNote"
+            | "heightNote"
+            | "rrNote"
+        )}
+      />
     </div>
   );
 }
