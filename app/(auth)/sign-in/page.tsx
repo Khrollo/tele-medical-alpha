@@ -1,4 +1,6 @@
 import { Suspense } from "react";
+import { redirect } from "next/navigation";
+import { getServerSession } from "@/app/_lib/supabase/server";
 import { SignInForm } from "./sign-in-form";
 
 function SignInFormFallback() {
@@ -9,7 +11,13 @@ function SignInFormFallback() {
   );
 }
 
-export default function SignInPage() {
+export default async function SignInPage() {
+  const session = await getServerSession();
+
+  if (session) {
+    redirect("/");
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <Suspense fallback={<SignInFormFallback />}>

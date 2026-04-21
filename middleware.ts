@@ -2,7 +2,6 @@ import { type NextRequest, NextResponse } from "next/server";
 import { getSessionCookie } from "better-auth/cookies";
 
 const publicRoutes = ["/sign-in", "/sign-up", "/reset-password"];
-const authRoutes = ["/sign-in", "/sign-up", "/reset-password"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -19,16 +18,8 @@ export async function middleware(request: NextRequest) {
   const isPublicRoute = publicRoutes.some((route) =>
     pathname.startsWith(route)
   );
-  const isAuthRoute = authRoutes.some((route) => pathname.startsWith(route));
-
   const sessionCookie = getSessionCookie(request);
   const isAuthenticated = !!sessionCookie;
-
-  if (isAuthenticated && isAuthRoute) {
-    const redirectUrl = request.nextUrl.clone();
-    redirectUrl.pathname = "/";
-    return NextResponse.redirect(redirectUrl);
-  }
 
   if (!isAuthenticated && !isPublicRoute) {
     const redirectUrl = request.nextUrl.clone();
