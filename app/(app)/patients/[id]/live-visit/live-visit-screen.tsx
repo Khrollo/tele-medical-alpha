@@ -14,6 +14,13 @@ import {
     Stethoscope,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
 
 import { Avatar, Btn, Pill, type PillTone } from "@/components/ui/clearing";
 import {
@@ -343,6 +350,7 @@ type TranscriptEntry = {
 export function LiveVisitScreen({
     patientId,
     patient,
+    userId,
 }: LiveVisitScreenProps) {
     // Recording + transcription state
     const [isRecording, setIsRecording] = React.useState(false);
@@ -406,11 +414,13 @@ export function LiveVisitScreen({
     const simulatorRef = React.useRef<SrtSimulator | null>(null);
     const [simulating, setSimulating] = React.useState(false);
     const [simProgress, setSimProgress] = React.useState<{ current: number; total: number } | null>(null);
-    const [visitDraftId, setVisitDraftId] = React.useState<string | null>(null);
+    const visitDraftIdRef = React.useRef<string | null>(null);
     const [isSaving, setIsSaving] = React.useState(false);
     const [isSigning, setIsSigning] = React.useState(false);
     const autosaveTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
     const consentAtRef = React.useRef<string | null>(null);
+    const [consentAt, setConsentAt] = React.useState<string | null>(null);
+    const [showConsentPrompt, setShowConsentPrompt] = React.useState(false);
     // persistDraft is defined below `beginRecording` but referenced via setInterval
     // inside it. Stash it on a ref so we avoid the TDZ when the deps array is
     // evaluated during render.
@@ -620,6 +630,41 @@ export function LiveVisitScreen({
         [applyDelta]
     );
 
+    const setActiveVisitDraftId = React.useCallback((nextVisitId: string | null) => {
+        visitDraftIdRef.current = nextVisitId;
+    }, []);
+
+    const buildPersistedNote = React.useCallback((): VisitNote => {
+        const transcript = latestTranscriptRef.current.trim();
+        return {
+            ...runningNoteRef.current,
+            transcript: transcript || undefined,
+            consents: consentAtRef.current
+                ? {
+                    ...runningNoteRef.current.consents,
+                    aiTranscript: true,
+                    aiTranscriptConfirmedAt: consentAtRef.current,
+                    aiTranscriptConfirmedBy: userId,
+                }
+                : runningNoteRef.current.consents,
+        };
+    }, [userId]);
+
+    const waitForParseIdle = React.useCallback(async () => {
+        while (parseInFlightRef.current) {
+            await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+    }, []);
+
+    const flushLatestTranscript = React.useCallback(async () => {
+        const snapshot = latestTranscriptRef.current.trim();
+        if (!snapshot) return;
+        await waitForParseIdle();
+        lastParsedLengthRef.current = 0;
+        await runParse(snapshot);
+        await waitForParseIdle();
+    }, [runParse, waitForParseIdle]);
+
     const beginRecording = React.useCallback(async () => {
         const { createLiveSpeechController, isLiveSpeechSupported } = await import(
             "@/app/_lib/ai/live-speech"
@@ -695,6 +740,10 @@ export function LiveVisitScreen({
         setCalibration(cached);
         if (isCalibrationStale(cached)) {
             setShowCalibration(true);
+            return;
+        }
+        if (!consentAtRef.current) {
+            setShowConsentPrompt(true);
             return;
         }
         await beginRecording();
@@ -797,38 +846,12 @@ export function LiveVisitScreen({
         [runParse, scanFlags]
     );
 
-    const stopSimulation = React.useCallback(async () => {
-        if (simulatorRef.current) {
-            await simulatorRef.current.stop();
-            simulatorRef.current = null;
-        }
-        setSimulating(false);
-        setIsRecording(false);
-        if (clockTimerRef.current) {
-            clearInterval(clockTimerRef.current);
-            clockTimerRef.current = null;
-        }
-        if (parseTimerRef.current) {
-            clearTimeout(parseTimerRef.current);
-            parseTimerRef.current = null;
-        }
-        if (autosaveTimerRef.current) {
-            clearInterval(autosaveTimerRef.current);
-            autosaveTimerRef.current = null;
-        }
-        // Force a final parse against everything we have.
-        const snapshot = latestTranscriptRef.current;
-        if (snapshot) {
-            lastParsedLengthRef.current = 0;
-            void runParse(snapshot);
-        }
-    }, [runParse]);
-
     const handleCalibrationComplete = React.useCallback(
         async (result: CalibrationResult, stream: MediaStream, consentAtIso: string) => {
             setCalibration(result);
             setShowCalibration(false);
             consentAtRef.current = consentAtIso;
+            setConsentAt(consentAtIso);
             // Release the stream — the browser SpeechRecognition engine owns
             // its own mic handle. We only needed the stream for level / noise
             // floor measurement during calibration.
@@ -845,8 +868,57 @@ export function LiveVisitScreen({
         setShowCalibration(false);
     }, []);
 
-    const stop = React.useCallback(async () => {
+    const handleConsentConfirmed = React.useCallback(async () => {
+        const confirmedAt = new Date().toISOString();
+        consentAtRef.current = confirmedAt;
+        setConsentAt(confirmedAt);
+        setShowConsentPrompt(false);
+        await beginRecording();
+    }, [beginRecording]);
+
+    const persistDraft = React.useCallback(
+        async ({ propagateErrors = true }: { propagateErrors?: boolean } = {}) => {
+            if (isSaving) return visitDraftIdRef.current;
+            const noteToPersist = buildPersistedNote();
+            const transcript = latestTranscriptRef.current.trim();
+            const hasContent =
+                !!noteToPersist.subjective?.chiefComplaint?.trim() ||
+                !!noteToPersist.subjective?.hpi?.trim() ||
+                transcript.length > 40;
+            if (!hasContent) return visitDraftIdRef.current;
+            setIsSaving(true);
+            runningNoteRef.current = noteToPersist;
+            setRunningNote(noteToPersist);
+            try {
+                const currentDraftId = visitDraftIdRef.current;
+                if (!currentDraftId) {
+                    const { visitId } = await createVisitDraftAction({
+                        patientId,
+                        notesJson: noteToPersist,
+                        transcript,
+                    });
+                    setActiveVisitDraftId(visitId);
+                    return visitId;
+                }
+                await updateVisitDraftAction(currentDraftId, {
+                    notesJson: noteToPersist,
+                    transcript,
+                });
+                return currentDraftId;
+            } catch (err) {
+                console.error("Draft save failed", err);
+                if (propagateErrors) throw err;
+                return visitDraftIdRef.current;
+            } finally {
+                setIsSaving(false);
+            }
+        },
+        [buildPersistedNote, isSaving, patientId, setActiveVisitDraftId]
+    );
+
+    const stopCapture = React.useCallback(async ({ persistDraftOnStop }: { persistDraftOnStop: boolean }) => {
         setIsRecording(false);
+        setSimulating(false);
         if (clockTimerRef.current) {
             clearInterval(clockTimerRef.current);
             clockTimerRef.current = null;
@@ -859,77 +931,49 @@ export function LiveVisitScreen({
             clearInterval(autosaveTimerRef.current);
             autosaveTimerRef.current = null;
         }
-        const snapshot = latestTranscriptRef.current;
-        await liveControllerRef.current?.stop();
-        // Force a final parse — clear growth guard, flush any buffered segments.
-        if (snapshot) {
-            lastParsedLengthRef.current = 0;
-            void runParse(snapshot);
+        if (simulatorRef.current) {
+            await simulatorRef.current.stop();
+            simulatorRef.current = null;
         }
-        // Flush the final draft once recording stops.
-        void persistDraftRef.current();
-    }, [runParse]);
+        if (liveControllerRef.current) {
+            await liveControllerRef.current.stop();
+            liveControllerRef.current = null;
+        }
+        await flushLatestTranscript();
+        if (!persistDraftOnStop) return visitDraftIdRef.current;
+        return persistDraft();
+    }, [flushLatestTranscript, persistDraft]);
 
-    const persistDraft = React.useCallback(async () => {
-        if (isSaving) return;
-        // Avoid creating empty drafts before we have anything to save.
-        const hasContent =
-            !!runningNoteRef.current.subjective?.chiefComplaint?.trim() ||
-            !!runningNoteRef.current.subjective?.hpi?.trim() ||
-            latestTranscriptRef.current.trim().length > 40;
-        if (!hasContent) return;
-        setIsSaving(true);
-        try {
-            if (!visitDraftId) {
-                if (consentAtRef.current) {
-                    console.info("[live-visit] consent recorded", {
-                        patientId,
-                        consentAt: consentAtRef.current,
-                    });
-                }
-                const { visitId } = await createVisitDraftAction({
-                    patientId,
-                    notesJson: runningNoteRef.current,
-                    transcript: latestTranscriptRef.current,
-                });
-                setVisitDraftId(visitId);
-            } else {
-                await updateVisitDraftAction(visitDraftId, {
-                    notesJson: runningNoteRef.current,
-                    transcript: latestTranscriptRef.current,
-                });
-            }
-        } catch (err) {
-            console.error("Draft save failed", err);
-        } finally {
-            setIsSaving(false);
-        }
-    }, [isSaving, patientId, visitDraftId]);
+    const stop = React.useCallback(async () => {
+        await stopCapture({ persistDraftOnStop: true });
+    }, [stopCapture]);
+
+    const stopSimulation = React.useCallback(async () => {
+        await stopCapture({ persistDraftOnStop: true });
+    }, [stopCapture]);
 
     // Keep the ref pointing at the latest persistDraft so the 15s interval uses it.
     React.useEffect(() => {
-        persistDraftRef.current = persistDraft;
+        persistDraftRef.current = async () => {
+            await persistDraft({ propagateErrors: false });
+        };
     }, [persistDraft]);
 
     const handleSignNote = React.useCallback(async () => {
         if (isSigning) return;
         setIsSigning(true);
         try {
-            // Make sure the latest note is on the server, then sign.
-            await persistDraft();
-            const draftId = visitDraftId;
-            if (!draftId) {
-                // Edge case — if persistDraft bailed (no content) but user clicked sign.
-                const { visitId } = await createVisitDraftAction({
-                    patientId,
-                    notesJson: runningNoteRef.current,
-                    transcript: latestTranscriptRef.current,
-                });
-                setVisitDraftId(visitId);
-                await finalizeVisitAction(visitId, "signed");
+            let draftId: string | null;
+            if (isRecording || simulating) {
+                draftId = await stopCapture({ persistDraftOnStop: true });
             } else {
-                await finalizeVisitAction(draftId, "signed");
+                await flushLatestTranscript();
+                draftId = await persistDraft();
             }
+            if (!draftId) {
+                throw new Error("A draft note is required before sign-off.");
+            }
+            await finalizeVisitAction(draftId, "signed");
             toast.success("Visit signed and saved.");
         } catch (err) {
             const msg = err instanceof Error ? err.message : "Failed to sign note.";
@@ -937,7 +981,7 @@ export function LiveVisitScreen({
         } finally {
             setIsSigning(false);
         }
-    }, [isSigning, visitDraftId, patientId, persistDraft]);
+    }, [flushLatestTranscript, isRecording, isSigning, persistDraft, simulating, stopCapture]);
 
     const reset = () => {
         setFields({});
@@ -1114,13 +1158,44 @@ export function LiveVisitScreen({
                         kind="primary"
                         size="sm"
                         icon={<FileSignature className="h-4 w-4" />}
-                        disabled={isSigning || completeCount < REQUIRED.length - 3}
+                        disabled={
+                            isSigning ||
+                            isSaving ||
+                            isRecording ||
+                            simulating ||
+                            completeCount < REQUIRED.length - 3
+                        }
                         onClick={handleSignNote}
                     >
                         {isSigning ? "Signing…" : "Sign note"}
                     </Btn>
                 </div>
             </div>
+
+            <Dialog open={showConsentPrompt} onOpenChange={setShowConsentPrompt}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Confirm AI transcript consent</DialogTitle>
+                        <DialogDescription>
+                            Calibration is still valid, but this visit still needs explicit patient
+                            consent before live capture can begin.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="text-sm" style={{ color: "var(--ink-2)" }}>
+                        Confirm that the patient has agreed to AI-assisted recording and
+                        transcription for this encounter. The confirmation timestamp will be saved
+                        with the visit note.
+                    </div>
+                    <div className="flex justify-end gap-2">
+                        <Btn kind="ghost" onClick={() => setShowConsentPrompt(false)}>
+                            Cancel
+                        </Btn>
+                        <Btn kind="primary" onClick={() => void handleConsentConfirmed()}>
+                            Patient consent confirmed
+                        </Btn>
+                    </div>
+                </DialogContent>
+            </Dialog>
 
             {/* Animation keyframes */}
             <style jsx>{`
@@ -1362,8 +1437,13 @@ export function LiveVisitScreen({
                             color: "var(--ink-3)",
                         }}
                     >
-                        <Check className="h-3.5 w-3.5" style={{ color: "var(--ok)" }} />
-                        Consented · encrypted · 30-day retention
+                        <Check
+                            className="h-3.5 w-3.5"
+                            style={{ color: consentAt ? "var(--ok)" : "var(--warn)" }}
+                        />
+                        {consentAt
+                            ? "Consented · encrypted · 30-day retention"
+                            : "Consent required before AI capture"}
                     </div>
                 </aside>
 
