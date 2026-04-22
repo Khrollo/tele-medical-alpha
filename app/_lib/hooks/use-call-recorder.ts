@@ -2,6 +2,17 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { toast } from "sonner";
+import {
+  createDeepgramController,
+  isDeepgramConfigured,
+  type DeepgramController,
+} from "@/app/_lib/ai/deepgram-client";
+import type { LiveSpeechSnapshot } from "@/app/_lib/ai/live-speech";
+
+export interface CallLiveTranscriptSnapshot extends LiveSpeechSnapshot {
+  speaker?: number;
+  source: "deepgram";
+}
 
 interface UseCallRecorderOptions {
   room: any; // Twilio Room
@@ -12,6 +23,15 @@ interface UseCallRecorderOptions {
     transcript?: string;
     parsedNote?: any;
   }) => void;
+  /**
+   * Fired during recording with a rolling live transcript snapshot. This is
+   * what powers "see live transcription while recording" — the consumer can
+   * render snapshot.fullTranscript directly. Only emitted when a streaming
+   * STT provider (currently Deepgram) is configured. When unavailable the
+   * recorder still works; the user just doesn't see live captions and the
+   * post-stop Whisper transcript is the source of truth.
+   */
+  onLiveTranscript?: (snapshot: CallLiveTranscriptSnapshot) => void;
 }
 
 interface RecordingState {
@@ -30,6 +50,7 @@ export function useCallRecorder({
   onTranscriptReady,
   onParseReady,
   onFinalizeComplete,
+  onLiveTranscript,
 }: UseCallRecorderOptions) {
   const [state, setState] = useState<RecordingState>({
     isRecording: false,
@@ -44,6 +65,10 @@ export function useCallRecorder({
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mixedStreamRef = useRef<MediaStream | null>(null);
+  // Live transcription is a side-channel from the same mixed stream we feed
+  // to MediaRecorder. We keep its lifecycle separate so a Deepgram failure
+  // (network blip, expired token) never tears down the actual recording.
+  const liveControllerRef = useRef<DeepgramController | null>(null);
   const destinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const audioSourcesRef = useRef<Map<string, MediaStreamAudioSourceNode>>(
     new Map()
@@ -455,6 +480,41 @@ export function useCallRecorder({
       await new Promise((resolve) => setTimeout(resolve, 100));
 
       mixedStreamRef.current = mixedStream;
+
+      // Spin up live transcription on the SAME mixed stream as a side-channel.
+      // We don't await this; if Deepgram is misconfigured or unreachable the
+      // recording continues and the post-stop Whisper transcript is still the
+      // source of truth. The user just won't see live captions. Errors are
+      // logged but not toasted — a failing live channel is not a recording
+      // failure and we don't want to spook the clinician mid-visit.
+      if (isDeepgramConfigured() && onLiveTranscript) {
+        const live = createDeepgramController({
+          audioStream: mixedStream,
+          ownsStream: false,
+          onSnapshot: (snap) => {
+            onLiveTranscript({
+              finalTranscript: snap.finalTranscript,
+              interimTranscript: snap.interimTranscript,
+              fullTranscript: snap.fullTranscript,
+              appendedFinalTranscript: snap.appendedFinalTranscript,
+              speaker: snap.speaker,
+              source: "deepgram",
+            });
+          },
+          onError: (msg) => {
+            console.warn("[live-transcription] deepgram error", msg);
+          },
+        });
+        liveControllerRef.current = live;
+        live
+          .start()
+          .catch((err) =>
+            console.warn(
+              "[live-transcription] failed to start (continuing without live captions)",
+              err
+            )
+          );
+      }
 
       // Monitor stream tracks to detect if they become inactive
       // This can cause MediaRecorder to stop unexpectedly
@@ -917,6 +977,7 @@ export function useCallRecorder({
     createMixedStream,
     getBestMimeType,
     uploadChunk,
+    onLiveTranscript,
   ]);
 
   // Stop recording and finalize
@@ -1367,7 +1428,23 @@ export function useCallRecorder({
               });
             }
 
-            if (data.parsedNote) {
+            // Surface the deterministic transcription status emitted by the
+            // finalize route. Previously we showed "Transcription completed"
+            // even when transcription failed silently; the user assumed the
+            // pipeline worked and only discovered the empty note later.
+            const tStatus: "ok" | "empty" | "failed" | undefined =
+              data.transcriptionStatus;
+            if (tStatus === "failed") {
+              toast.error(
+                data.transcriptionError
+                  ? `Transcription failed: ${data.transcriptionError}`
+                  : "Recording saved, but transcription failed. You can retry from the visit."
+              );
+            } else if (tStatus === "empty") {
+              toast.warning(
+                "Recording saved, but no speech was detected in the audio."
+              );
+            } else if (data.parsedNote) {
               toast.success("Recording finalized. Form updated with AI data.");
             } else {
               toast.success("Recording finalized. Transcription completed.");
@@ -1480,6 +1557,19 @@ export function useCallRecorder({
   const cleanup = useCallback(() => {
     // Reset stopping guard flag
     isStoppingRef.current = false;
+
+    // Tear down live transcription first so its WebSocket is closed before
+    // we kill the audio context it's reading from. Errors here are intentionally
+    // swallowed — we're already cleaning up, and a noisy disconnect shouldn't
+    // mask a real recording error reported elsewhere.
+    if (liveControllerRef.current) {
+      try {
+        liveControllerRef.current.destroy();
+      } catch {
+        /* noop */
+      }
+      liveControllerRef.current = null;
+    }
 
     // Clear any intervals on MediaRecorder
     if (mediaRecorderRef.current) {

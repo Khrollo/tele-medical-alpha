@@ -54,12 +54,18 @@ export function useWaitingRoomRealtime({
 
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isFetchingRef = useRef<boolean>(false);
+  // Once the server action rejects with an auth error we stop polling entirely
+  // — continuing to hammer the endpoint every 3s after a 401/403 is wasted
+  // work and hides the real problem behind an infinite retry loop. The user
+  // can recover by refreshing (which re-runs the page's server auth check and
+  // either redirects to /sign-in or returns them to the board).
+  const isAuthBlockedRef = useRef<boolean>(false);
   const fetchAllPatientsRef = useRef<(() => Promise<void>) | undefined>(
     undefined
   );
 
   const fetchAllPatients = useCallback(async () => {
-    if (isFetchingRef.current) {
+    if (isFetchingRef.current || isAuthBlockedRef.current) {
       return;
     }
 
@@ -100,6 +106,21 @@ export function useWaitingRoomRealtime({
         err instanceof Error
           ? err
           : new Error("Failed to fetch waiting room patients");
+
+      // Auth failures are terminal for the polling session. `requireUser`
+      // throws literal "Unauthorized" / "Forbidden" strings; we match on
+      // those because Next.js server actions don't expose HTTP status codes
+      // to the client. If we keep polling on auth failure we'll trip rate
+      // limits and spam server logs with the same rejection every 3s.
+      const msg = error.message.toLowerCase();
+      if (msg.includes("unauthorized") || msg.includes("forbidden")) {
+        isAuthBlockedRef.current = true;
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+      }
+
       setError(error);
       setIsConnected(false);
       onError?.(error);

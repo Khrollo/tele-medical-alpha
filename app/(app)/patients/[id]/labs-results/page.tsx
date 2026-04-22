@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { getServerSession } from "@/app/_lib/supabase/server";
 import { getPatientOverview } from "@/app/_lib/db/drizzle/queries/patients";
 import { getPatientOrdersAction } from "@/app/_actions/orders";
+import { isLabOrImagingOrder } from "@/app/_lib/utils/patient-workflow-chips";
 import { ClearingCard, Pill, type PillTone } from "@/components/ui/clearing";
 
 const RESULTED = new Set([
@@ -49,8 +50,12 @@ export default async function LabsResultsPage({
     redirect("/sign-in");
   }
 
-  if (session.role !== "doctor" && session.role !== "nurse" && session.role !== "admin") {
-    redirect("/");
+  // Admins intentionally excluded — parent patient chart at
+  // app/(app)/patients/[id]/page.tsx only allows doctor|nurse, so granting
+  // admins direct-URL access to labs/imaging here would widen PHI access
+  // asymmetrically. Keep this in lockstep with the chart root.
+  if (session.role !== "doctor" && session.role !== "nurse") {
+    redirect("/sign-in");
   }
 
   const overview = await getPatientOverview(patientId);
@@ -59,19 +64,7 @@ export default async function LabsResultsPage({
   }
 
   const orders = await getPatientOrdersAction(patientId);
-  const resultItems = orders.filter((order) => {
-    const type = order.type.toLowerCase();
-    return (
-      type.includes("lab") ||
-      type.includes("blood") ||
-      type.includes("imaging") ||
-      type.includes("x-ray") ||
-      type.includes("xray") ||
-      type.includes("mri") ||
-      type.includes("ct") ||
-      type.includes("ultrasound")
-    );
-  });
+  const resultItems = orders.filter((order) => isLabOrImagingOrder(order.type));
 
   const pendingCount = resultItems.filter(
     (r) => statusTone(r.status) === "warn",

@@ -342,10 +342,7 @@ export function PatientsList({ patients, allPatients, userRole }: PatientsListPr
                             const showContinueVisit = canContinueVisit(patient.visit);
                             const sPill = statusPill(patient.visit?.status ?? null);
                             const tPill = typePill(patient.visit?.appointmentType ?? null);
-                            const workflowChips = deriveWorkflowChips(
-                                patient.workflow ?? null,
-                                patient.visit?.status ?? null,
-                            );
+                            const workflowChips = deriveWorkflowChips(patient.workflow ?? null);
 
                             return (
                                 <Link

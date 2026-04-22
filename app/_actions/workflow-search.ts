@@ -46,14 +46,50 @@ function sortByScore<T>(items: T[], scoreFor: (item: T) => number) {
   return [...items].sort((a, b) => scoreFor(a) - scoreFor(b));
 }
 
-export async function searchWorkflowAction(rawQuery?: string): Promise<WorkflowSearchResults> {
-  const user = await requireUser(["doctor", "nurse"]);
+const EMPTY_RESULTS: WorkflowSearchResults = {
+  patients: [],
+  notes: [],
+  schedules: [],
+  destinations: [],
+};
+
+export async function searchWorkflowAction(
+  rawQuery?: string
+): Promise<WorkflowSearchResults> {
+  // Auth is still hard: unauthenticated / wrong-role callers must not see
+  // anything. But we surface this as empty results rather than throwing so
+  // the client search input doesn't explode the whole segment on every
+  // keystroke while a session is refreshing. The server still logs the
+  // rejection for observability.
+  let user;
+  try {
+    user = await requireUser(["doctor", "nurse"]);
+  } catch (err) {
+    console.warn("[workflow-search] auth rejected", err);
+    return EMPTY_RESULTS;
+  }
+
   const query = (rawQuery || "").trim().toLowerCase();
 
+  // Isolate each data source. A single failing query (e.g. a transient DB
+  // blip on clinician inbox) used to reject the entire Promise.all and
+  // crash the client. Per-source fallback lets the dropdown show partial
+  // results instead of nothing.
+  const safe = async <T>(p: Promise<T>, label: string, fallback: T): Promise<T> => {
+    try {
+      return await p;
+    } catch (err) {
+      console.error(`[workflow-search] ${label} failed`, err);
+      return fallback;
+    }
+  };
+
   const [patients, schedulePatients, clinicianOpenVisits] = await Promise.all([
-    getAllPatients(),
-    getUnassignedPatientsWithVisits(),
-    user.role === "doctor" ? getClinicianOpenVisits(user.id) : Promise.resolve([]),
+    safe(getAllPatients(), "getAllPatients", []),
+    safe(getUnassignedPatientsWithVisits(), "getUnassignedPatientsWithVisits", []),
+    user.role === "doctor"
+      ? safe(getClinicianOpenVisits(user.id), "getClinicianOpenVisits", [])
+      : Promise.resolve([]),
   ]);
 
   const patientResults = sortByScore(

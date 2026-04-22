@@ -4,6 +4,7 @@ import { db } from "../index";
 import { patients, visits, users, notes, documents } from "../schema";
 import type { VisitNote } from "@/app/_lib/visit-note/schema";
 import { getWorkflowFlagsForPatients } from "./patient-workflow";
+import { isLabOrImagingOrder } from "@/app/_lib/utils/patient-workflow-chips";
 
 /**
  * Find existing patients by phone or email
@@ -443,6 +444,61 @@ async function getPatientIdsWithVisitsToday() {
   return Array.from(new Set(todayVisits.map((visit) => visit.patientId)));
 }
 
+/**
+ * Unified "active queue" predicate — the set of patients currently visible on
+ * the Schedule board. Any patient matching this MUST also appear on the
+ * clinician's Patients screen; otherwise the two surfaces diverge.
+ *
+ * Selection: patients who are unassigned AND have a visit in Waiting /
+ * In Progress. Mirrors `getUnassignedPatientsWithVisits` one-to-one.
+ */
+async function getQueuedPatientIds(): Promise<string[]> {
+  const queuedVisits = await db
+    .select({ patientId: visits.patientId })
+    .from(visits)
+    .innerJoin(patients, eq(patients.id, visits.patientId))
+    .where(
+      and(
+        eq(patients.isAssigned, false),
+        or(
+          eq(visits.status, "Waiting"),
+          eq(visits.status, "waiting"),
+          eq(visits.status, "In Progress"),
+          eq(visits.status, "in_progress")
+        )
+      )
+    );
+
+  return Array.from(new Set(queuedVisits.map((v) => v.patientId)));
+}
+
+/**
+ * Patient IDs with any visit currently assigned to `clinicianId` that is still
+ * "open" (Waiting / In Progress / draft notes). This lets a doctor see
+ * cross-coverage patients — visits assigned to them even if the patient's
+ * primary clinicianId is someone else.
+ */
+async function getPatientIdsAssignedToClinician(clinicianId: string): Promise<string[]> {
+  const assignedVisits = await db
+    .select({ patientId: visits.patientId })
+    .from(visits)
+    .where(
+      and(
+        eq(visits.clinicianId, clinicianId),
+        or(
+          eq(visits.status, "Waiting"),
+          eq(visits.status, "waiting"),
+          eq(visits.status, "In Progress"),
+          eq(visits.status, "in_progress"),
+          eq(visits.notesStatus, "draft"),
+          eq(visits.notesStatus, "in_progress")
+        )
+      )
+    );
+
+  return Array.from(new Set(assignedVisits.map((v) => v.patientId)));
+}
+
 async function getRecentActivePatientIds(daysBack: number) {
   const since = new Date();
   since.setDate(since.getDate() - daysBack);
@@ -456,13 +512,38 @@ async function getRecentActivePatientIds(daysBack: number) {
   return Array.from(new Set(recentVisits.map((visit) => visit.patientId)));
 }
 
+/**
+ * Workbench cohort for a doctor: the union of
+ *   1. patients on the doctor's panel (`patients.clinicianId`),
+ *   2. patients with an open visit assigned to the doctor (cross-coverage),
+ *   3. the shared active queue (mirrors the Schedule board exactly), and
+ *   4. patients with any visit created today (legacy "today" rule, retained
+ *      so doctors don't lose visibility on same-day activity outside 1–3).
+ *
+ * This predicate is the single source of truth for "which patients can this
+ * doctor act on right now." Because (3) is identical to the Schedule query,
+ * every row on Schedule is a row on Patients by construction — no divergence.
+ */
 export async function getDoctorScopedPatients(clinicianId: string) {
   return unstable_cache(
     async () => {
-      const todayPatientIds = await getPatientIdsWithVisitsToday();
-      const whereCondition = todayPatientIds.length > 0
-        ? or(eq(patients.clinicianId, clinicianId), inArray(patients.id, todayPatientIds))
-        : eq(patients.clinicianId, clinicianId);
+      const [queuedIds, assignedIds, todayIds] = await Promise.all([
+        getQueuedPatientIds(),
+        getPatientIdsAssignedToClinician(clinicianId),
+        getPatientIdsWithVisitsToday(),
+      ]);
+
+      const inclusionIds = Array.from(
+        new Set([...queuedIds, ...assignedIds, ...todayIds])
+      );
+
+      const whereCondition =
+        inclusionIds.length > 0
+          ? or(
+              eq(patients.clinicianId, clinicianId),
+              inArray(patients.id, inclusionIds)
+            )
+          : eq(patients.clinicianId, clinicianId);
 
       const scopedPatients = await db
         .select({
@@ -494,9 +575,19 @@ export async function getDoctorScopedPatients(clinicianId: string) {
 export async function getNurseFocusedPatients() {
   return unstable_cache(
     async () => {
-      const todayPatientIds = await getPatientIdsWithVisitsToday();
-      const recentPatientIds = await getRecentActivePatientIds(14);
-      const focusedPatientIds = Array.from(new Set([...todayPatientIds, ...recentPatientIds]));
+      // Nurses see a broader set: today + last 14 days of activity, plus the
+      // full active queue so the Schedule ⊂ Patients invariant holds for them
+      // too. Without the queue union, an unassigned queued patient who's been
+      // waiting <1 day but has no prior visit record can appear on Schedule
+      // and be invisible on the Patients screen.
+      const [queuedIds, todayIds, recentIds] = await Promise.all([
+        getQueuedPatientIds(),
+        getPatientIdsWithVisitsToday(),
+        getRecentActivePatientIds(14),
+      ]);
+      const focusedPatientIds = Array.from(
+        new Set([...queuedIds, ...todayIds, ...recentIds])
+      );
 
       if (focusedPatientIds.length === 0) {
         return [];
@@ -616,17 +707,7 @@ export async function getPatientOverview(patientId: string) {
     const visitNote = entry.note as VisitNote;
     if (!Array.isArray(visitNote.orders)) continue;
     for (const order of visitNote.orders) {
-      const t = (order.type ?? "").toLowerCase();
-      const isLabOrImaging =
-        t.includes("lab") ||
-        t.includes("blood") ||
-        t.includes("imaging") ||
-        t.includes("x-ray") ||
-        t.includes("xray") ||
-        t.includes("mri") ||
-        t.includes("ct") ||
-        t.includes("ultrasound");
-      if (!isLabOrImaging) continue;
+      if (!isLabOrImagingOrder(order.type ?? "")) continue;
       recentResults.push({
         type: order.type ?? "",
         status: order.status ?? "",
@@ -638,9 +719,9 @@ export async function getPatientOverview(patientId: string) {
     }
   }
   recentResults.sort((a, b) => {
-    const da = a.dateOrdered ? new Date(a.dateOrdered).getTime() : a.visitDate.getTime();
-    const db = b.dateOrdered ? new Date(b.dateOrdered).getTime() : b.visitDate.getTime();
-    return db - da;
+    const timeA = a.dateOrdered ? new Date(a.dateOrdered).getTime() : a.visitDate.getTime();
+    const timeB = b.dateOrdered ? new Date(b.dateOrdered).getTime() : b.visitDate.getTime();
+    return timeB - timeA;
   });
 
   // Use SQL COUNT instead of fetching all document rows

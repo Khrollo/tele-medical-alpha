@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { eq } from "drizzle-orm";
 import { getServerSession } from "@/app/_lib/supabase/server";
+import { db } from "@/app/_lib/db/drizzle/index";
+import { patients } from "@/app/_lib/db/drizzle/schema";
 import { getVisitById } from "@/app/_lib/db/drizzle/queries/visit";
 import { uploadFile } from "@/app/_lib/storage";
 import { getAudioStorageBucket } from "@/app/_lib/storage/config";
@@ -40,9 +43,26 @@ export async function POST(
       );
     }
 
-    // Verify visit and assignment
+    // Authorization parity with the finalize route (which accepts either the
+    // visit-level OR patient-level clinician). Previously chunk upload
+    // required `visit.clinicianId === session.id` strictly, so a clinician
+    // who owned the patient but hadn't yet been set on the visit row could
+    // pass finalize auth yet have every chunk 403 — producing a finalize
+    // with zero chunks and a silently empty transcript. Keep these checks
+    // aligned so the pipeline fails or succeeds at a single boundary.
     const visit = await getVisitById(visitId);
-    if (!visit || visit.clinicianId !== session.id) {
+    if (!visit) {
+      return NextResponse.json({ error: "Visit not found" }, { status: 404 });
+    }
+    const [patientRow] = await db
+      .select({ clinicianId: patients.clinicianId })
+      .from(patients)
+      .where(eq(patients.id, visit.patientId))
+      .limit(1);
+    const canUploadChunks =
+      visit.clinicianId === session.id ||
+      patientRow?.clinicianId === session.id;
+    if (!canUploadChunks) {
       return NextResponse.json(
         { error: "Not authorized for this visit" },
         { status: 403 }

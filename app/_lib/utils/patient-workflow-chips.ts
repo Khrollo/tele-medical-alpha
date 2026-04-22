@@ -35,24 +35,42 @@ const PENDING_STATUSES = new Set([
   "",
 ]);
 
+/**
+ * Single source of truth for "is this order a lab or imaging?".
+ * Kept as a narrow substring check because order.type is operator-authored
+ * free text (e.g. "CBC", "Chest X-Ray", "Blood glucose") and has no enum.
+ * Tightening this later into a controlled vocabulary should happen in one
+ * place, not three.
+ */
+export function classifyLabOrImagingOrder(
+  type: string,
+): "lab" | "imaging" | null {
+  const t = type.toLowerCase();
+  if (t.includes("lab") || t.includes("blood")) return "lab";
+  if (
+    t.includes("imaging") ||
+    t.includes("x-ray") ||
+    t.includes("xray") ||
+    t.includes("mri") ||
+    t.includes("ct") ||
+    t.includes("ultrasound")
+  ) {
+    return "imaging";
+  }
+  return null;
+}
+
+export function isLabOrImagingOrder(type: string): boolean {
+  return classifyLabOrImagingOrder(type) !== null;
+}
+
 function classifyOrder(type: string, status: string): {
   category: "lab" | "imaging" | null;
   state: "pending" | "ready" | null;
 } {
-  const t = type.toLowerCase();
-  const s = status.trim().toLowerCase().replace(/_/g, " ");
-  const category =
-    t.includes("lab") || t.includes("blood")
-      ? "lab"
-      : t.includes("imaging") ||
-        t.includes("x-ray") ||
-        t.includes("xray") ||
-        t.includes("mri") ||
-        t.includes("ct") ||
-        t.includes("ultrasound")
-      ? "imaging"
-      : null;
+  const category = classifyLabOrImagingOrder(type);
   if (!category) return { category: null, state: null };
+  const s = status.trim().toLowerCase().replace(/_/g, " ");
   if (RESULTED_STATUSES.has(s)) return { category, state: "ready" };
   if (PENDING_STATUSES.has(s)) return { category, state: "pending" };
   return { category, state: "pending" };
@@ -75,7 +93,6 @@ export function tallyOrdersForWorkflow(
 
 export function deriveWorkflowChips(
   flags: WorkflowFlags | null,
-  _visitStatus: string | null,
 ): WorkflowChip[] {
   const chips: WorkflowChip[] = [];
 

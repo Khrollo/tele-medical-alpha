@@ -510,10 +510,7 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
           const isExpanded = expandedIds.has(p.id);
           const age = calculateAge(p.dob);
           const snapshotPanelId = `waiting-room-snapshot-${p.id}`;
-          const workflowChips = deriveWorkflowChips(
-            p.workflow ?? null,
-            p.visit?.status ?? null,
-          );
+          const workflowChips = deriveWorkflowChips(p.workflow ?? null);
 
           return (
             <ClearingCard

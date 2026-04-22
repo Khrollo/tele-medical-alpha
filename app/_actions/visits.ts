@@ -582,9 +582,16 @@ export async function assignVisitToMeAction(visitId: string) {
     }
   }
 
-  // Revalidate waiting room page to refresh the list
+  // Revalidate ALL surfaces that depend on the unified Workbench cohort.
+  // Previously we only revalidated /waiting-room, which left the Patients
+  // screen, workflow search, and any other cache-tagged consumers serving
+  // stale data for up to 30s after assignment. Tag-based revalidation is
+  // surgical and covers every query that participates in the cohort.
   const { revalidatePath } = await import("next/cache");
   revalidatePath("/waiting-room");
+  revalidateTag("waiting-room", "max");
+  revalidateTag("patients", "max");
+  revalidateTag(`clinician:${user.id}`, "max");
 
   return {
     success: true,
