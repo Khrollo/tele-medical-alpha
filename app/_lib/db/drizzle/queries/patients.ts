@@ -3,6 +3,8 @@ import { unstable_cache } from "next/cache";
 import { db } from "../index";
 import { patients, visits, users, notes, documents } from "../schema";
 import type { VisitNote } from "@/app/_lib/visit-note/schema";
+import { getWorkflowFlagsForPatients } from "./patient-workflow";
+import { isLabOrImagingOrder } from "@/app/_lib/utils/patient-workflow-chips";
 
 /**
  * Find existing patients by phone or email
@@ -284,17 +286,20 @@ export async function getAllPatients() {
     }
   }
 
+  const workflowFlags = await getWorkflowFlagsForPatients(patientIds);
+
   return result.map((patient) => {
     const clinician = patient.clinicianId ? clinicianMap.get(patient.clinicianId) : null;
     const allergies = Array.isArray(patient.allergies) ? patient.allergies : [];
     const medications = Array.isArray(patient.currentMedications) ? patient.currentMedications : [];
-    
+
     return {
       ...patient,
       clinicianName: clinician?.name || null,
       clinicianEmail: clinician?.email || null,
       allergiesCount: allergies.length,
       medicationsCount: medications.length,
+      workflow: workflowFlags.get(patient.id) ?? null,
       visit: visitMap.get(patient.id) || null,
     };
   });
@@ -409,6 +414,8 @@ async function buildPatientsWithDetails(patientRows: Array<{
     }
   }
 
+  const workflowFlags = await getWorkflowFlagsForPatients(patientIds);
+
   return patientRows.map((patient) => {
     const clinician = patient.clinicianId ? clinicianMap.get(patient.clinicianId) : null;
     const allergies = Array.isArray(patient.allergies) ? patient.allergies : [];
@@ -420,6 +427,7 @@ async function buildPatientsWithDetails(patientRows: Array<{
       clinicianEmail: clinician?.email || null,
       allergiesCount: allergies.length,
       medicationsCount: medications.length,
+      workflow: workflowFlags.get(patient.id) ?? null,
       visit: openVisitMap.get(patient.id) || visitMap.get(patient.id) || null,
     };
   });
@@ -670,6 +678,7 @@ export async function getPatientOverview(patientId: string) {
   const patientNotes = await db
     .select({
       note: notes.note,
+      visitCreatedAt: visits.createdAt,
     })
     .from(notes)
     .innerJoin(visits, eq(notes.visitId, visits.id))
@@ -683,6 +692,37 @@ export async function getPatientOverview(patientId: string) {
     const visitNote = entry.note as VisitNote;
     return total + (Array.isArray(visitNote.orders) ? visitNote.orders.length : 0);
   }, 0);
+
+  type RecentResult = {
+    type: string;
+    status: string;
+    priority: string;
+    details: string;
+    dateOrdered: string;
+    visitDate: Date;
+  };
+  const recentResults: RecentResult[] = [];
+  for (const entry of patientNotes) {
+    if (!entry.note || typeof entry.note !== "object") continue;
+    const visitNote = entry.note as VisitNote;
+    if (!Array.isArray(visitNote.orders)) continue;
+    for (const order of visitNote.orders) {
+      if (!isLabOrImagingOrder(order.type ?? "")) continue;
+      recentResults.push({
+        type: order.type ?? "",
+        status: order.status ?? "",
+        priority: order.priority ?? "",
+        details: order.details ?? "",
+        dateOrdered: order.dateOrdered ?? "",
+        visitDate: entry.visitCreatedAt,
+      });
+    }
+  }
+  recentResults.sort((a, b) => {
+    const timeA = a.dateOrdered ? new Date(a.dateOrdered).getTime() : a.visitDate.getTime();
+    const timeB = b.dateOrdered ? new Date(b.dateOrdered).getTime() : b.visitDate.getTime();
+    return timeB - timeA;
+  });
 
   // Use SQL COUNT instead of fetching all document rows
   const documentsCountResult = await db
@@ -732,6 +772,7 @@ export async function getPatientOverview(patientId: string) {
           status: v.status,
           appointmentType: v.appointmentType,
         })),
+        recentResults: recentResults.slice(0, 5),
       };
     },
     [`patient-overview-${patientId}`],

@@ -4,6 +4,7 @@ import * as React from "react";
 import { SideNav } from "@/components/side-nav";
 import { TopBar } from "@/components/top-bar";
 import { WorkflowCommandSearch } from "@/components/workflow-command-search";
+import { OnboardingHint } from "@/app/_components/onboarding-hint";
 
 interface PatientsShellProps {
     children: React.ReactNode;
@@ -36,6 +37,12 @@ export function PatientsShell({ children, userRole, userName }: PatientsShellPro
                     {children}
                 </div>
             </div>
+            <OnboardingHint
+                storageKey="patients:v1"
+                title="Welcome — everything starts here"
+                body="Left nav takes you between Patients, Schedule, and Open Notes. Cards surface vitals, lab, and imaging state so you can see what each patient needs before opening their chart."
+                anchor="bottom-right"
+            />
         </div>
     );
 }

@@ -24,6 +24,10 @@ import { assignVisitToMeAction } from "@/app/_actions/visits";
 import { cn } from "@/app/_lib/utils/cn";
 import { formatDate } from "@/app/_lib/utils/format-date";
 import { useWaitingRoomRealtime } from "@/app/_lib/hooks/use-waiting-room-realtime";
+import {
+  deriveWorkflowChips,
+  type WorkflowFlags,
+} from "@/app/_lib/utils/patient-workflow-chips";
 
 import { Avatar, Btn, ClearingCard, Pill, type PillTone } from "@/components/ui/clearing";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -51,6 +55,7 @@ interface Patient {
   medicationsCount: number;
   createdAt: Date | null;
   visit: VisitInfo | null;
+  workflow?: WorkflowFlags | null;
 }
 
 interface WaitingRoomListProps {
@@ -505,6 +510,7 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
           const isExpanded = expandedIds.has(p.id);
           const age = calculateAge(p.dob);
           const snapshotPanelId = `waiting-room-snapshot-${p.id}`;
+          const workflowChips = deriveWorkflowChips(p.workflow ?? null);
 
           return (
             <ClearingCard
@@ -554,6 +560,20 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
                   />
                 </button>
               </div>
+
+              {/* Always-visible workflow chips — vitals, labs, imaging, check-in */}
+              {workflowChips.length > 0 && (
+                <div
+                  className="flex flex-wrap items-center gap-1.5 px-4.5 pb-3 pt-0"
+                  style={{ marginTop: -4 }}
+                >
+                  {workflowChips.map((chip) => (
+                    <Pill key={chip.key} tone={chip.tone} dot={chip.dot}>
+                      {chip.label}
+                    </Pill>
+                  ))}
+                </div>
+              )}
 
               {/* Inline snapshot (accordion) */}
               {isExpanded && (

@@ -37,6 +37,7 @@ import {
     type CalibrationResult,
 } from "@/app/_lib/audio/calibration";
 import { CalibrationModal } from "./calibration-modal";
+import { OnboardingHint } from "@/app/_components/onboarding-hint";
 import {
     createSrtSimulator,
     fetchSrt,
@@ -1947,6 +1948,12 @@ export function LiveVisitScreen({
                     </div>
                 </aside>
             </div>
+            <OnboardingHint
+                storageKey="live-visit:v1"
+                title="Tap the mic and speak naturally"
+                body="Words stream in as you speak. The AI scribe parses structured notes in the background — no need to interrupt the visit. Stop the mic any time to review and edit."
+                anchor="bottom-left"
+            />
         </div>
     );
 }

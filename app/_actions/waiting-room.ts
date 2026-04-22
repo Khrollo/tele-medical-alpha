@@ -3,6 +3,7 @@
 import { db } from "@/app/_lib/db/drizzle/index";
 import { notes, patients, visits } from "@/app/_lib/db/drizzle/schema";
 import { eq, and, or, inArray, desc } from "drizzle-orm";
+import { getWorkflowFlagsForPatients } from "@/app/_lib/db/drizzle/queries/patient-workflow";
 import { requireUser } from "@/app/_lib/auth/get-current-user";
 
 /**
@@ -100,6 +101,8 @@ export async function fetchWaitingRoomPatientsAction() {
     }
   }
 
+  const workflowFlags = await getWorkflowFlagsForPatients(patientIds);
+
   return unassignedPatients.map((patient) => {
     const visit = visitMap.get(patient.id);
     return {
@@ -112,6 +115,7 @@ export async function fetchWaitingRoomPatientsAction() {
         ? patient.currentMedications.length
         : 0,
       createdAt: patient.createdAt.toISOString(),
+      workflow: workflowFlags.get(patient.id) ?? null,
       visit: visit
         ? {
             id: visit.id,

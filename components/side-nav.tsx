@@ -18,6 +18,7 @@ import { Avatar } from "./ui/clearing/avatar";
 import { Divider } from "./ui/clearing/divider";
 import { cn } from "@/app/_lib/utils/cn";
 import { authClient } from "@/app/_lib/auth/auth-client";
+import { ThemePicker } from "@/app/_components/theme-picker";
 
 interface SideNavProps {
   userRole?: string;
@@ -298,6 +299,8 @@ export function SideNav({
             </div>
           </div>
         )}
+
+        <ThemePicker compact={shouldCenter} />
 
         <button
           type="button"

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { fetchWaitingRoomPatientsAction } from "@/app/_actions/waiting-room";
+import type { WorkflowFlags } from "@/app/_lib/utils/patient-workflow-chips";
 
 interface VisitInfo {
   id: string;
@@ -24,6 +25,7 @@ interface Patient {
   medicationsCount: number;
   createdAt: Date | null;
   visit: VisitInfo | null;
+  workflow?: WorkflowFlags | null;
 }
 
 interface UseWaitingRoomRealtimeOptions {
@@ -80,6 +82,7 @@ export function useWaitingRoomRealtime({
         allergiesCount: patient.allergiesCount,
         medicationsCount: patient.medicationsCount,
         createdAt: patient.createdAt ? new Date(patient.createdAt) : null,
+        workflow: patient.workflow ?? null,
         visit: patient.visit
           ? {
               id: patient.visit.id,
