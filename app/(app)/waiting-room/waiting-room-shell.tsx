@@ -5,6 +5,7 @@ import { SideNav } from "@/components/side-nav";
 import { TopBar } from "@/components/top-bar";
 import { PatientCacheProvider } from "@/app/_components/providers/patient-cache-provider";
 import { WorkflowCommandSearch } from "@/components/workflow-command-search";
+import { OnboardingHint } from "@/app/_components/onboarding-hint";
 
 interface WaitingRoomShellProps {
   children: React.ReactNode;
@@ -40,6 +41,12 @@ export function WaitingRoomShell({
           </div>
         </div>
       </div>
+      <OnboardingHint
+        storageKey="waiting-room:v1"
+        title="Your schedule at a glance"
+        body="Priority and appointment type show at the top of each card. New chips surface vitals, lab, and imaging status so you can triage without opening every chart. Tap a card to expand the snapshot."
+        anchor="bottom-right"
+      />
     </PatientCacheProvider>
   );
 }

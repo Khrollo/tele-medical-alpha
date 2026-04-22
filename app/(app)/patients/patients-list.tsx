@@ -26,6 +26,10 @@ import {
 import { toast } from "sonner";
 import { formatDate } from "@/app/_lib/utils/format-date";
 import { formatVisitStatusLabel } from "@/app/_lib/utils/visit-status-label";
+import {
+  deriveWorkflowChips,
+  type WorkflowFlags,
+} from "@/app/_lib/utils/patient-workflow-chips";
 import { Avatar, Btn, Pill, type PillTone } from "@/components/ui/clearing";
 
 interface VisitInfo {
@@ -52,6 +56,7 @@ interface Patient {
     medicationsCount: number;
     createdAt: Date | null;
     visit: VisitInfo | null;
+    workflow?: WorkflowFlags | null;
 }
 
 interface PatientsListProps {
@@ -337,6 +342,10 @@ export function PatientsList({ patients, allPatients, userRole }: PatientsListPr
                             const showContinueVisit = canContinueVisit(patient.visit);
                             const sPill = statusPill(patient.visit?.status ?? null);
                             const tPill = typePill(patient.visit?.appointmentType ?? null);
+                            const workflowChips = deriveWorkflowChips(
+                                patient.workflow ?? null,
+                                patient.visit?.status ?? null,
+                            );
 
                             return (
                                 <Link
@@ -399,6 +408,17 @@ export function PatientsList({ patients, allPatients, userRole }: PatientsListPr
                                                             {patient.clinicianName}
                                                         </span>
                                                     )}
+                                                </div>
+                                            )}
+
+                                            {/* Workflow status chips — vitals, labs, imaging, check-in */}
+                                            {workflowChips.length > 0 && (
+                                                <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1.5">
+                                                    {workflowChips.map((chip) => (
+                                                        <Pill key={chip.key} tone={chip.tone} dot={chip.dot}>
+                                                            {chip.label}
+                                                        </Pill>
+                                                    ))}
                                                 </div>
                                             )}
 

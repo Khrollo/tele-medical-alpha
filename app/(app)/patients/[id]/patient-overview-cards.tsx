@@ -11,6 +11,7 @@ import {
   ClipboardList,
   Copy,
   FileText,
+  FlaskConical,
   Heart,
   History,
   Pill as PillIcon,
@@ -64,7 +65,32 @@ interface PatientOverviewCardsProps {
     status: string | null;
     appointmentType: string | null;
   }>;
+  recentResults?: Array<{
+    type: string;
+    status: string;
+    priority: string;
+    details: string;
+    dateOrdered: string;
+    visitDate: Date;
+  }>;
   userRole: string;
+}
+
+function resultStatusTone(status: string): PillTone {
+  const s = status.trim().toLowerCase().replace(/_/g, " ");
+  if (["resulted", "complete", "completed", "done", "received", "final"].includes(s)) {
+    return "ok";
+  }
+  if (["ordered", "collected", "pending", "in progress", "awaiting", "draft"].includes(s)) {
+    return "warn";
+  }
+  return "neutral";
+}
+
+function formatResultStatus(status: string): string {
+  const s = status.trim();
+  if (!s) return "Pending";
+  return s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, " ");
 }
 
 type Allergy = { name?: string; type?: string; severity?: string; reaction?: string };
@@ -155,6 +181,7 @@ export function PatientOverviewCards({
   stats,
   latestVisit,
   recentVisits,
+  recentResults,
 }: PatientOverviewCardsProps) {
   const router = useRouter();
   const [showVirtualModal, setShowVirtualModal] = useState(false);
@@ -514,6 +541,84 @@ export function PatientOverviewCards({
             )}
           </ClearingCard>
         </div>
+
+        {/* Labs & Imaging — most recent results (Kejhawn ask: surface these on the card). */}
+        <ClearingCard pad={0}>
+          <div
+            className="flex items-center gap-2 px-4 py-3.5"
+            style={{ borderBottom: "1px solid var(--line)" }}
+          >
+            <FlaskConical className="h-4 w-4" style={{ color: "var(--brand-ink)" }} />
+            <div className="serif" style={{ fontSize: 17, color: "var(--ink)" }}>
+              Labs & imaging
+            </div>
+            <Pill
+              tone={(recentResults?.length ?? 0) > 0 ? "info" : "neutral"}
+              className="ml-auto"
+            >
+              {(recentResults?.length ?? 0) > 0
+                ? `${recentResults!.length} recent`
+                : "None"}
+            </Pill>
+            <Link href={`/patients/${patient.id}/labs-results`}>
+              <Btn kind="plain" size="sm">
+                View all
+              </Btn>
+            </Link>
+          </div>
+          {(recentResults?.length ?? 0) === 0 ? (
+            <div className="px-4 py-6 text-[13px]" style={{ color: "var(--ink-3)" }}>
+              No lab or imaging items documented yet.
+            </div>
+          ) : (
+            recentResults!.slice(0, 5).map((result, i, arr) => {
+              const tone = resultStatusTone(result.status);
+              const displayDate = result.dateOrdered
+                ? new Date(result.dateOrdered).toLocaleDateString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  })
+                : new Date(result.visitDate).toLocaleDateString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  });
+              return (
+                <div
+                  key={`${result.type}-${result.dateOrdered || result.visitDate}-${i}`}
+                  className="flex flex-wrap items-center gap-2.5 px-4 py-2.5"
+                  style={{
+                    borderBottom: i < arr.length - 1 ? "1px solid var(--line)" : undefined,
+                  }}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div
+                      className="truncate text-[13px] font-medium"
+                      style={{ color: "var(--ink)" }}
+                    >
+                      {result.type || "Order"}
+                    </div>
+                    {result.details && (
+                      <div
+                        className="truncate text-[11.5px]"
+                        style={{ color: "var(--ink-3)" }}
+                      >
+                        {result.details}
+                      </div>
+                    )}
+                  </div>
+                  <span className="mono text-[11px]" style={{ color: "var(--ink-3)" }}>
+                    {displayDate}
+                  </span>
+                  <Pill tone={tone} dot={tone === "warn"}>
+                    {formatResultStatus(result.status)}
+                  </Pill>
+                </div>
+              );
+            })
+          )}
+        </ClearingCard>
 
         {/* Row: Orders + Documents */}
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
