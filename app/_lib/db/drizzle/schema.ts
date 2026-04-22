@@ -82,6 +82,13 @@ export const visits = pgTable(
     twilioRoomName: text("twilio_room_name"),
     twilioRoomSid: text("twilio_room_sid"),
     patientJoinToken: text("patient_join_token"),
+    // When the visit was picked up by a clinician. We introduce this so we
+    // can reset the "wait time" the UI displays (wait = now - assignedAt ??
+    // createdAt) without destroying the original queue-entry timestamp.
+    // Previously `assignVisitToMeAction` overwrote `createdAt` on assign,
+    // which broke every downstream metric that depended on the original
+    // arrival time (median wait, SLA reports, audit chronology).
+    assignedAt: timestamp("assigned_at", { withTimezone: true }),
   },
   (table) => ({
     patientIdIdx: index("idx_visits_patient_id").on(table.patientId),

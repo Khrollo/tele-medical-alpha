@@ -9,7 +9,8 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test:auth-schema": "bun scripts/auth-schema-smoke-test.ts",
-    "db:seed-demo-users": "bun scripts/seed-better-auth-users.ts"
+    "db:seed-demo-users": "bun scripts/seed-better-auth-users.ts",
+    "db:seed-clinical-scenarios": "bun scripts/seed-clinical-scenarios.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",
