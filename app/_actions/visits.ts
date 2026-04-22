@@ -486,15 +486,21 @@ export async function assignVisitToMeAction(visitId: string) {
     })
     .where(eq(patients.id, visit.patientId));
 
-  // Update visit: set status to "In Progress", set clinician_id, and reset createdAt to reset wait time
-  // Use direct database update to ensure createdAt is properly updated
+  // Stamp `assignedAt` (not `createdAt`) on pickup.
+  //
+  // Previously this path overwrote createdAt with NOW() purely to reset the
+  // "wait time" counter the UI renders on the board. That destroyed the
+  // canonical queue-entry timestamp — breaking median-wait metrics, audit
+  // chronology, and any downstream time-series. Wait time is now computed
+  // as `NOW() - COALESCE(assignedAt, createdAt)`, which keeps the board
+  // behavior identical while preserving the original arrival time.
   const { visits } = await import("@/app/_lib/db/drizzle/schema");
   await dbImport
     .update(visits)
     .set({
       status: "In Progress",
-      clinicianId: user.id, // Always set clinician_id for the visit
-      createdAt: new Date(), // Reset wait time by updating createdAt
+      clinicianId: user.id,
+      assignedAt: new Date(),
     })
     .where(eqImport(visits.id, visitId));
 
@@ -535,33 +541,44 @@ export async function assignVisitToMeAction(visitId: string) {
     );
   }
 
-  // Handle virtual appointments - create Twilio room and generate join link
+  // Virtual appointment side-effects: Twilio room + patient join link delivery.
+  //
+  // The assignment itself already succeeded by the time we get here — the DB
+  // commit above is the source of truth for "this clinician owns the visit".
+  // Twilio room creation and SMS/email delivery are secondary: they can fail
+  // independently (expired Twilio token, SMS carrier outage, bad patient
+  // phone) without invalidating the assignment.
+  //
+  // Previous behavior: catch the error, console.error, return success: true
+  // with joinUrl: null. The clinician would see a "success" toast on a
+  // virtual visit with no way to reach the patient. That's the silent-
+  // failure path the audit flagged.
+  //
+  // New behavior: catch per side-effect, but surface a structured warnings
+  // array in the response so the UI can show a targeted toast ("Visit
+  // assigned — but we couldn't text the patient their join link"). The
+  // assignment still succeeds; the clinician now knows what they need to
+  // do manually.
   let joinUrl: string | null = null;
   let patientJoinToken: string | null = null;
+  const warnings: Array<{ code: string; message: string }> = [];
 
   if (visit.appointmentType?.toLowerCase() === "virtual") {
     try {
-      const { ensureTwilioRoom } = await import("@/app/_lib/twilio/video");
-      const { generatePatientJoinToken } = await import(
+      const { ensureTwilioRoom, generatePatientJoinToken } = await import(
         "@/app/_lib/twilio/video"
       );
-      const { sendPatientSMS, sendPatientEmail } = await import(
-        "@/app/_lib/twilio/messaging"
-      );
 
-      // Create or get Twilio room
       const roomName = `visit-${visitId}`;
       const { roomSid, roomName: finalRoomName } = await ensureTwilioRoom(
         roomName
       );
 
-      // Generate patient join token
       patientJoinToken = generatePatientJoinToken(visitId, "24h");
       const baseUrl =
         process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
       joinUrl = `${baseUrl}/join/${patientJoinToken}`;
 
-      // Update visit with Twilio room info
       await dbImport
         .update(visits)
         .set({
@@ -570,15 +587,46 @@ export async function assignVisitToMeAction(visitId: string) {
           patientJoinToken: patientJoinToken,
         })
         .where(eqImport(visits.id, visitId));
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unknown Twilio room error";
+      console.error("assignVisitToMeAction: twilio room setup failed", error);
+      warnings.push({
+        code: "twilio_room_failed",
+        message: `Could not create the video room: ${message}. The visit is assigned to you; you can retry room setup from the visit page.`,
+      });
+    }
 
-      // Send join link to patient
-      await Promise.all([
+    // Join link delivery is best-effort and split from room creation so a
+    // carrier hiccup doesn't hide a Twilio-room failure behind a generic error.
+    if (joinUrl) {
+      const { sendPatientSMS, sendPatientEmail } = await import(
+        "@/app/_lib/twilio/messaging"
+      );
+      const results = await Promise.allSettled([
         sendPatientSMS(visit.patientId, joinUrl),
         sendPatientEmail(visit.patientId, joinUrl),
       ]);
-    } catch (error) {
-      console.error("Error setting up Twilio room:", error);
-      // Don't fail the assignment if Twilio setup fails
+      if (results[0].status === "rejected") {
+        console.error(
+          "assignVisitToMeAction: SMS delivery failed",
+          results[0].reason,
+        );
+        warnings.push({
+          code: "sms_failed",
+          message: "Could not text the patient their join link — please share it manually.",
+        });
+      }
+      if (results[1].status === "rejected") {
+        console.error(
+          "assignVisitToMeAction: email delivery failed",
+          results[1].reason,
+        );
+        warnings.push({
+          code: "email_failed",
+          message: "Could not email the patient their join link — please share it manually.",
+        });
+      }
     }
   }
 
@@ -597,6 +645,7 @@ export async function assignVisitToMeAction(visitId: string) {
     success: true,
     isVirtual: visit.appointmentType?.toLowerCase() === "virtual",
     joinUrl: joinUrl || null,
+    warnings,
   };
 }
 

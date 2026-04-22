@@ -39,6 +39,10 @@ interface VisitInfo {
   priority: string | null;
   appointmentType: string | null;
   createdAt: Date;
+  // Populated when a clinician has picked the visit up. Wait time is measured
+  // from this timestamp (falls back to createdAt) so reassignment resets the
+  // counter without mutating the canonical queue-entry time.
+  assignedAt: Date | null;
   status: string | null;
   clinicianId: string | null;
   twilioRoomName: string | null;
@@ -68,8 +72,10 @@ type SortDirection = "asc" | "desc";
 type FilterKey = "all" | "critical" | "urgent" | "routine" | "virtual";
 
 function getWaitMinutes(visit: VisitInfo | null): number {
-  if (!visit?.createdAt) return 0;
-  return Math.floor((Date.now() - new Date(visit.createdAt).getTime()) / 60000);
+  if (!visit) return 0;
+  const reference = visit.assignedAt ?? visit.createdAt;
+  if (!reference) return 0;
+  return Math.floor((Date.now() - new Date(reference).getTime()) / 60000);
 }
 
 /** Duration-only label for top-of-page stats. Keeps an empty queue distinct from a fresh 0m wait. */
@@ -142,7 +148,13 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
   const [filter, setFilter] = useState<FilterKey>("all");
   const [view, setView] = useState<"list" | "grid">("list");
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [acknowledgedAlerts, setAcknowledgedAlerts] = useState<Record<string, boolean>>({});
+  // The old Dribbble-referenced urgent alert banner — and with it the
+  // `acknowledgedAlerts` dismissal state — was removed in the Clearing
+  // redesign. The banner no longer exists, so there is nothing to dismiss
+  // and nothing to remember between reloads. If/when a dismissible alert
+  // surface is reintroduced, it should persist to the server (see
+  // engineering brief issue #10b), not to localStorage, so that dismissals
+  // follow the clinician across devices.
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
   const toggleExpanded = (patientId: string) => {
@@ -184,27 +196,18 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
     return sorted[Math.floor(sorted.length / 2)] ?? null;
   }, [patients]);
 
+  // One-time migration: scrub the orphaned `waiting-room-acknowledged-alerts`
+  // key from localStorage. It was written by the old alert-banner logic and
+  // is no longer read anywhere. Leaving it behind would silently resurface
+  // stale dismissals if the banner feature is ever reintroduced with the
+  // same key.
   React.useEffect(() => {
     try {
-      const saved = window.localStorage.getItem("waiting-room-acknowledged-alerts");
-      if (saved) {
-        setAcknowledgedAlerts(JSON.parse(saved) as Record<string, boolean>);
-      }
+      window.localStorage.removeItem("waiting-room-acknowledged-alerts");
     } catch {
-      // Ignore local storage failures.
+      // localStorage can throw in private browsing; the key is harmless.
     }
   }, []);
-
-  React.useEffect(() => {
-    try {
-      window.localStorage.setItem(
-        "waiting-room-acknowledged-alerts",
-        JSON.stringify(acknowledgedAlerts)
-      );
-    } catch {
-      // Ignore local storage failures.
-    }
-  }, [acknowledgedAlerts]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -229,13 +232,39 @@ export function WaitingRoomList({ patients: initialPatients, userRole }: Waiting
   ) => {
     e.preventDefault();
     e.stopPropagation();
+
+    // A card on the waiting-room board without a visit ID is a data bug — the
+    // server-side queries only include patients that have an active Waiting /
+    // In Progress visit. The old code silently navigated to a create-visit
+    // URL, masking the bug and creating a phantom visit. Refuse the click
+    // and surface the state instead so it's reported, not swallowed.
+    if (!visitId) {
+      console.error("handleAssignToMe: missing visitId for patient", patientId);
+      toast.error("This card has no active visit — please refresh the queue");
+      return;
+    }
+
     setLoadingPatientId(patientId);
     try {
-      if (visitId) await assignVisitToMeAction(visitId);
+      const result = await assignVisitToMeAction(visitId);
+      // Virtual-visit side effects (Twilio room, patient SMS/email) are
+      // reported per-side-effect by the action. Surface them individually so
+      // the clinician knows exactly what worked and what needs a manual
+      // follow-up — previously these failed silently behind a generic
+      // success toast.
+      if (result?.warnings?.length) {
+        for (const w of result.warnings) {
+          toast.warning(w.message);
+        }
+      }
       navigateToVisitEditor(patientId, visitId);
     } catch (error) {
       console.error("Error assigning visit:", error);
-      toast.error("Failed to assign visit");
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : "Failed to assign visit";
+      toast.error(message);
     } finally {
       setLoadingPatientId(null);
     }

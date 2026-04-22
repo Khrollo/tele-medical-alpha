@@ -9,6 +9,7 @@ interface VisitInfo {
   priority: string | null;
   appointmentType: string | null;
   createdAt: Date;
+  assignedAt: Date | null;
   status: string | null;
   clinicianId: string | null;
   twilioRoomName: string | null;
@@ -89,6 +90,9 @@ export function useWaitingRoomRealtime({
               priority: patient.visit.priority,
               appointmentType: patient.visit.appointmentType,
               createdAt: new Date(patient.visit.createdAt),
+              assignedAt: patient.visit.assignedAt
+                ? new Date(patient.visit.assignedAt)
+                : null,
               status: patient.visit.status,
               clinicianId: patient.visit.clinicianId,
               twilioRoomName: patient.visit.twilioRoomName,
