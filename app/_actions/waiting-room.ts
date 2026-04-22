@@ -3,12 +3,20 @@
 import { db } from "@/app/_lib/db/drizzle/index";
 import { notes, patients, visits } from "@/app/_lib/db/drizzle/schema";
 import { eq, and, or, inArray, desc } from "drizzle-orm";
+import { requireUser } from "@/app/_lib/auth/get-current-user";
 
 /**
  * Fetch unassigned patients with their active visit info for the waiting room.
  * Called by the client polling hook to replace direct Supabase PostgREST queries.
+ *
+ * Auth parity with the initial server-rendered page load: the polling path
+ * MUST enforce the same clinician role check as `WaitingRoomPage`. Without
+ * this, any caller can scrape the queue + PHI every 3s via the server action.
+ * `requireUser` throws on unauthorized / forbidden; we let that propagate so
+ * the client hook can back off instead of spinning on a silent failure.
  */
 export async function fetchWaitingRoomPatientsAction() {
+  await requireUser(["doctor", "nurse"]);
   const unassignedPatients = await db
     .select({
       id: patients.id,
