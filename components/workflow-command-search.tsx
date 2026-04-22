@@ -48,6 +48,7 @@ export function WorkflowCommandSearch({
   });
   const [highlightedIndex, setHighlightedIndex] = React.useState(0);
   const [isPending, startTransition] = React.useTransition();
+  const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
   const deferredQuery = React.useDeferredValue(query);
 
   const flatItems = React.useMemo(
@@ -85,10 +86,32 @@ export function WorkflowCommandSearch({
     requestIdRef.current = currentRequestId;
 
     startTransition(async () => {
-      const nextResults = await searchWorkflowAction(deferredQuery);
-      if (requestIdRef.current === currentRequestId) {
-        setResults(nextResults);
-        setHighlightedIndex(0);
+      // A rejection from searchWorkflowAction used to propagate up into an
+      // uncaught async error inside startTransition, which crashes the whole
+      // segment (no error.tsx boundary existed for this subtree). Catching
+      // here keeps the search usable even if the server action fails on a
+      // single keystroke — the user can still type and retry.
+      try {
+        const nextResults = await searchWorkflowAction(deferredQuery);
+        if (requestIdRef.current === currentRequestId) {
+          setResults(nextResults);
+          setHighlightedIndex(0);
+          setErrorMessage(null);
+        }
+      } catch (err) {
+        if (requestIdRef.current === currentRequestId) {
+          const message =
+            err instanceof Error ? err.message : "Search is temporarily unavailable.";
+          setErrorMessage(message);
+          setResults({
+            patients: [],
+            notes: [],
+            schedules: [],
+            destinations: [],
+          });
+          setHighlightedIndex(0);
+          console.error("[workflow-search] client error", err);
+        }
       }
     });
   }, [deferredQuery, isOpen]);
@@ -150,7 +173,14 @@ export function WorkflowCommandSearch({
 
       {isOpen && (
         <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-50 max-h-[26rem] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl dark:border-slate-800 dark:bg-slate-950">
-          {flatItems.length === 0 ? (
+          {errorMessage ? (
+            <div
+              role="alert"
+              className="rounded-xl px-4 py-6 text-sm text-rose-600 dark:text-rose-400"
+            >
+              {errorMessage}
+            </div>
+          ) : flatItems.length === 0 ? (
             <div className="rounded-xl px-4 py-6 text-sm text-muted-foreground">
               No matching workflows found.
             </div>

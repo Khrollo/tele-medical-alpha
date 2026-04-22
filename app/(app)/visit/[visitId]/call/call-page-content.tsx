@@ -473,6 +473,14 @@ export function CallPageContent({
   const [parsedNoteData, setParsedNoteData] = React.useState<any>(null);
   const parseReadyCallbackRef = React.useRef<((parsed: any) => void) | null>(null);
 
+  // Live transcription captions while recording. Snapshot is replaced on
+  // every Deepgram message so React can render with the latest interim text;
+  // the underlying hook coalesces final + interim into `fullTranscript`.
+  const [liveCaptions, setLiveCaptions] = React.useState<{
+    finalText: string;
+    interimText: string;
+  }>({ finalText: "", interimText: "" });
+
   const {
     isRecording,
     isUploading,
@@ -506,6 +514,20 @@ export function CallPageContent({
           parseReadyCallbackRef.current(data.parsedNote);
         }
       }
+      // Once finalize completes (success OR failure) the live captions are
+      // stale — clear them so the UI doesn't keep showing partial text after
+      // the recording session is over.
+      setLiveCaptions({ finalText: "", interimText: "" });
+    },
+    onLiveTranscript: (snap) => {
+      // Capture both the appended-final and the rolling interim so the user
+      // sees text appear within ~250ms of speaking. We deliberately keep this
+      // local state — projecting it into the parent visit form during a live
+      // call would re-render the entire form on every word and cause jank.
+      setLiveCaptions({
+        finalText: snap.finalTranscript,
+        interimText: snap.interimTranscript,
+      });
     },
   });
 
@@ -672,6 +694,35 @@ export function CallPageContent({
                 }`}>
                 <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
                 <span className="text-sm font-medium">{statusMessage}</span>
+              </div>
+            )}
+
+            {/*
+              Live captions overlay.
+              Only mounts while recording AND when Deepgram has produced at
+              least one snapshot; otherwise it would be an empty bar that
+              implies the live channel is broken when in fact it just isn't
+              configured for this deployment. We show the rolling final text
+              followed by italic interim text so the clinician can see in-flight
+              words update before they're committed.
+            */}
+            {isRecording && (liveCaptions.finalText || liveCaptions.interimText) && (
+              <div
+                aria-live="polite"
+                role="status"
+                className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 max-w-[min(90%,48rem)] rounded-xl bg-black/70 px-4 py-2 text-sm leading-relaxed text-white shadow-lg backdrop-blur-sm"
+              >
+                <div className="line-clamp-3">
+                  {liveCaptions.finalText && (
+                    <span>{liveCaptions.finalText}</span>
+                  )}
+                  {liveCaptions.interimText && (
+                    <span className="italic text-white/70">
+                      {liveCaptions.finalText ? " " : ""}
+                      {liveCaptions.interimText}
+                    </span>
+                  )}
+                </div>
               </div>
             )}
           </div>

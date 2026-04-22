@@ -354,10 +354,22 @@ export async function POST(
         throw uploadError; // Re-throw if it's not a size error
       }
 
-      // Trigger transcription pipeline (call directly to avoid auth issues)
+      // Trigger transcription pipeline.
+      //
+      // Previously every failure in this block was caught and swallowed; the
+      // response then returned `success: true, transcript: null` whether
+      // Replicate errored, the model was unconfigured, or the audio was
+      // genuinely empty. The client had no way to distinguish those cases,
+      // so the UI would report "done" on a broken pipeline. We now emit a
+      // deterministic `transcriptionStatus` that the client can show to the
+      // user and log.
       let transcriptId: string | null = null;
       let transcriptText: string | null = null;
       let parsedNote: VisitNote | null = null;
+      let transcriptionStatus: "ok" | "empty" | "failed" = "ok";
+      let transcriptionError: string | null = null;
+      let parsingStatus: "ok" | "skipped" | "failed" = "skipped";
+      let parsingError: string | null = null;
 
       try {
         const { transcribeAudio } = await import("@/app/_lib/ai/transcribe");
@@ -365,7 +377,10 @@ export async function POST(
         transcriptId = transcriptData.transcriptId || null;
         transcriptText = transcriptData.text || null;
 
-        // Save transcript to database
+        if (!transcriptText || transcriptText.trim().length === 0) {
+          transcriptionStatus = "empty";
+        }
+
         if (transcriptText) {
           try {
             await saveTranscriptAction({
@@ -376,10 +391,7 @@ export async function POST(
           } catch (error) {
             console.error("Error saving transcript:", error);
           }
-        }
 
-        // Trigger parsing if transcript is available (call directly to avoid auth issues)
-        if (transcriptText) {
           try {
             const { parseVisitNoteFromTranscript } = await import(
               "@/app/_lib/ai/parse-visit"
@@ -388,23 +400,31 @@ export async function POST(
               transcript: transcriptText,
             });
 
-            // Save parsed note to visit draft
             if (parsedNote) {
+              parsingStatus = "ok";
               try {
                 await updateVisitDraftAction(visit.id, {
                   notesJson: parsedNote,
                 });
-                console.log("Parsed note saved to visit draft");
               } catch (error) {
                 console.error("Error saving parsed note to visit:", error);
+                parsingStatus = "failed";
+                parsingError =
+                  error instanceof Error ? error.message : "save-failed";
               }
             }
           } catch (error) {
             console.error("Error parsing transcript:", error);
+            parsingStatus = "failed";
+            parsingError =
+              error instanceof Error ? error.message : "parse-failed";
           }
         }
       } catch (error) {
         console.error("Transcription error:", error);
+        transcriptionStatus = "failed";
+        transcriptionError =
+          error instanceof Error ? error.message : "transcription-failed";
       }
 
       return NextResponse.json({
@@ -413,7 +433,16 @@ export async function POST(
         transcript: transcriptText,
         parsedNote,
         audioPath: storagePath,
-        message: "Recording finalized, transcription and parsing completed",
+        transcriptionStatus,
+        transcriptionError,
+        parsingStatus,
+        parsingError,
+        message:
+          transcriptionStatus === "ok"
+            ? "Recording finalized; transcript and note ready."
+            : transcriptionStatus === "empty"
+              ? "Recording finalized; transcript was empty."
+              : "Recording saved, but transcription failed. You can retry transcription from the visit.",
       });
     } finally {
       // Always cleanup session chunks from storage, even if errors occurred

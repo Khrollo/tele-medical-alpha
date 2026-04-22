@@ -16,6 +16,21 @@ export interface DeepgramControllerOptions {
     onError?: (message: string) => void;
     /** Called when an ephemeral token expires and we need a new one. */
     refreshToken?: () => Promise<string | null>;
+    /**
+     * Optional pre-built audio source. When provided, the controller will NOT
+     * call getUserMedia and will instead encode this stream. Use this to
+     * transcribe a mixed Twilio room stream so both clinician and patient
+     * audio appear in the live captions. We accept either a stream or a
+     * factory because mixed streams are typically built lazily once the
+     * remote participants are connected.
+     */
+    audioStream?: MediaStream | (() => Promise<MediaStream | null>);
+    /**
+     * If true (default), `stop()` will end the underlying MediaStream tracks.
+     * Set to false when the caller owns the stream lifecycle (e.g. the
+     * call-recorder owns the mixed Twilio stream and stops it elsewhere).
+     */
+    ownsStream?: boolean;
 }
 
 export interface DeepgramController {
@@ -158,8 +173,24 @@ export function createDeepgramController(
         };
     }
 
+    const ownsStream = options.ownsStream ?? !options.audioStream;
+
+    async function resolveStream(): Promise<MediaStream> {
+        if (options.audioStream) {
+            const candidate =
+                typeof options.audioStream === "function"
+                    ? await options.audioStream()
+                    : options.audioStream;
+            if (!candidate) {
+                throw new Error("Provided audioStream resolved to null");
+            }
+            return candidate;
+        }
+        return navigator.mediaDevices.getUserMedia({ audio: true });
+    }
+
     async function startRecorder(): Promise<void> {
-        mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaStream = await resolveStream();
         const mimeType = "audio/webm;codecs=opus";
         if (typeof MediaRecorder === "undefined" || !MediaRecorder.isTypeSupported?.(mimeType)) {
             throw new Error("MediaRecorder/opus not supported");
@@ -170,6 +201,8 @@ export function createDeepgramController(
                 e.data.arrayBuffer().then((buf) => ws?.send(buf));
             }
         };
+        // 250ms timeslice keeps the perceived latency under ~400ms end-to-end
+        // (250ms slice + ~100ms encode/upload + ~50ms Deepgram inference).
         recorder.start(250);
     }
 
@@ -190,7 +223,12 @@ export function createDeepgramController(
                 // ignore
             }
             recorder = null;
-            mediaStream?.getTracks().forEach((t) => t.stop());
+            // Only end tracks we created ourselves. Stopping a caller-owned
+            // stream here would silently kill the call recorder's mixed
+            // stream and stop the Twilio recording mid-visit.
+            if (ownsStream) {
+                mediaStream?.getTracks().forEach((t) => t.stop());
+            }
             mediaStream = null;
             try {
                 ws?.send(JSON.stringify({ type: "CloseStream" }));
@@ -218,7 +256,9 @@ export function createDeepgramController(
                 // ignore
             }
             recorder = null;
-            mediaStream?.getTracks().forEach((t) => t.stop());
+            if (ownsStream) {
+                mediaStream?.getTracks().forEach((t) => t.stop());
+            }
             mediaStream = null;
             try {
                 ws?.close();
