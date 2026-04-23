@@ -12,6 +12,7 @@ export function SignInForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [showEmailFallback, setShowEmailFallback] = useState(false);
   const [activeMethod, setActiveMethod] = useState<"google" | "email" | null>(
     null
   );
@@ -131,73 +132,8 @@ export function SignInForm() {
         </div>
       )}
 
-      <div className="flex flex-col gap-3.5">
-        <label className="flex flex-col gap-1.5">
-          <span className="text-[11.5px]" style={{ color: "var(--ink-3)" }}>
-            Work email
-          </span>
-          <input
-            id="email"
-            type="email"
-            placeholder="name@example.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            disabled={isLoading}
-            required
-            aria-required="true"
-            aria-invalid={error ? "true" : "false"}
-            style={inputStyle}
-          />
-        </label>
-
-        <label className="flex flex-col gap-1.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[11.5px]" style={{ color: "var(--ink-3)" }}>
-              Password
-            </span>
-            <Link
-              href="/reset-password"
-              className="text-[11.5px] hover:underline"
-              style={{ color: "var(--brand-ink)", textDecoration: "none" }}
-            >
-              Forgot?
-            </Link>
-          </div>
-          <input
-            id="password"
-            type="password"
-            placeholder="Enter your password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            disabled={isLoading}
-            required
-            aria-required="true"
-            aria-invalid={error ? "true" : "false"}
-            style={{ ...inputStyle, letterSpacing: "0.2em" }}
-          />
-        </label>
-      </div>
-
       <Btn
         kind="accent"
-        size="lg"
-        full
-        type="submit"
-        disabled={isLoading}
-        aria-busy={activeMethod === "email"}
-        iconRight={<ArrowRight className="h-4 w-4" />}
-      >
-        {activeMethod === "email" ? "Signing in…" : "Sign in"}
-      </Btn>
-
-      <div className="flex items-center gap-3" style={{ color: "var(--ink-3)" }}>
-        <div className="h-px flex-1" style={{ background: "var(--line)" }} />
-        <span className="text-[10.5px] uppercase" style={{ letterSpacing: "0.12em" }}>or</span>
-        <div className="h-px flex-1" style={{ background: "var(--line)" }} />
-      </div>
-
-      <Btn
-        kind="ghost"
         size="lg"
         full
         type="button"
@@ -215,6 +151,90 @@ export function SignInForm() {
       >
         {activeMethod === "google" ? "Redirecting…" : "Continue with Google"}
       </Btn>
+
+      <div className="flex items-center gap-3" style={{ color: "var(--ink-3)" }}>
+        <div className="h-px flex-1" style={{ background: "var(--line)" }} />
+        <span className="text-[10.5px] uppercase" style={{ letterSpacing: "0.12em" }}>
+          fallback
+        </span>
+        <div className="h-px flex-1" style={{ background: "var(--line)" }} />
+      </div>
+
+      {!showEmailFallback ? (
+        <Btn
+          kind="ghost"
+          size="lg"
+          full
+          type="button"
+          disabled={isLoading}
+          onClick={() => setShowEmailFallback(true)}
+        >
+          Use email and password instead
+        </Btn>
+      ) : (
+        <div className="flex flex-col gap-3.5">
+          <div className="text-center text-[12px]" style={{ color: "var(--ink-3)" }}>
+            Use your email credentials if Google sign-in is unavailable.
+          </div>
+
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11.5px]" style={{ color: "var(--ink-3)" }}>
+              Work email
+            </span>
+            <input
+              id="email"
+              type="email"
+              placeholder="name@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={isLoading}
+              required
+              aria-required="true"
+              aria-invalid={error ? "true" : "false"}
+              style={inputStyle}
+            />
+          </label>
+
+          <label className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11.5px]" style={{ color: "var(--ink-3)" }}>
+                Password
+              </span>
+              <Link
+                href="/reset-password"
+                className="text-[11.5px] hover:underline"
+                style={{ color: "var(--brand-ink)", textDecoration: "none" }}
+              >
+                Forgot?
+              </Link>
+            </div>
+            <input
+              id="password"
+              type="password"
+              placeholder="Enter your password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={isLoading}
+              required
+              aria-required="true"
+              aria-invalid={error ? "true" : "false"}
+              style={{ ...inputStyle, letterSpacing: "0.2em" }}
+            />
+          </label>
+
+          <Btn
+            kind="ghost"
+            size="lg"
+            full
+            type="submit"
+            disabled={isLoading}
+            aria-busy={activeMethod === "email"}
+            iconRight={<ArrowRight className="h-4 w-4" />}
+          >
+            {activeMethod === "email" ? "Signing in…" : "Sign in with email"}
+          </Btn>
+        </div>
+      )}
 
       <div
         className="flex items-center gap-2 pt-3.5 text-[12px]"
